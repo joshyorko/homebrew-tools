@@ -1,7 +1,7 @@
 class Rcc < Formula
   desc "RCC - Repeatable Contained Code automation runtime with Linux support"
   homepage "https://github.com/joshyorko/rcc"
-  version "18.12.1"
+  version "18.13.0"
   license "Apache-2.0"
 
   on_linux do
