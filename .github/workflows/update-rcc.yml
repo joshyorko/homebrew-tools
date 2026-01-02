@@ -33,19 +33,7 @@ jobs:
           echo "version=$CURRENT" >> $GITHUB_OUTPUT
           echo "Current version: $CURRENT"
 
-      - name: Check if update needed
-        id: check_update
-        run: |
-          if [ "${{ steps.get_release.outputs.version }}" != "${{ steps.current_version.outputs.version }}" ]; then
-            echo "needs_update=true" >> $GITHUB_OUTPUT
-            echo "Update needed: ${{ steps.current_version.outputs.version }} -> ${{ steps.get_release.outputs.version }}"
-          else
-            echo "needs_update=false" >> $GITHUB_OUTPUT
-            echo "Already up to date"
-          fi
-
       - name: Download and calculate SHA256 hashes
-        if: steps.check_update.outputs.needs_update == 'true'
         id: get_shas
         run: |
           VERSION="${{ steps.get_release.outputs.version }}"
@@ -63,6 +51,45 @@ jobs:
           echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
           echo "Darwin SHA256: $DARWIN_SHA"
 
+      - name: Get current SHA256 hashes from formula
+        id: current_shas
+        run: |
+          # Extract all sha256 values from formula
+          LINUX_SHA=$(grep -A1 'on_linux' Formula/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]+' | head -1)
+          DARWIN_SHA=$(grep -A2 'on_macos' Formula/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]+' | head -1)
+          echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
+          echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
+          echo "Current Linux SHA256: $LINUX_SHA"
+          echo "Current Darwin SHA256: $DARWIN_SHA"
+
+      - name: Check if update needed
+        id: check_update
+        run: |
+          NEEDS_UPDATE=false
+          
+          # Check version
+          if [ "${{ steps.get_release.outputs.version }}" != "${{ steps.current_version.outputs.version }}" ]; then
+            echo "Version changed: ${{ steps.current_version.outputs.version }} -> ${{ steps.get_release.outputs.version }}"
+            NEEDS_UPDATE=true
+          fi
+          
+          # Check Linux SHA256
+          if [ "${{ steps.get_shas.outputs.linux_sha }}" != "${{ steps.current_shas.outputs.linux_sha }}" ]; then
+            echo "Linux SHA256 changed"
+            NEEDS_UPDATE=true
+          fi
+          
+          # Check Darwin SHA256
+          if [ "${{ steps.get_shas.outputs.darwin_sha }}" != "${{ steps.current_shas.outputs.darwin_sha }}" ]; then
+            echo "Darwin SHA256 changed"
+            NEEDS_UPDATE=true
+          fi
+          
+          echo "needs_update=$NEEDS_UPDATE" >> $GITHUB_OUTPUT
+          if [ "$NEEDS_UPDATE" = "false" ]; then
+            echo "Already up to date"
+          fi
+
       - name: Update formula
         if: steps.check_update.outputs.needs_update == 'true'
         run: |
@@ -70,26 +97,67 @@ jobs:
           LINUX_SHA="${{ steps.get_shas.outputs.linux_sha }}"
           DARWIN_SHA="${{ steps.get_shas.outputs.darwin_sha }}"
           
-          # Update version
-          sed -i "s/version \"[^\"]*\"/version \"${VERSION}\"/" Formula/rcc.rb
+          cat > Formula/rcc.rb << 'FORMULA_EOF'
+          class Rcc < Formula
+            desc "RCC - Repeatable Contained Code automation runtime with Linux support"
+            homepage "https://github.com/joshyorko/rcc"
+            version "VERSION_PLACEHOLDER"
+            license "Apache-2.0"
+
+            livecheck do
+              url :stable
+              regex(/^v?(\d+(?:\.\d+)+)$/i)
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"
+                sha256 "LINUX_SHA_PLACEHOLDER"
+              end
+            end
+
+            on_macos do
+              on_intel do
+                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
+                sha256 "DARWIN_SHA_PLACEHOLDER"
+              end
+              # Note: No ARM build available yet - darwin64 works via Rosetta 2
+              on_arm do
+                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
+                sha256 "DARWIN_SHA_PLACEHOLDER"
+              end
+            end
+
+            def install
+              if OS.linux?
+                bin.install "rcc-linux64" => "rcc"
+              else
+                bin.install "rcc-darwin64" => "rcc"
+              end
+            end
+
+            def caveats
+              <<~EOS
+                If 'rcc' is not found after installation, refresh your shell's cache:
+                  hash -r
+
+                Or start a new terminal session.
+              EOS
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/rcc version")
+            end
+          end
+          FORMULA_EOF
           
-          # Update Linux SHA256 (first sha256 in the file)
-          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"${LINUX_SHA}\"/" Formula/rcc.rb
+          # Replace placeholders
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" Formula/rcc.rb
+          sed -i "s/LINUX_SHA_PLACEHOLDER/${LINUX_SHA}/g" Formula/rcc.rb
+          sed -i "s/DARWIN_SHA_PLACEHOLDER/${DARWIN_SHA}/g" Formula/rcc.rb
           
-          # Update Darwin SHA256 (second and third occurrences)
-          # Using awk for more precise multi-occurrence replacement
-          awk -v linux="$LINUX_SHA" -v darwin="$DARWIN_SHA" '
-            BEGIN { sha_count = 0 }
-            /sha256 "/ {
-              sha_count++
-              if (sha_count == 1) {
-                sub(/sha256 "[a-f0-9]*"/, "sha256 \"" linux "\"")
-              } else {
-                sub(/sha256 "[a-f0-9]*"/, "sha256 \"" darwin "\"")
-              }
-            }
-            { print }
-          ' Formula/rcc.rb > Formula/rcc.rb.tmp && mv Formula/rcc.rb.tmp Formula/rcc.rb
+          # Fix indentation (remove leading spaces from heredoc)
+          sed -i 's/^          //' Formula/rcc.rb
           
           echo "Updated formula:"
           cat Formula/rcc.rb
