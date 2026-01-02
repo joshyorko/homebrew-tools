@@ -14,21 +14,20 @@ class Rcc < Formula
   on_macos do
     on_intel do
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-      sha256 "b8a7c3e9f4d2a1b5c6e8f0a3d7c9b2e4f6a8d0c3e5f7a9b1d3c5e7f9a1b3d5e7"
+      sha256 "44b1dbf8672bbd307fd44cf4c92f725bbf832f3f1b20b09d007b685a5a484dce"
     end
+    # Note: No ARM build available yet - darwin64 may work via Rosetta 2
     on_arm do
-      url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwinarm64"
-      sha256 "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+      url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
+      sha256 "44b1dbf8672bbd307fd44cf4c92f725bbf832f3f1b20b09d007b685a5a484dce"
     end
   end
 
   def install
     if OS.linux?
       bin.install "rcc-linux64" => "rcc"
-    elsif OS.mac? && Hardware::CPU.intel?
+    else
       bin.install "rcc-darwin64" => "rcc"
-    elsif OS.mac? && Hardware::CPU.arm?
-      bin.install "rcc-darwinarm64" => "rcc"
     end
   end
 
