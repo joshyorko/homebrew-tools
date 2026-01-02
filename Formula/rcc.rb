@@ -31,6 +31,15 @@ class Rcc < Formula
     end
   end
 
+  def caveats
+    <<~EOS
+      If 'rcc' is not found after installation, refresh your shell's cache:
+        hash -r
+
+      Or start a new terminal session.
+    EOS
+  end
+
   test do
     assert_match version.to_s, shell_output("#{bin}/rcc version")
   end
