@@ -40,16 +40,19 @@ jobs:
           BASE_URL="https://github.com/joshyorko/rcc/releases/download/v${VERSION}"
           
           # Download Linux binary and get SHA256
-          curl -sL "${BASE_URL}/rcc-linux64" -o rcc-linux64
-          LINUX_SHA=$(sha256sum rcc-linux64 | awk '{print $1}')
+          curl -sL "${BASE_URL}/rcc-linux64" -o /tmp/rcc-linux64
+          LINUX_SHA=$(sha256sum /tmp/rcc-linux64 | awk '{print $1}')
           echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
           echo "Linux SHA256: $LINUX_SHA"
           
           # Download macOS binary and get SHA256
-          curl -sL "${BASE_URL}/rcc-darwin64" -o rcc-darwin64
-          DARWIN_SHA=$(sha256sum rcc-darwin64 | awk '{print $1}')
+          curl -sL "${BASE_URL}/rcc-darwin64" -o /tmp/rcc-darwin64
+          DARWIN_SHA=$(sha256sum /tmp/rcc-darwin64 | awk '{print $1}')
           echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
           echo "Darwin SHA256: $DARWIN_SHA"
+          
+          # Cleanup
+          rm -f /tmp/rcc-linux64 /tmp/rcc-darwin64
 
       - name: Get current SHA256 hashes from formula
         id: current_shas
@@ -157,21 +160,11 @@ jobs:
           echo "Updated formula:"
           cat Formula/rcc.rb
 
-      - name: Create Pull Request
+      - name: Commit and push changes
         if: steps.check_update.outputs.needs_update == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Update rcc to v${{ steps.get_release.outputs.version }}"
-          title: "Update rcc to v${{ steps.get_release.outputs.version }}"
-          body: |
-            Automated update of rcc formula.
-            
-            **Changes:**
-            - Version: `${{ steps.current_version.outputs.version }}` → `${{ steps.get_release.outputs.version }}`
-            - Linux SHA256: `${{ steps.get_shas.outputs.linux_sha }}`
-            - Darwin SHA256: `${{ steps.get_shas.outputs.darwin_sha }}`
-            
-            [Release Notes](https://github.com/joshyorko/rcc/releases/tag/v${{ steps.get_release.outputs.version }})
-          branch: update-rcc-formula
-          delete-branch: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/rcc.rb
+          git commit -m "Update rcc to v${{ steps.get_release.outputs.version }}"
+          git push
