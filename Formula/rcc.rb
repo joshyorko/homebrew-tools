@@ -1,5 +1,5 @@
 class Rcc < Formula
-  desc "Robocorp Control Center - automation runtime (joshyorko fork with Linux support)"
+  desc "RCC - Repeatable Contained Code automation runtime with Linux support"
   homepage "https://github.com/joshyorko/rcc"
   version "18.12.1"
   license "Apache-2.0"
@@ -16,7 +16,7 @@ class Rcc < Formula
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
       sha256 "44b1dbf8672bbd307fd44cf4c92f725bbf832f3f1b20b09d007b685a5a484dce"
     end
-    # Note: No ARM build available yet - darwin64 may work via Rosetta 2
+    # Note: No ARM build available yet - darwin64 works via Rosetta 2
     on_arm do
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
       sha256 "44b1dbf8672bbd307fd44cf4c92f725bbf832f3f1b20b09d007b685a5a484dce"
