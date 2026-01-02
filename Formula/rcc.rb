@@ -4,6 +4,11 @@ class Rcc < Formula
   version "18.13.0"
   license "Apache-2.0"
 
+  livecheck do
+    url :stable
+    regex(/^v?(\d+(?:\.\d+)+)$/i)
+  end
+
   on_linux do
     on_intel do
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"

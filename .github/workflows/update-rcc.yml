@@ -1,0 +1,114 @@
+name: Update RCC Formula
+
+on:
+  schedule:
+    # Run daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest RCC release
+        id: get_release
+        run: |
+          # Get the latest release from GitHub API
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/joshyorko/rcc/releases/latest)
+          VERSION=$(echo "$LATEST_RELEASE" | jq -r '.tag_name' | sed 's/^v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $VERSION"
+
+      - name: Get current formula version
+        id: current_version
+        run: |
+          CURRENT=$(grep -oP 'version "\K[^"]+' Formula/rcc.rb)
+          echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT"
+
+      - name: Check if update needed
+        id: check_update
+        run: |
+          if [ "${{ steps.get_release.outputs.version }}" != "${{ steps.current_version.outputs.version }}" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            echo "Update needed: ${{ steps.current_version.outputs.version }} -> ${{ steps.get_release.outputs.version }}"
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "Already up to date"
+          fi
+
+      - name: Download and calculate SHA256 hashes
+        if: steps.check_update.outputs.needs_update == 'true'
+        id: get_shas
+        run: |
+          VERSION="${{ steps.get_release.outputs.version }}"
+          BASE_URL="https://github.com/joshyorko/rcc/releases/download/v${VERSION}"
+          
+          # Download Linux binary and get SHA256
+          curl -sL "${BASE_URL}/rcc-linux64" -o rcc-linux64
+          LINUX_SHA=$(sha256sum rcc-linux64 | awk '{print $1}')
+          echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
+          echo "Linux SHA256: $LINUX_SHA"
+          
+          # Download macOS binary and get SHA256
+          curl -sL "${BASE_URL}/rcc-darwin64" -o rcc-darwin64
+          DARWIN_SHA=$(sha256sum rcc-darwin64 | awk '{print $1}')
+          echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
+          echo "Darwin SHA256: $DARWIN_SHA"
+
+      - name: Update formula
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          VERSION="${{ steps.get_release.outputs.version }}"
+          LINUX_SHA="${{ steps.get_shas.outputs.linux_sha }}"
+          DARWIN_SHA="${{ steps.get_shas.outputs.darwin_sha }}"
+          
+          # Update version
+          sed -i "s/version \"[^\"]*\"/version \"${VERSION}\"/" Formula/rcc.rb
+          
+          # Update Linux SHA256 (first sha256 in the file)
+          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"${LINUX_SHA}\"/" Formula/rcc.rb
+          
+          # Update Darwin SHA256 (second and third occurrences)
+          # Using awk for more precise multi-occurrence replacement
+          awk -v linux="$LINUX_SHA" -v darwin="$DARWIN_SHA" '
+            BEGIN { sha_count = 0 }
+            /sha256 "/ {
+              sha_count++
+              if (sha_count == 1) {
+                sub(/sha256 "[a-f0-9]*"/, "sha256 \"" linux "\"")
+              } else {
+                sub(/sha256 "[a-f0-9]*"/, "sha256 \"" darwin "\"")
+              }
+            }
+            { print }
+          ' Formula/rcc.rb > Formula/rcc.rb.tmp && mv Formula/rcc.rb.tmp Formula/rcc.rb
+          
+          echo "Updated formula:"
+          cat Formula/rcc.rb
+
+      - name: Create Pull Request
+        if: steps.check_update.outputs.needs_update == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Update rcc to v${{ steps.get_release.outputs.version }}"
+          title: "Update rcc to v${{ steps.get_release.outputs.version }}"
+          body: |
+            Automated update of rcc formula.
+            
+            **Changes:**
+            - Version: `${{ steps.current_version.outputs.version }}` → `${{ steps.get_release.outputs.version }}`
+            - Linux SHA256: `${{ steps.get_shas.outputs.linux_sha }}`
+            - Darwin SHA256: `${{ steps.get_shas.outputs.darwin_sha }}`
+            
+            [Release Notes](https://github.com/joshyorko/rcc/releases/tag/v${{ steps.get_release.outputs.version }})
+          branch: update-rcc-${{ steps.get_release.outputs.version }}
+          delete-branch: true
