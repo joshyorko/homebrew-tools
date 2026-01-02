@@ -12,19 +12,19 @@ class Rcc < Formula
   on_linux do
     on_intel do
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"
-      sha256 "ec11807a08b23a098959a717e8011bcb776c56c2f0eaeded80b5a7dc0cb0da3a"
+      sha256 "11f7f4ed82552971ad0e25772385d659e618fecedfdcd6a8a22b9e78f24bbb8c"
     end
   end
 
   on_macos do
     on_intel do
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-      sha256 "44b1dbf8672bbd307fd44cf4c92f725bbf832f3f1b20b09d007b685a5a484dce"
+      sha256 "c150acf979d2e8d7dfe52c905fa09ad8dc394eca5fb75363333548792d041f77"
     end
     # Note: No ARM build available yet - darwin64 works via Rosetta 2
     on_arm do
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-      sha256 "44b1dbf8672bbd307fd44cf4c92f725bbf832f3f1b20b09d007b685a5a484dce"
+      sha256 "c150acf979d2e8d7dfe52c905fa09ad8dc394eca5fb75363333548792d041f77"
     end
   end
 
