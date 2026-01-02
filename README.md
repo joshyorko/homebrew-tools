@@ -15,9 +15,9 @@ brew install rcc
 
 ## Available Formulae
 
-### RCC (Robocorp Control Center)
+### RCC (Repeatable Contained Code)
 
-A fork of [Robocorp RCC](https://github.com/robocorp/rcc) with **Linux Homebrew (Linuxbrew) support**.
+An automation runtime for creating isolated, reproducible environments. Fork of the original RCC with **Linux Homebrew (Linuxbrew) support**.
 
 | Command | Description |
 |---------|-------------|
@@ -35,7 +35,7 @@ A fork of [Robocorp RCC](https://github.com/robocorp/rcc) with **Linux Homebrew 
 
 #### Why This Fork?
 
-The upstream `robocorp/tools/rcc` is a **Cask** (macOS-only binary distribution). This formula provides cross-platform support:
+The upstream RCC Homebrew package is a **Cask** (macOS-only binary distribution). This formula provides cross-platform support:
 
 | Feature | Upstream Cask | This Formula |
 |---------|--------------|---------------|
@@ -43,7 +43,6 @@ The upstream `robocorp/tools/rcc` is a **Cask** (macOS-only binary distribution)
 | macOS Intel | ✅ Yes | ✅ Yes |
 | macOS ARM | ✅ Yes | ✅ Yes (Rosetta) |
 | Type | Cask | Formula |
-| Version | 17.28.4 | 18.12.1 |
 
 ## For Brewfile Users
 
