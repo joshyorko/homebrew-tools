@@ -92,39 +92,39 @@ jobs:
 
       - name: Update formula
         if: steps.check_update.outputs.needs_update == 'true'
+        env:
+          VERSION: ${{ steps.get_release.outputs.version }}
+          LINUX_SHA: ${{ steps.get_shas.outputs.linux_sha }}
+          DARWIN_SHA: ${{ steps.get_shas.outputs.darwin_sha }}
         run: |
-          VERSION="${{ steps.get_release.outputs.version }}"
-          LINUX_SHA="${{ steps.get_shas.outputs.linux_sha }}"
-          DARWIN_SHA="${{ steps.get_shas.outputs.darwin_sha }}"
-          
-          cat > Formula/rcc.rb << 'FORMULA_EOF'
+          cat > Formula/rcc.rb << EOF
           class Rcc < Formula
             desc "RCC - Repeatable Contained Code automation runtime with Linux support"
             homepage "https://github.com/joshyorko/rcc"
-            version "VERSION_PLACEHOLDER"
+            version "${VERSION}"
             license "Apache-2.0"
 
             livecheck do
               url :stable
-              regex(/^v?(\d+(?:\.\d+)+)$/i)
+              regex(/^v?(\d+(?:\.\d+)+)\$/i)
             end
 
             on_linux do
               on_intel do
                 url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"
-                sha256 "LINUX_SHA_PLACEHOLDER"
+                sha256 "${LINUX_SHA}"
               end
             end
 
             on_macos do
               on_intel do
                 url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-                sha256 "DARWIN_SHA_PLACEHOLDER"
+                sha256 "${DARWIN_SHA}"
               end
               # Note: No ARM build available yet - darwin64 works via Rosetta 2
               on_arm do
                 url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-                sha256 "DARWIN_SHA_PLACEHOLDER"
+                sha256 "${DARWIN_SHA}"
               end
             end
 
@@ -149,12 +149,7 @@ jobs:
               assert_match version.to_s, shell_output("#{bin}/rcc version")
             end
           end
-          FORMULA_EOF
-          
-          # Replace placeholders
-          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" Formula/rcc.rb
-          sed -i "s/LINUX_SHA_PLACEHOLDER/${LINUX_SHA}/g" Formula/rcc.rb
-          sed -i "s/DARWIN_SHA_PLACEHOLDER/${DARWIN_SHA}/g" Formula/rcc.rb
+          EOF
           
           # Fix indentation (remove leading spaces from heredoc)
           sed -i 's/^          //' Formula/rcc.rb
@@ -178,5 +173,5 @@ jobs:
             - Darwin SHA256: `${{ steps.get_shas.outputs.darwin_sha }}`
             
             [Release Notes](https://github.com/joshyorko/rcc/releases/tag/v${{ steps.get_release.outputs.version }})
-          branch: update-rcc-${{ steps.get_release.outputs.version }}
+          branch: update-rcc-formula
           delete-branch: true
