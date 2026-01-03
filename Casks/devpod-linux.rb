@@ -21,8 +21,8 @@ cask "devpod-linux" do
   # CLI binary
   binary "usr/bin/devpod-cli", target: "devpod"
 
-  # Desktop binary
-  binary "usr/bin/dev-pod-desktop", target: "devpod-desktop"
+  # Desktop binary via wrapper (works around Fedora glycin/bwrap path length issue)
+  binary "devpod-desktop-wrapper", target: "devpod-desktop"
 
   # Desktop Entry Integration
   artifact "devpod.desktop",
@@ -37,6 +37,14 @@ cask "devpod-linux" do
     # Make binaries executable
     FileUtils.chmod "+x", "#{staged_path}/usr/bin/dev-pod-desktop"
     FileUtils.chmod "+x", "#{staged_path}/usr/bin/devpod-cli"
+
+    # Create wrapper to disable glycin sandbox (Fedora bwrap path length issue)
+    File.write("#{staged_path}/devpod-desktop-wrapper", <<~EOS)
+      #!/bin/bash
+      export GLYCIN_SANDBOX=off
+      exec "#{staged_path}/usr/bin/dev-pod-desktop" "$@"
+    EOS
+    FileUtils.chmod "+x", "#{staged_path}/devpod-desktop-wrapper"
 
     # Copy icon from extracted archive
     icon_source = "#{staged_path}/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
