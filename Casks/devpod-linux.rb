@@ -15,14 +15,14 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
-  # Required for system tray on tar.gz builds (AppImage bundles this but has EGL issues)
-  depends_on formula: "libayatana-appindicator"
+  # Note: requires libappindicator-gtk3 system package (usually pre-installed on Fedora/Bluefin)
+  # If missing: sudo dnf install libappindicator-gtk3
 
   # CLI binary
   binary "usr/bin/devpod-cli", target: "devpod"
 
-  # Desktop binary via wrapper (sets LD_LIBRARY_PATH for Homebrew libs)
-  binary "devpod-desktop-wrapper", target: "devpod-desktop"
+  # Desktop binary
+  binary "usr/bin/dev-pod-desktop", target: "devpod-desktop"
 
   # Desktop Entry Integration
   artifact "devpod.desktop",
@@ -37,14 +37,6 @@ cask "devpod-linux" do
     # Make binaries executable
     FileUtils.chmod "+x", "#{staged_path}/usr/bin/dev-pod-desktop"
     FileUtils.chmod "+x", "#{staged_path}/usr/bin/devpod-cli"
-
-    # Create wrapper script that sets LD_LIBRARY_PATH for libayatana-appindicator
-    File.write("#{staged_path}/devpod-desktop-wrapper", <<~EOS)
-      #!/bin/bash
-      export LD_LIBRARY_PATH="#{HOMEBREW_PREFIX}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-      exec "#{staged_path}/usr/bin/dev-pod-desktop" "$@"
-    EOS
-    FileUtils.chmod "+x", "#{staged_path}/devpod-desktop-wrapper"
 
     # Copy icon from extracted archive
     icon_source = "#{staged_path}/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
