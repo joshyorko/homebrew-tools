@@ -22,8 +22,8 @@ cask "devpod-desktop-distrobox" do
   # Desktop entry
   artifact "devpod.desktop",
            target: "#{Dir.home}/.local/share/applications/devpod-distrobox.desktop"
-  artifact "devpod.png",
-           target: "#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devpod.png"
+  artifact "devpod-distrobox.png",
+           target: "#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devpod-distrobox.png"
 
   preflight do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
@@ -36,9 +36,9 @@ cask "devpod-desktop-distrobox" do
     # Copy icon
     icon_source = "#{staged_path}/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
     if File.exist?(icon_source)
-      FileUtils.cp icon_source, "#{staged_path}/devpod.png"
+      FileUtils.cp icon_source, "#{staged_path}/devpod-distrobox.png"
     else
-      FileUtils.touch "#{staged_path}/devpod.png"
+      FileUtils.touch "#{staged_path}/devpod-distrobox.png"
     end
 
     # Generate .desktop file
@@ -47,7 +47,7 @@ cask "devpod-desktop-distrobox" do
       Name=DevPod (Distrobox)
       Comment=Dev environments in any cloud (via distrobox)
       Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop %U
-      Icon=#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devpod.png
+      Icon=#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devpod-distrobox.png
       Type=Application
       StartupNotify=true
       StartupWMClass=dev-pod-desktop
@@ -102,6 +102,7 @@ cask "devpod-desktop-distrobox" do
     "~/.config/devpod",
     "~/.devpod",
     "~/.local/share/applications/devpod-distrobox.desktop",
+    "~/.local/share/icons/hicolor/128x128/apps/devpod-distrobox.png",
   ]
 
   caveats <<~EOS
