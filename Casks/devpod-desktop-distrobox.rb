@@ -77,7 +77,7 @@ cask "devpod-desktop-distrobox" do
               --name "${CONTAINER_NAME}" \\
               --image "${CONTAINER_IMAGE}" \\
               --yes \\
-              --additional-packages "libwebkit2gtk-4.0-37 libayatana-appindicator3-1 libgtk-3-0 libssl3"
+              --additional-packages "zsh libwebkit2gtk-4.0-37 libayatana-appindicator3-1 libgtk-3-0 libssl3"
       fi
 
       # Run DevPod desktop inside the container
