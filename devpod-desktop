@@ -1,0 +1,3 @@
+#!/bin/bash
+# Simple launcher for DevPod Desktop via distrobox
+exec distrobox enter devpod-box -- ~/DevPod/AppRun "$@"
