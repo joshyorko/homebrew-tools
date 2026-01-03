@@ -7,7 +7,7 @@ cask "devpod-linux" do
   url "https://github.com/loft-sh/devpod/releases/download/v#{version}/DevPod_linux_#{arch}.tar.gz",
       verified: "github.com/loft-sh/devpod/"
   name "DevPod"
-  desc "UI to create reproducible developer environments based on a devcontainer.json"
+  desc "Open Source Dev-Environments-As-Code (CLI)"
   homepage "https://devpod.sh/"
 
   livecheck do
@@ -15,15 +15,10 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
-  # Note: requires libappindicator-gtk3 system package (usually pre-installed on Fedora/Bluefin)
-  # If missing: sudo dnf install libappindicator-gtk3
-
-  # CLI binary
+  # CLI binary - works on all distros
   binary "usr/bin/devpod-cli", target: "devpod"
-
-  # Desktop binary via wrapper (works around Fedora glycin/bwrap path length issue)
+  # Desktop binary via wrapper script (WebKitGTK workarounds for Fedora 41+/Bluefin)
   binary "devpod-desktop-wrapper", target: "devpod-desktop"
-
   # Desktop Entry Integration
   artifact "devpod.desktop",
            target: "#{Dir.home}/.local/share/applications/devpod.desktop"
@@ -37,14 +32,6 @@ cask "devpod-linux" do
     # Make binaries executable
     FileUtils.chmod "+x", "#{staged_path}/usr/bin/dev-pod-desktop"
     FileUtils.chmod "+x", "#{staged_path}/usr/bin/devpod-cli"
-
-    # Create wrapper to disable glycin sandbox (Fedora bwrap path length issue)
-    File.write("#{staged_path}/devpod-desktop-wrapper", <<~EOS)
-      #!/bin/bash
-      export GLYCIN_SANDBOX=off
-      exec "#{staged_path}/usr/bin/dev-pod-desktop" "$@"
-    EOS
-    FileUtils.chmod "+x", "#{staged_path}/devpod-desktop-wrapper"
 
     # Copy icon from extracted archive
     icon_source = "#{staged_path}/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
@@ -69,16 +56,47 @@ cask "devpod-linux" do
       Keywords=devpod;loft;development;containers;
       MimeType=x-scheme-handler/devpod;
     EOS
+
+    # Generate wrapper script with WebKitGTK workarounds for Fedora 41+/Bluefin
+    File.write("#{staged_path}/devpod-desktop-wrapper", <<~EOS)
+      #!/bin/bash
+      # Workaround for WebKitGTK rendering issues on Fedora 41+/Bluefin
+      # See: https://bugs.webkit.org/show_bug.cgi?id=280239
+
+      # Disable DMABUF renderer to avoid EGL_BAD_PARAMETER errors
+      export WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+      # Use NGL renderer for GTK4 (falls back gracefully)
+      export GSK_RENDERER=ngl
+
+      # Ensure proper backend selection for Wayland/X11
+      if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+          export GDK_BACKEND=wayland,x11
+      fi
+
+      # Execute the actual binary
+      exec "#{HOMEBREW_PREFIX}/Caskroom/devpod-linux/#{version}/usr/bin/dev-pod-desktop" "$@"
+    EOS
+    FileUtils.chmod "+x", "#{staged_path}/devpod-desktop-wrapper"
   end
 
   postflight do
     system_command "/usr/bin/xdg-icon-resource",
-                   args: ["forceupdate"],
+                   args:         ["forceupdate"],
                    must_succeed: false
   end
 
   zap trash: [
-    "~/.devpod",
     "~/.config/devpod",
+    "~/.devpod",
   ]
+
+  caveats <<~EOS
+    DevPod CLI is ready to use:
+      devpod up .
+
+    DevPod Desktop uses a wrapper script with WebKitGTK workarounds.
+    If you experience issues, ensure libappindicator-gtk3 is installed:
+      rpm-ostree install libappindicator-gtk3
+  EOS
 end
