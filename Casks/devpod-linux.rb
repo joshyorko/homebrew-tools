@@ -1,8 +1,10 @@
 cask "devpod-linux" do
-  version "0.7.0-alpha.34"
-  sha256 "27d0a51edef767962c9450516287a5484209881d495c0a3d34bb838fa15d36be"
+  arch intel: "x86_64"
 
-  url "https://github.com/loft-sh/devpod/releases/download/v#{version}/DevPod_linux_amd64.AppImage",
+  version "0.7.0-alpha.34"
+  sha256 "a5b377f07fdd64fd7c92598b8ed3f377e11b4e2c21ab4a6166b0990b4e8a2980"
+
+  url "https://github.com/loft-sh/devpod/releases/download/v#{version}/DevPod_linux_#{arch}.tar.gz",
       verified: "github.com/loft-sh/devpod/"
   name "DevPod"
   desc "UI to create reproducible developer environments based on a devcontainer.json"
@@ -13,11 +15,14 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
-  # AppImage runs directly - self-contained with all dependencies
-  binary "DevPod_linux_amd64.AppImage", target: "devpod-desktop"
+  # Required for system tray on tar.gz builds (AppImage bundles this but has EGL issues)
+  depends_on formula: "libayatana-appindicator"
 
-  # CLI from extracted AppImage (extraction happens in preflight)
-  binary "squashfs-root/usr/bin/devpod-cli", target: "devpod"
+  # CLI binary
+  binary "usr/bin/devpod-cli", target: "devpod"
+
+  # Desktop binary via wrapper (sets LD_LIBRARY_PATH for Homebrew libs)
+  binary "devpod-desktop-wrapper", target: "devpod-desktop"
 
   # Desktop Entry Integration
   artifact "devpod.desktop",
@@ -29,19 +34,22 @@ cask "devpod-linux" do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/128x128/apps"
 
-    # Make AppImage executable
-    FileUtils.chmod "+x", "#{staged_path}/DevPod_linux_amd64.AppImage"
+    # Make binaries executable
+    FileUtils.chmod "+x", "#{staged_path}/usr/bin/dev-pod-desktop"
+    FileUtils.chmod "+x", "#{staged_path}/usr/bin/devpod-cli"
 
-    # Extract AppImage to get icon and CLI
-    system "#{staged_path}/DevPod_linux_amd64.AppImage", "--appimage-extract", chdir: staged_path
+    # Create wrapper script that sets LD_LIBRARY_PATH for libayatana-appindicator
+    File.write("#{staged_path}/devpod-desktop-wrapper", <<~EOS)
+      #!/bin/bash
+      export LD_LIBRARY_PATH="#{HOMEBREW_PREFIX}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      exec "#{staged_path}/usr/bin/dev-pod-desktop" "$@"
+    EOS
+    FileUtils.chmod "+x", "#{staged_path}/devpod-desktop-wrapper"
 
-    # Copy icon from extracted AppImage (use root-level icon for best quality)
-    icon_source = "#{staged_path}/squashfs-root/dev-pod-desktop.png"
-    icon_fallback = "#{staged_path}/squashfs-root/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
+    # Copy icon from extracted archive
+    icon_source = "#{staged_path}/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
     if File.exist?(icon_source)
       FileUtils.cp icon_source, "#{staged_path}/devpod.png"
-    elsif File.exist?(icon_fallback)
-      FileUtils.cp icon_fallback, "#{staged_path}/devpod.png"
     else
       FileUtils.touch "#{staged_path}/devpod.png"
     end
