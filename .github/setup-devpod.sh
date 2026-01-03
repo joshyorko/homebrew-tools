@@ -24,9 +24,11 @@ distrobox enter "$CONTAINER_NAME" -- bash -c '
     # Install dependencies
     sudo dnf install -y webkit2gtk4.1 gtk3 libappindicator-gtk3 fuse fuse-libs desktop-file-utils xdg-utils 2>/dev/null || true
 
-    # Download latest AppImage
-    echo "Downloading latest DevPod AppImage..."
-    curl -L -o ~/DevPod.AppImage "https://github.com/loft-sh/devpod/releases/latest/download/DevPod_linux_amd64.AppImage"
+    # Download latest AppImage (including pre-releases)
+    echo "Fetching latest version..."
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/loft-sh/devpod/releases | grep -m1 "tag_name" | cut -d\" -f4)
+    echo "Downloading DevPod $LATEST_VERSION..."
+    curl -L -o ~/DevPod.AppImage "https://github.com/loft-sh/devpod/releases/download/${LATEST_VERSION}/DevPod_linux_amd64.AppImage"
     chmod +x ~/DevPod.AppImage
 
     # Extract it (avoids FUSE issues)

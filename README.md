@@ -27,12 +27,19 @@ See [loft-sh/devpod](https://github.com/loft-sh/devpod) for more details.
 
 An automation runtime for creating isolated, reproducible environments. Fork of the original RCC with **Linux Homebrew (Linuxbrew) support**.
 
+> [!NOTE]
+> Since this formula shares a name with the upstream `robocorp/tools/rcc` cask, always use the **full path** to avoid warnings:
+> ```bash
+> brew install joshyorko/tools/rcc
+> brew uninstall joshyorko/tools/rcc
+> ```
+
 | Command | Description |
 |---------|-------------|
 | `brew install joshyorko/tools/rcc` | Install RCC |
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
-| `brew upgrade rcc` | Upgrade to latest |
-| `brew uninstall rcc` | Uninstall |
+| `brew upgrade joshyorko/tools/rcc` | Upgrade to latest |
+| `brew uninstall joshyorko/tools/rcc` | Uninstall |
 
 #### Platform Support
 
