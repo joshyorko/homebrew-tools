@@ -15,9 +15,10 @@ cask "devpod-linux" do
     strategy :page_match
   end
 
-  # Link CLI to path
+  # Link CLI and Desktop binaries to HOMEBREW_PREFIX/bin
   binary "#{staged_path}/usr/bin/devpod-cli", target: "devpod"
-  
+  binary "#{staged_path}/usr/bin/dev-pod-desktop", target: "devpod-desktop"
+
   # Desktop Entry Integration
   artifact "devpod.desktop",
            target: "#{Dir.home}/.local/share/applications/devpod.desktop"
@@ -29,23 +30,25 @@ cask "devpod-linux" do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/128x128/apps"
 
-    # Copy icon from extracted archive (path found via tar -tf inspection)
+    # Make binaries executable before symlinking
+    FileUtils.chmod "+x", "#{staged_path}/usr/bin/dev-pod-desktop"
+    FileUtils.chmod "+x", "#{staged_path}/usr/bin/devpod-cli"
+
+    # Copy icon from extracted archive
     icon_source = "#{staged_path}/usr/share/icons/hicolor/128x128/apps/dev-pod-desktop.png"
     if File.exist?(icon_source)
       FileUtils.cp icon_source, "#{staged_path}/devpod.png"
     else
-      # Fallback: Create placeholder if icon path changes in future releases
       FileUtils.touch "#{staged_path}/devpod.png"
     end
 
-    # Generate .desktop file
-    # Note: official one in archive is generic, we generate a better one pointing to Homebrew path
+    # Generate .desktop file pointing to HOMEBREW_PREFIX/bin symlink
     File.write("#{staged_path}/devpod.desktop", <<~EOS)
       [Desktop Entry]
       Name=DevPod
       Comment=Spin up dev environments in any cloud
       GenericName=Development Environment
-      Exec=#{staged_path}/usr/bin/dev-pod-desktop %U
+      Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop %U
       Icon=#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devpod.png
       Type=Application
       StartupNotify=true
@@ -54,14 +57,9 @@ cask "devpod-linux" do
       Keywords=devpod;loft;development;
       MimeType=x-scheme-handler/devpod;
     EOS
-    
-    # Structure in tarball is flat usr/bin/dev-pod-desktop, needs to be executable
-    FileUtils.chmod "+x", "#{staged_path}/usr/bin/dev-pod-desktop"
-    FileUtils.chmod "+x", "#{staged_path}/usr/bin/devpod-cli"
   end
 
   postflight do
-    # Update icon cache
     system_command "/usr/bin/xdg-icon-resource",
                    args: ["forceupdate"],
                    must_succeed: false
