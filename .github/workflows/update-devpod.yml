@@ -1,0 +1,76 @@
+name: Update DevPod Cask
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # Run daily at 7 AM UTC
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest DevPod release
+        id: get_release
+        run: |
+          # Get the latest release from GitHub API
+          # We filter for stable releases unless configured otherwise, but currently user wants explicit control
+          # or latest stable. The prompt implied tracking new releases.
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/loft-sh/devpod/releases/latest)
+          VERSION=$(echo "$LATEST_RELEASE" | jq -r '.tag_name' | sed 's/^v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $VERSION"
+
+      - name: Get current cask version
+        id: current_version
+        run: |
+          if [ -f Casks/devpod-linux.rb ]; then
+            CURRENT=$(grep -oP 'version "\K[^"]+' Casks/devpod-linux.rb)
+          else
+            CURRENT="0.0.0"
+          fi
+          echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT"
+
+      - name: Download and calculate SHA256
+        id: get_sha
+        if: steps.get_release.outputs.version != steps.current_version.outputs.version
+        run: |
+          VERSION="${{ steps.get_release.outputs.version }}"
+          URL="https://github.com/loft-sh/devpod/releases/download/v${VERSION}/DevPod_linux_x86_64.tar.gz"
+          
+          echo "Downloading $URL..."
+          curl -sL "$URL" -o /tmp/devpod.tar.gz
+          SHASUM=$(sha256sum /tmp/devpod.tar.gz | awk '{print $1}')
+          echo "sha=$SHASUM" >> $GITHUB_OUTPUT
+          echo "New SHA256: $SHASUM"
+          rm /tmp/devpod.tar.gz
+
+      - name: Update Cask
+        if: steps.get_release.outputs.version != steps.current_version.outputs.version
+        env:
+          VERSION: ${{ steps.get_release.outputs.version }}
+          SHA: ${{ steps.get_sha.outputs.sha }}
+        run: |
+          # Use sed to replace version and sha256 in the file
+          # We use a temporary file to ensure atomic write
+          sed -E -i "s/version \"[^\"]+\"/version \"${VERSION}\"/" Casks/devpod-linux.rb
+          sed -E -i "s/sha256 \"[a-f0-9]+\"/sha256 \"${SHA}\"/" Casks/devpod-linux.rb
+          
+          echo "Updated Cask content:"
+          cat Casks/devpod-linux.rb
+
+      - name: Commit and push changes
+        if: steps.get_release.outputs.version != steps.current_version.outputs.version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/devpod-linux.rb
+          git commit -m "Update devpod-linux to v${{ steps.get_release.outputs.version }}"
+          git push

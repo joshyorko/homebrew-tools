@@ -15,13 +15,22 @@ brew install rcc
 
 ## Available Formulae
 
+### DevPod (Linux Cask)
+
+DevPod - Open Source Dev-Environments-As-Code. Contains both the Desktop UI and CLI.
+See [loft-sh/devpod](https://github.com/loft-sh/devpod) for more details.
+
+> [!NOTE]
+> This Cask uses the `tar.gz` distribution to support immutable distros (like Bluefin/uBlue) better than AppImages.
+
 ### RCC (Repeatable Contained Code)
 
 An automation runtime for creating isolated, reproducible environments. Fork of the original RCC with **Linux Homebrew (Linuxbrew) support**.
 
 | Command | Description |
 |---------|-------------|
-| `brew install joshyorko/tools/rcc` | Install |
+| `brew install joshyorko/tools/rcc` | Install RCC |
+| `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew upgrade rcc` | Upgrade to latest |
 | `brew uninstall rcc` | Uninstall |
 
