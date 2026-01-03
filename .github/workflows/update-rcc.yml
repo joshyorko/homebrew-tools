@@ -1,4 +1,4 @@
-name: Update RCC Formula
+name: Update RCC Cask
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch: # Allow manual trigger
 
 jobs:
-  update-formula:
+  update-cask:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,10 +26,10 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Latest version: $VERSION"
 
-      - name: Get current formula version
+      - name: Get current cask version
         id: current_version
         run: |
-          CURRENT=$(grep -oP 'version "\K[^"]+' Formula/rcc.rb)
+          CURRENT=$(grep -oP 'version "\K[^"]+' Casks/rcc.rb)
           echo "version=$CURRENT" >> $GITHUB_OUTPUT
           echo "Current version: $CURRENT"
 
@@ -54,12 +54,12 @@ jobs:
           # Cleanup
           rm -f /tmp/rcc-linux64 /tmp/rcc-darwin64
 
-      - name: Get current SHA256 hashes from formula
+      - name: Get current SHA256 hashes from cask
         id: current_shas
         run: |
-          # Extract all sha256 values from formula
-          LINUX_SHA=$(grep -A1 'on_linux' Formula/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]+' | head -1)
-          DARWIN_SHA=$(grep -A2 'on_macos' Formula/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]+' | head -1)
+          # Extract sha256 values from cask
+          LINUX_SHA=$(grep -oP 'x86_64_linux: "\K[a-f0-9]+' Casks/rcc.rb)
+          DARWIN_SHA=$(grep -oP 'arm:\s+"\K[a-f0-9]+' Casks/rcc.rb)
           echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
           echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
           echo "Current Linux SHA256: $LINUX_SHA"
@@ -93,78 +93,55 @@ jobs:
             echo "Already up to date"
           fi
 
-      - name: Update formula
+      - name: Update cask
         if: steps.check_update.outputs.needs_update == 'true'
         env:
           VERSION: ${{ steps.get_release.outputs.version }}
           LINUX_SHA: ${{ steps.get_shas.outputs.linux_sha }}
           DARWIN_SHA: ${{ steps.get_shas.outputs.darwin_sha }}
         run: |
-          cat > Formula/rcc.rb << EOF
-          class Rcc < Formula
-            desc "RCC - Repeatable Contained Code automation runtime with Linux support"
+          cat > Casks/rcc.rb << 'EOF'
+          cask "rcc" do
+            arch arm: "darwin64", intel: "amd64"
+            os macos: "darwin64", linux: "linux64"
+
+            version "VERSION_PLACEHOLDER"
+            sha256 arm:          "DARWIN_SHA_PLACEHOLDER",
+                   intel:        "DARWIN_SHA_PLACEHOLDER",
+                   x86_64_linux: "LINUX_SHA_PLACEHOLDER"
+
+            url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-#{os}"
+            name "RCC"
+            desc "RCC - Repeatable Contained Code automation runtime"
             homepage "https://github.com/joshyorko/rcc"
-            version "${VERSION}"
-            license "Apache-2.0"
 
-            livecheck do
-              url :stable
-              regex(/^v?(\d+(?:\.\d+)+)\$/i)
-            end
+            binary "rcc-#{os}", target: "rcc"
 
-            on_linux do
-              on_intel do
-                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"
-                sha256 "${LINUX_SHA}"
-              end
-            end
+            caveats <<~EOS
+              If 'rcc' is not found after installation, refresh your shell's cache:
+                hash -r
 
-            on_macos do
-              on_intel do
-                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-                sha256 "${DARWIN_SHA}"
-              end
-              # Note: No ARM build available yet - darwin64 works via Rosetta 2
-              on_arm do
-                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-darwin64"
-                sha256 "${DARWIN_SHA}"
-              end
-            end
-
-            def install
-              if OS.linux?
-                bin.install "rcc-linux64" => "rcc"
-              else
-                bin.install "rcc-darwin64" => "rcc"
-              end
-            end
-
-            def caveats
-              <<~EOS
-                If 'rcc' is not found after installation, refresh your shell's cache:
-                  hash -r
-
-                Or start a new terminal session.
-              EOS
-            end
-
-            test do
-              assert_match version.to_s, shell_output("#{bin}/rcc version")
-            end
+              Or start a new terminal session.
+            EOS
           end
           EOF
           
           # Fix indentation (remove leading spaces from heredoc)
-          sed -i 's/^          //' Formula/rcc.rb
+          sed -i 's/^          //' Casks/rcc.rb
           
-          echo "Updated formula:"
-          cat Formula/rcc.rb
+          # Replace placeholders with actual values
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/" Casks/rcc.rb
+          sed -i "s/DARWIN_SHA_PLACEHOLDER/${DARWIN_SHA}/g" Casks/rcc.rb
+          sed -i "s/LINUX_SHA_PLACEHOLDER/${LINUX_SHA}/" Casks/rcc.rb
+          
+          echo "Updated cask:"
+          cat Casks/rcc.rb
 
       - name: Commit and push changes
         if: steps.check_update.outputs.needs_update == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/rcc.rb
-          git commit -m "Update rcc to v${{ steps.get_release.outputs.version }}"
+          git add Casks/rcc.rb
+          git commit -m "Update rcc cask to v${{ steps.get_release.outputs.version }}"
           git push
