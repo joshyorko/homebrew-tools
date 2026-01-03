@@ -57,9 +57,10 @@ jobs:
       - name: Get current SHA256 hashes from cask
         id: current_shas
         run: |
-          # Extract sha256 values from cask
-          LINUX_SHA=$(grep -oP 'x86_64_linux: "\K[a-f0-9]+' Casks/rcc.rb)
-          DARWIN_SHA=$(grep -oP 'arm:\s+"\K[a-f0-9]+' Casks/rcc.rb)
+          # Extract sha256 values from cask (flatten file to handle multiline)
+          CASK_CONTENT=$(cat Casks/rcc.rb | tr '\n' ' ')
+          LINUX_SHA=$(echo "$CASK_CONTENT" | grep -oP 'x86_64_linux:\s*"\K[a-f0-9]{64}')
+          DARWIN_SHA=$(echo "$CASK_CONTENT" | grep -oP 'arm:\s*"\K[a-f0-9]{64}')
           echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
           echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
           echo "Current Linux SHA256: $LINUX_SHA"
