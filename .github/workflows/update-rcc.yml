@@ -19,10 +19,20 @@ jobs:
 
       - name: Get latest RCC release
         id: get_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get the latest release from GitHub API
-          LATEST_RELEASE=$(curl -s https://api.github.com/repos/joshyorko/rcc/releases/latest)
+          # Get the latest release from GitHub API (authenticated to avoid rate limits)
+          LATEST_RELEASE=$(curl -sH "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/joshyorko/rcc/releases/latest)
           VERSION=$(echo "$LATEST_RELEASE" | jq -r '.tag_name' | sed 's/^v//')
+
+          # Validate we got a real version
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "ERROR: Failed to get version from GitHub API"
+            echo "$LATEST_RELEASE"
+            exit 1
+          fi
+
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Latest version: $VERSION"
 
@@ -38,19 +48,21 @@ jobs:
         run: |
           VERSION="${{ steps.get_release.outputs.version }}"
           BASE_URL="https://github.com/joshyorko/rcc/releases/download/v${VERSION}"
-          
+
           # Download Linux binary and get SHA256
-          curl -sL "${BASE_URL}/rcc-linux64" -o /tmp/rcc-linux64
+          echo "Downloading ${BASE_URL}/rcc-linux64"
+          curl -fSL "${BASE_URL}/rcc-linux64" -o /tmp/rcc-linux64
           LINUX_SHA=$(sha256sum /tmp/rcc-linux64 | awk '{print $1}')
           echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
           echo "Linux SHA256: $LINUX_SHA"
-          
+
           # Download macOS binary and get SHA256
-          curl -sL "${BASE_URL}/rcc-darwin64" -o /tmp/rcc-darwin64
+          echo "Downloading ${BASE_URL}/rcc-darwin64"
+          curl -fSL "${BASE_URL}/rcc-darwin64" -o /tmp/rcc-darwin64
           DARWIN_SHA=$(sha256sum /tmp/rcc-darwin64 | awk '{print $1}')
           echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
           echo "Darwin SHA256: $DARWIN_SHA"
-          
+
           # Cleanup
           rm -f /tmp/rcc-linux64 /tmp/rcc-darwin64
 

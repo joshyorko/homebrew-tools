@@ -2,10 +2,10 @@ cask "rcc" do
   arch arm: "darwin64", intel: "amd64"
   os macos: "darwin64", linux: "linux64"
 
-  version ""
-  sha256 arm:          "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
-         intel:        "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
-         x86_64_linux: "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
+  version "18.13.1"
+  sha256 arm:          "3c450ba437394a7b01a32c8465ac1f15624134988d82b18fab370a8fcf4c500b",
+         intel:        "3c450ba437394a7b01a32c8465ac1f15624134988d82b18fab370a8fcf4c500b",
+         x86_64_linux: "e19dd920e3f2c919a14c242feeb8f897062504c8da4c340a3263a94560cb617f"
 
   url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-#{os}"
   name "RCC"
