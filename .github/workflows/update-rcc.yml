@@ -63,19 +63,29 @@ jobs:
           echo "intel_sha=$INTEL_SHA" >> $GITHUB_OUTPUT
           echo "macOS Intel SHA256: $INTEL_SHA"
 
+          # Download Linux binary and get SHA256
+          echo "Downloading ${BASE_URL}/rcc-linux64"
+          curl -fSL "${BASE_URL}/rcc-linux64" -o /tmp/rcc-linux64
+          LINUX_SHA=$(sha256sum /tmp/rcc-linux64 | awk '{print $1}')
+          echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
+          echo "Linux SHA256: $LINUX_SHA"
+
           # Cleanup
-          rm -f /tmp/rcc-macosarm64 /tmp/rcc-macos64
+          rm -f /tmp/rcc-macosarm64 /tmp/rcc-macos64 /tmp/rcc-linux64
 
       - name: Get current SHA256 hashes from cask
         id: current_shas
         run: |
-          # Extract sha256 values from the on_arm and on_intel blocks
-          ARM_SHA=$(grep -A1 'on_arm do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
-          INTEL_SHA=$(grep -A1 'on_intel do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
+          # Extract sha256 values from the nested on_macos/on_arm and on_macos/on_intel blocks
+          ARM_SHA=$(grep -A2 'on_arm do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
+          INTEL_SHA=$(grep -A2 'on_intel do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
+          LINUX_SHA=$(grep -A2 'on_linux do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
           echo "arm_sha=$ARM_SHA" >> $GITHUB_OUTPUT
           echo "intel_sha=$INTEL_SHA" >> $GITHUB_OUTPUT
+          echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
           echo "Current ARM SHA256: $ARM_SHA"
           echo "Current Intel SHA256: $INTEL_SHA"
+          echo "Current Linux SHA256: $LINUX_SHA"
 
       - name: Check if update needed
         id: check_update
@@ -100,6 +110,12 @@ jobs:
             NEEDS_UPDATE=true
           fi
 
+          # Check Linux SHA256
+          if [ "${{ steps.get_shas.outputs.linux_sha }}" != "${{ steps.current_shas.outputs.linux_sha }}" ]; then
+            echo "Linux SHA256 changed"
+            NEEDS_UPDATE=true
+          fi
+
           echo "needs_update=$NEEDS_UPDATE" >> $GITHUB_OUTPUT
           if [ "$NEEDS_UPDATE" = "false" ]; then
             echo "Already up to date"
@@ -111,21 +127,30 @@ jobs:
           VERSION: ${{ steps.get_release.outputs.version }}
           ARM_SHA: ${{ steps.get_shas.outputs.arm_sha }}
           INTEL_SHA: ${{ steps.get_shas.outputs.intel_sha }}
+          LINUX_SHA: ${{ steps.get_shas.outputs.linux_sha }}
         run: |
           cat > Casks/rcc.rb << 'EOF'
           cask "rcc" do
             version "VERSION_PLACEHOLDER"
 
-            on_arm do
-              sha256 "ARM_SHA_PLACEHOLDER"
-              url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macosarm64"
-              binary "rcc-macosarm64", target: "rcc"
+            on_macos do
+              on_arm do
+                sha256 "ARM_SHA_PLACEHOLDER"
+                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macosarm64"
+                binary "rcc-macosarm64", target: "rcc"
+              end
+
+              on_intel do
+                sha256 "INTEL_SHA_PLACEHOLDER"
+                url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macos64"
+                binary "rcc-macos64", target: "rcc"
+              end
             end
 
-            on_intel do
-              sha256 "INTEL_SHA_PLACEHOLDER"
-              url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macos64"
-              binary "rcc-macos64", target: "rcc"
+            on_linux do
+              sha256 "LINUX_SHA_PLACEHOLDER"
+              url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"
+              binary "rcc-linux64", target: "rcc"
             end
 
             name "RCC"
@@ -148,6 +173,7 @@ jobs:
           sed -i "s/VERSION_PLACEHOLDER/${VERSION}/" Casks/rcc.rb
           sed -i "s/ARM_SHA_PLACEHOLDER/${ARM_SHA}/" Casks/rcc.rb
           sed -i "s/INTEL_SHA_PLACEHOLDER/${INTEL_SHA}/" Casks/rcc.rb
+          sed -i "s/LINUX_SHA_PLACEHOLDER/${LINUX_SHA}/" Casks/rcc.rb
 
           echo "Updated cask:"
           cat Casks/rcc.rb
