@@ -49,58 +49,57 @@ jobs:
           VERSION="${{ steps.get_release.outputs.version }}"
           BASE_URL="https://github.com/joshyorko/rcc/releases/download/v${VERSION}"
 
-          # Download Linux binary and get SHA256
-          echo "Downloading ${BASE_URL}/rcc-linux64"
-          curl -fSL "${BASE_URL}/rcc-linux64" -o /tmp/rcc-linux64
-          LINUX_SHA=$(sha256sum /tmp/rcc-linux64 | awk '{print $1}')
-          echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
-          echo "Linux SHA256: $LINUX_SHA"
+          # Download macOS ARM binary and get SHA256
+          echo "Downloading ${BASE_URL}/rcc-macosarm64"
+          curl -fSL "${BASE_URL}/rcc-macosarm64" -o /tmp/rcc-macosarm64
+          ARM_SHA=$(sha256sum /tmp/rcc-macosarm64 | awk '{print $1}')
+          echo "arm_sha=$ARM_SHA" >> $GITHUB_OUTPUT
+          echo "macOS ARM SHA256: $ARM_SHA"
 
-          # Download macOS binary and get SHA256
-          echo "Downloading ${BASE_URL}/rcc-darwin64"
-          curl -fSL "${BASE_URL}/rcc-darwin64" -o /tmp/rcc-darwin64
-          DARWIN_SHA=$(sha256sum /tmp/rcc-darwin64 | awk '{print $1}')
-          echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
-          echo "Darwin SHA256: $DARWIN_SHA"
+          # Download macOS Intel binary and get SHA256
+          echo "Downloading ${BASE_URL}/rcc-macos64"
+          curl -fSL "${BASE_URL}/rcc-macos64" -o /tmp/rcc-macos64
+          INTEL_SHA=$(sha256sum /tmp/rcc-macos64 | awk '{print $1}')
+          echo "intel_sha=$INTEL_SHA" >> $GITHUB_OUTPUT
+          echo "macOS Intel SHA256: $INTEL_SHA"
 
           # Cleanup
-          rm -f /tmp/rcc-linux64 /tmp/rcc-darwin64
+          rm -f /tmp/rcc-macosarm64 /tmp/rcc-macos64
 
       - name: Get current SHA256 hashes from cask
         id: current_shas
         run: |
-          # Extract sha256 values from cask (flatten file to handle multiline)
-          CASK_CONTENT=$(cat Casks/rcc.rb | tr '\n' ' ')
-          LINUX_SHA=$(echo "$CASK_CONTENT" | grep -oP 'x86_64_linux:\s*"\K[a-f0-9]{64}')
-          DARWIN_SHA=$(echo "$CASK_CONTENT" | grep -oP 'arm:\s*"\K[a-f0-9]{64}')
-          echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
-          echo "darwin_sha=$DARWIN_SHA" >> $GITHUB_OUTPUT
-          echo "Current Linux SHA256: $LINUX_SHA"
-          echo "Current Darwin SHA256: $DARWIN_SHA"
+          # Extract sha256 values from the on_arm and on_intel blocks
+          ARM_SHA=$(grep -A1 'on_arm do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
+          INTEL_SHA=$(grep -A1 'on_intel do' Casks/rcc.rb | grep -oP 'sha256 "\K[a-f0-9]{64}' || echo "")
+          echo "arm_sha=$ARM_SHA" >> $GITHUB_OUTPUT
+          echo "intel_sha=$INTEL_SHA" >> $GITHUB_OUTPUT
+          echo "Current ARM SHA256: $ARM_SHA"
+          echo "Current Intel SHA256: $INTEL_SHA"
 
       - name: Check if update needed
         id: check_update
         run: |
           NEEDS_UPDATE=false
-          
+
           # Check version
           if [ "${{ steps.get_release.outputs.version }}" != "${{ steps.current_version.outputs.version }}" ]; then
             echo "Version changed: ${{ steps.current_version.outputs.version }} -> ${{ steps.get_release.outputs.version }}"
             NEEDS_UPDATE=true
           fi
-          
-          # Check Linux SHA256
-          if [ "${{ steps.get_shas.outputs.linux_sha }}" != "${{ steps.current_shas.outputs.linux_sha }}" ]; then
-            echo "Linux SHA256 changed"
+
+          # Check ARM SHA256
+          if [ "${{ steps.get_shas.outputs.arm_sha }}" != "${{ steps.current_shas.outputs.arm_sha }}" ]; then
+            echo "ARM SHA256 changed"
             NEEDS_UPDATE=true
           fi
-          
-          # Check Darwin SHA256
-          if [ "${{ steps.get_shas.outputs.darwin_sha }}" != "${{ steps.current_shas.outputs.darwin_sha }}" ]; then
-            echo "Darwin SHA256 changed"
+
+          # Check Intel SHA256
+          if [ "${{ steps.get_shas.outputs.intel_sha }}" != "${{ steps.current_shas.outputs.intel_sha }}" ]; then
+            echo "Intel SHA256 changed"
             NEEDS_UPDATE=true
           fi
-          
+
           echo "needs_update=$NEEDS_UPDATE" >> $GITHUB_OUTPUT
           if [ "$NEEDS_UPDATE" = "false" ]; then
             echo "Already up to date"
@@ -110,25 +109,28 @@ jobs:
         if: steps.check_update.outputs.needs_update == 'true'
         env:
           VERSION: ${{ steps.get_release.outputs.version }}
-          LINUX_SHA: ${{ steps.get_shas.outputs.linux_sha }}
-          DARWIN_SHA: ${{ steps.get_shas.outputs.darwin_sha }}
+          ARM_SHA: ${{ steps.get_shas.outputs.arm_sha }}
+          INTEL_SHA: ${{ steps.get_shas.outputs.intel_sha }}
         run: |
           cat > Casks/rcc.rb << 'EOF'
           cask "rcc" do
-            arch arm: "darwin64", intel: "amd64"
-            os macos: "darwin64", linux: "linux64"
-
             version "VERSION_PLACEHOLDER"
-            sha256 arm:          "DARWIN_SHA_PLACEHOLDER",
-                   intel:        "DARWIN_SHA_PLACEHOLDER",
-                   x86_64_linux: "LINUX_SHA_PLACEHOLDER"
 
-            url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-#{os}"
+            on_arm do
+              sha256 "ARM_SHA_PLACEHOLDER"
+              url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macosarm64"
+              binary "rcc-macosarm64", target: "rcc"
+            end
+
+            on_intel do
+              sha256 "INTEL_SHA_PLACEHOLDER"
+              url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macos64"
+              binary "rcc-macos64", target: "rcc"
+            end
+
             name "RCC"
             desc "RCC - Repeatable Contained Code automation runtime"
             homepage "https://github.com/joshyorko/rcc"
-
-            binary "rcc-#{os}", target: "rcc"
 
             caveats <<~EOS
               If 'rcc' is not found after installation, refresh your shell's cache:
@@ -138,15 +140,15 @@ jobs:
             EOS
           end
           EOF
-          
+
           # Fix indentation (remove leading spaces from heredoc)
           sed -i 's/^          //' Casks/rcc.rb
-          
+
           # Replace placeholders with actual values
           sed -i "s/VERSION_PLACEHOLDER/${VERSION}/" Casks/rcc.rb
-          sed -i "s/DARWIN_SHA_PLACEHOLDER/${DARWIN_SHA}/g" Casks/rcc.rb
-          sed -i "s/LINUX_SHA_PLACEHOLDER/${LINUX_SHA}/" Casks/rcc.rb
-          
+          sed -i "s/ARM_SHA_PLACEHOLDER/${ARM_SHA}/" Casks/rcc.rb
+          sed -i "s/INTEL_SHA_PLACEHOLDER/${INTEL_SHA}/" Casks/rcc.rb
+
           echo "Updated cask:"
           cat Casks/rcc.rb
 
