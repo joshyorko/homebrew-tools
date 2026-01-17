@@ -1,18 +1,21 @@
 cask "rcc" do
-  arch arm: "darwin64", intel: "amd64"
-  os macos: "darwin64", linux: "linux64"
+  version "18.16.0"
 
-  version "18.13.1"
-  sha256 arm:          "3c450ba437394a7b01a32c8465ac1f15624134988d82b18fab370a8fcf4c500b",
-         intel:        "3c450ba437394a7b01a32c8465ac1f15624134988d82b18fab370a8fcf4c500b",
-         x86_64_linux: "e19dd920e3f2c919a14c242feeb8f897062504c8da4c340a3263a94560cb617f"
+  on_arm do
+    sha256 "02fdc2c59510bce8fcf2bf0dc40d7b71f7f343e3d982247af9a21e63b6aad543"
+    url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macosarm64"
+    binary "rcc-macosarm64", target: "rcc"
+  end
 
-  url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-#{os}"
+  on_intel do
+    sha256 "242ec7ef6ac7c7c2d0f2fbb2cce44e67580d4db47edb1f75954129b38aa046bb"
+    url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macos64"
+    binary "rcc-macos64", target: "rcc"
+  end
+
   name "RCC"
   desc "RCC - Repeatable Contained Code automation runtime"
   homepage "https://github.com/joshyorko/rcc"
-
-  binary "rcc-#{os}", target: "rcc"
 
   caveats <<~EOS
     If 'rcc' is not found after installation, refresh your shell's cache:
