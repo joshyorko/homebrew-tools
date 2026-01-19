@@ -9,7 +9,6 @@ cask "action-server" do
     end
 
     on_intel do
-      # Intel Mac support - update SHA when binary is available
       sha256 "PENDING_FIRST_RELEASE"
       url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-macos64"
       binary "action-server-macos64", target: "action-server"
