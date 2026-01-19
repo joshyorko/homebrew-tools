@@ -110,6 +110,22 @@ jobs:
             NEEDS_UPDATE=true
           fi
 
+          # Check if SHA changed (release was rebuilt without version bump)
+          if [ -f Casks/action-server.rb ]; then
+            CURRENT_ARM_SHA=$(grep -A1 'on_arm do' Casks/action-server.rb | grep 'sha256' | grep -oP 'sha256 "\K[^"]+' || echo "")
+            CURRENT_LINUX_SHA=$(grep -A1 'on_linux do' Casks/action-server.rb | grep 'sha256' | grep -oP 'sha256 "\K[^"]+' || echo "")
+
+            if [ -n "$CURRENT_ARM_SHA" ] && [ "$CURRENT_ARM_SHA" != "${{ steps.get_shas.outputs.arm_sha }}" ] && [ "${{ steps.get_shas.outputs.arm_sha }}" != "PENDING" ]; then
+              echo "ARM SHA changed: $CURRENT_ARM_SHA -> ${{ steps.get_shas.outputs.arm_sha }}"
+              NEEDS_UPDATE=true
+            fi
+
+            if [ -n "$CURRENT_LINUX_SHA" ] && [ "$CURRENT_LINUX_SHA" != "${{ steps.get_shas.outputs.linux_sha }}" ] && [ "${{ steps.get_shas.outputs.linux_sha }}" != "PENDING" ]; then
+              echo "Linux SHA changed: $CURRENT_LINUX_SHA -> ${{ steps.get_shas.outputs.linux_sha }}"
+              NEEDS_UPDATE=true
+            fi
+          fi
+
           # Check if we have valid SHAs (not PENDING)
           if [ "${{ steps.get_shas.outputs.arm_sha }}" = "PENDING" ]; then
             echo "ARM binary not available yet"
