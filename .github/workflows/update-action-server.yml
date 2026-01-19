@@ -1,0 +1,192 @@
+name: Update Action Server Cask
+
+on:
+  schedule:
+    # Run daily at 7 AM UTC (after RCC update at 6 AM)
+    - cron: '0 7 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest Action Server release
+        id: get_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get releases with action-server tag prefix
+          RELEASES=$(curl -sH "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/joshyorko/actions/releases?per_page=10")
+          
+          # Find the latest action-server release
+          LATEST_RELEASE=$(echo "$RELEASES" | jq -r '[.[] | select(.tag_name | startswith("action-server-v"))] | first')
+          
+          if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
+            echo "No action-server releases found"
+            echo "found=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          VERSION=$(echo "$TAG_NAME" | sed 's/^action-server-v//')
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "found=true" >> $GITHUB_OUTPUT
+          echo "Latest version: $VERSION"
+
+      - name: Get current cask version
+        id: current_version
+        if: steps.get_release.outputs.found == 'true'
+        run: |
+          if [ -f Casks/action-server.rb ]; then
+            CURRENT=$(grep -oP 'version "\K[^"]+' Casks/action-server.rb)
+          else
+            CURRENT="0.0.0"
+          fi
+          echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT"
+
+      - name: Download and calculate SHA256 hashes
+        id: get_shas
+        if: steps.get_release.outputs.found == 'true'
+        run: |
+          VERSION="${{ steps.get_release.outputs.version }}"
+          BASE_URL="https://github.com/joshyorko/actions/releases/download/action-server-v${VERSION}"
+
+          # Try to download macOS ARM binary
+          echo "Downloading ${BASE_URL}/action-server-macosarm64"
+          if curl -fSL "${BASE_URL}/action-server-macosarm64" -o /tmp/action-server-macosarm64 2>/dev/null; then
+            ARM_SHA=$(sha256sum /tmp/action-server-macosarm64 | awk '{print $1}')
+            echo "arm_sha=$ARM_SHA" >> $GITHUB_OUTPUT
+            echo "macOS ARM SHA256: $ARM_SHA"
+          else
+            echo "macOS ARM binary not found"
+            echo "arm_sha=PENDING" >> $GITHUB_OUTPUT
+          fi
+
+          # Try to download macOS Intel binary (may not exist yet)
+          echo "Downloading ${BASE_URL}/action-server-macos64"
+          if curl -fSL "${BASE_URL}/action-server-macos64" -o /tmp/action-server-macos64 2>/dev/null; then
+            INTEL_SHA=$(sha256sum /tmp/action-server-macos64 | awk '{print $1}')
+            echo "intel_sha=$INTEL_SHA" >> $GITHUB_OUTPUT
+            echo "macOS Intel SHA256: $INTEL_SHA"
+          else
+            echo "macOS Intel binary not found"
+            echo "intel_sha=PENDING" >> $GITHUB_OUTPUT
+          fi
+
+          # Try to download Linux binary
+          echo "Downloading ${BASE_URL}/action-server-linux64"
+          if curl -fSL "${BASE_URL}/action-server-linux64" -o /tmp/action-server-linux64 2>/dev/null; then
+            LINUX_SHA=$(sha256sum /tmp/action-server-linux64 | awk '{print $1}')
+            echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
+            echo "Linux SHA256: $LINUX_SHA"
+          else
+            echo "Linux binary not found"
+            echo "linux_sha=PENDING" >> $GITHUB_OUTPUT
+          fi
+
+          # Cleanup
+          rm -f /tmp/action-server-*
+
+      - name: Check if update needed
+        id: check_update
+        if: steps.get_release.outputs.found == 'true'
+        run: |
+          NEEDS_UPDATE=false
+
+          # Check if version changed
+          if [ "${{ steps.get_release.outputs.version }}" != "${{ steps.current_version.outputs.version }}" ]; then
+            echo "Version changed: ${{ steps.current_version.outputs.version }} -> ${{ steps.get_release.outputs.version }}"
+            NEEDS_UPDATE=true
+          fi
+
+          # Check if we have valid SHAs (not PENDING)
+          if [ "${{ steps.get_shas.outputs.arm_sha }}" = "PENDING" ]; then
+            echo "ARM binary not available yet"
+            NEEDS_UPDATE=false
+          fi
+
+          echo "needs_update=$NEEDS_UPDATE" >> $GITHUB_OUTPUT
+          if [ "$NEEDS_UPDATE" = "false" ]; then
+            echo "No update needed or release not ready"
+          fi
+
+      - name: Update cask
+        if: steps.check_update.outputs.needs_update == 'true'
+        env:
+          VERSION: ${{ steps.get_release.outputs.version }}
+          ARM_SHA: ${{ steps.get_shas.outputs.arm_sha }}
+          INTEL_SHA: ${{ steps.get_shas.outputs.intel_sha }}
+          LINUX_SHA: ${{ steps.get_shas.outputs.linux_sha }}
+        run: |
+          cat > Casks/action-server.rb << 'EOF'
+          cask "action-server" do
+            version "VERSION_PLACEHOLDER"
+
+            on_macos do
+              on_arm do
+                sha256 "ARM_SHA_PLACEHOLDER"
+                url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-macosarm64"
+                binary "action-server-macosarm64", target: "action-server"
+              end
+
+              on_intel do
+                sha256 "INTEL_SHA_PLACEHOLDER"
+                url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-macos64"
+                binary "action-server-macos64", target: "action-server"
+              end
+            end
+
+            on_linux do
+              sha256 "LINUX_SHA_PLACEHOLDER"
+              url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-linux64"
+              binary "action-server-linux64", target: "action-server"
+            end
+
+            name "Action Server"
+            desc "Sema4.ai Action Server - Host AI agent actions via HTTP/MCP"
+            homepage "https://github.com/joshyorko/actions"
+
+            caveats <<~EOS
+              If 'action-server' is not found after installation, refresh your shell's cache:
+                hash -r
+
+              Or start a new terminal session.
+
+              Usage:
+                action-server --help
+                action-server version
+            EOS
+          end
+          EOF
+
+          # Fix indentation (remove leading spaces from heredoc)
+          sed -i 's/^          //' Casks/action-server.rb
+
+          # Replace placeholders with actual values
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/" Casks/action-server.rb
+          sed -i "s/ARM_SHA_PLACEHOLDER/${ARM_SHA}/" Casks/action-server.rb
+          sed -i "s/INTEL_SHA_PLACEHOLDER/${INTEL_SHA}/" Casks/action-server.rb
+          sed -i "s/LINUX_SHA_PLACEHOLDER/${LINUX_SHA}/" Casks/action-server.rb
+
+          echo "Updated cask:"
+          cat Casks/action-server.rb
+
+      - name: Commit and push changes
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/action-server.rb
+          git commit -m "Update action-server cask to v${{ steps.get_release.outputs.version }}"
+          git push
