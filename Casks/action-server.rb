@@ -9,7 +9,7 @@ cask "action-server" do
     end
 
     on_intel do
-      sha256 "PENDING"
+      sha256 "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5"
       url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-macos64"
       binary "action-server-macos64", target: "action-server"
     end
@@ -22,7 +22,7 @@ cask "action-server" do
   end
 
   name "Action Server"
-  desc "Sema4.ai Action Server - Host AI agent actions via HTTP/MCP"
+  desc "Community Action Server - Host AI agent actions via HTTP/MCP"
   homepage "https://github.com/joshyorko/actions"
 
   caveats <<~EOS
