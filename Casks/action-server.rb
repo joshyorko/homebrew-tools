@@ -1,9 +1,9 @@
 cask "action-server" do
-  version "1.1.0"
+  version "1.2.0"
 
   on_macos do
     on_arm do
-      sha256 "2f755fd2d89d6767c01fca3bbf3b583c4d464ff80f0c7e9c89a202d91ff70a76"
+      sha256 "6f96dedb98605302f1251b457f1c7454b5493424a08510816982fe4e3ae011f0"
       url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-macosarm64"
       binary "action-server-macosarm64", target: "action-server"
     end
@@ -16,7 +16,7 @@ cask "action-server" do
   end
 
   on_linux do
-    sha256 "1099dae41a77299d63900e1941f0493a0872c8f60a3c8d6fd496d7681f139acc"
+    sha256 "02de8fc90ff91406ae52c61c20a2c7c1ecfcf9cdfc0a0d30c59da5980404d35d"
     url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-linux64"
     binary "action-server-linux64", target: "action-server"
   end
