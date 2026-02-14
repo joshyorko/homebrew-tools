@@ -1,22 +1,22 @@
 cask "rcc" do
-  version "18.16.0"
+  version "18.17.0"
 
   on_macos do
     on_arm do
-      sha256 "02fdc2c59510bce8fcf2bf0dc40d7b71f7f343e3d982247af9a21e63b6aad543"
+      sha256 "31954b6db5740cd9e9e7cbc8e746c6a9b0abdc0c4479670e24c39ec622e74420"
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macosarm64"
       binary "rcc-macosarm64", target: "rcc"
     end
 
     on_intel do
-      sha256 "242ec7ef6ac7c7c2d0f2fbb2cce44e67580d4db47edb1f75954129b38aa046bb"
+      sha256 "37da8d2511e235b7bc47395faac382d2e6d83fea971263cc13acc1b01c57be4e"
       url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-macos64"
       binary "rcc-macos64", target: "rcc"
     end
   end
 
   on_linux do
-    sha256 "dcb559faa89cf937ebd8d868228a58212a6e5cbf7e1823dfe2dc8b167fbecbcd"
+    sha256 "e54ba2314e09f7d87af2253d87c64cbfc1d55108d95989d3660888c4e5f4036c"
     url "https://github.com/joshyorko/rcc/releases/download/v#{version}/rcc-linux64"
     binary "rcc-linux64", target: "rcc"
   end
