@@ -57,9 +57,9 @@ cask "devpod-linux" do
     desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop")
     icon_path = "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
     desktop_contents.gsub!(/^Icon=.*/, "Icon=#{icon_path}")
-    desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=gdk-pixbuf-thumbnailer")
+    desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=gdk-pixbuf-csource")
     unless desktop_contents.match?(/^StartupWMClass=/)
-      desktop_contents << "\nStartupWMClass=gdk-pixbuf-thumbnailer\n"
+      desktop_contents << "\nStartupWMClass=gdk-pixbuf-csource\n"
     end
     File.write(desktop_file, desktop_contents)
 
@@ -70,8 +70,6 @@ cask "devpod-linux" do
       APPINDICATOR_LIB="#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
       DEVPOD_STATE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/sh.loft.devpod"
       DEVPOD_SETTINGS_FILE="$DEVPOD_STATE_DIR/.settings.json"
-      DEVPOD_LOCALSTORAGE_DB="$DEVPOD_STATE_DIR/localstorage/tauri_localhost_0.localstorage"
-      DEVPOD_THEME_SYNC_INTERVAL="${DEVPOD_THEME_SYNC_INTERVAL:-2}"
 
       # Fedora/Bluefin GTK icon loading can crash when glycin spawns bwrap.
       # Allow users to override, but default to the known-safe setting.
@@ -96,58 +94,35 @@ cask "devpod-linux" do
         exit 1
       fi
 
-      # DevPod stores experimental color mode in .settings.json, but Chakra UI
-      # reads its own localStorage key. Keep both stores aligned.
-      sync_color_mode() {
-        local mode raw_hex current_hex
-        [ -f "$DEVPOD_SETTINGS_FILE" ] || return 0
-        [ -f "$DEVPOD_LOCALSTORAGE_DB" ] || return 0
-        command -v sqlite3 >/dev/null 2>&1 || return 0
+      # DevPod currently initializes Chakra from the system color mode whenever
+      # a new window is created. Map the persisted experimental mode to GTK so
+      # tray reopens pick the expected mode.
+      apply_startup_color_mode() {
+        local mode
+        mode="${DEVPOD_DESKTOP_FORCE_COLOR_MODE:-}"
+        if [ -z "$mode" ] && [ -f "$DEVPOD_SETTINGS_FILE" ]; then
+          mode="$(LC_ALL=C sed -nE 's/.*"experimental_colorMode"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/p' "$DEVPOD_SETTINGS_FILE" | head -n1)"
+        fi
 
-        mode="$(LC_ALL=C sed -nE 's/.*"experimental_colorMode"[[:space:]]*:[[:space:]]*"([^"]+)".*/\\1/p' "$DEVPOD_SETTINGS_FILE" | head -n1)"
         case "$mode" in
-          dark) raw_hex="6400610072006b00" ;;      # UTF-16LE: dark
-          light) raw_hex="6c006900670068007400" ;; # UTF-16LE: light
-          *) return 0 ;;
+          dark)
+            export GTK_THEME="Adwaita:dark"
+            ;;
+          light)
+            export GTK_THEME="Adwaita"
+            ;;
+          *)
+            ;;
         esac
-
-        current_hex="$(sqlite3 -cmd "PRAGMA busy_timeout=1000" "$DEVPOD_LOCALSTORAGE_DB" \
-          "SELECT lower(hex(value)) FROM ItemTable WHERE key='chakra-ui-color-mode' LIMIT 1;" \
-          2>/dev/null || true)"
-        [ "$current_hex" = "$raw_hex" ] && return 0
-
-        sqlite3 -cmd "PRAGMA busy_timeout=1000" "$DEVPOD_LOCALSTORAGE_DB" \
-          "INSERT OR REPLACE INTO ItemTable(key, value) VALUES('chakra-ui-color-mode', X'$raw_hex');" \
-          >/dev/null 2>&1 || true
       }
-
-      start_color_mode_sync_daemon() {
-        command -v sqlite3 >/dev/null 2>&1 || return 0
-        (
-          local main_pid
-          main_pid=$$
-          while kill -0 "$main_pid" 2>/dev/null; do
-            if [ ! -f "$DEVPOD_SETTINGS_FILE" ] || [ ! -f "$DEVPOD_LOCALSTORAGE_DB" ]; then
-              sleep "$DEVPOD_THEME_SYNC_INTERVAL"
-              continue
-            fi
-            sync_color_mode
-            sleep "$DEVPOD_THEME_SYNC_INTERVAL"
-          done
-        ) &
-      }
-
-      if [ "${DEVPOD_DESKTOP_NO_THEME_SYNC:-0}" != "1" ]; then
-        sync_color_mode
-        start_color_mode_sync_daemon
-      fi
+      apply_startup_color_mode
 
       # gdk-pixbuf only disables glycin sandboxing for selected tool names.
-      # Running as gdk-pixbuf-thumbnailer avoids a known bwrap spawn crash.
+      # Running as gdk-pixbuf-csource avoids a known bwrap spawn crash.
       if [ "${DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND:-0}" = "1" ]; then
         exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
       fi
-      exec -a gdk-pixbuf-thumbnailer "#{staged_path}/usr/bin/DevPod Desktop" "$@"
+      exec -a gdk-pixbuf-csource "#{staged_path}/usr/bin/DevPod Desktop" "$@"
     SH
     FileUtils.chmod "+x", wrapper
   end
@@ -191,14 +166,15 @@ cask "devpod-linux" do
 
     Desktop launcher note:
       To avoid a GTK/glycin crash on some Bluefin/Fedora systems, the wrapper
-      uses a gdk-pixbuf thumbnailer launcher path by default.
+      uses a gdk-pixbuf launcher path by default.
       To opt out and run with normal process identity:
         DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND=1 devpod-desktop
 
-    Theme persistence note:
-      Experimental color mode is mirrored into Tauri localStorage to avoid a
-      known DevPod UI reset on reopen from tray.
-      To disable this workaround:
-        DEVPOD_DESKTOP_NO_THEME_SYNC=1 devpod-desktop
+    Color mode note:
+      DevPod currently initializes new windows from system color mode.
+      The wrapper maps your persisted experimental color mode to GTK on launch.
+      Optional override:
+        DEVPOD_DESKTOP_FORCE_COLOR_MODE=dark devpod-desktop
+        DEVPOD_DESKTOP_FORCE_COLOR_MODE=light devpod-desktop
   EOS
 end
