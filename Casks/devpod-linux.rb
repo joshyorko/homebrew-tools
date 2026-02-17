@@ -16,8 +16,10 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
+  depends_on formula: "libayatana-appindicator"
+
   binary "usr/bin/devpod"
-  binary "usr/bin/DevPod Desktop", target: "devpod-desktop"
+  binary "devpod-desktop-wrapper", target: "devpod-desktop"
   artifact "usr/share/applications/DevPod.desktop",
            target: "#{Dir.home}/.local/share/applications/devpod.desktop"
   artifact "usr/share/icons/hicolor/32x32/apps/DevPod Desktop.png",
@@ -58,6 +60,14 @@ cask "devpod-linux" do
     icon_path = "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
     desktop_contents.gsub!(/^Icon=.*/, "Icon=#{icon_path}")
     File.write(desktop_file, desktop_contents)
+
+    wrapper = "#{staged_path}/devpod-desktop-wrapper"
+    File.write(wrapper, <<~SH)
+      #!/bin/sh
+      export LD_LIBRARY_PATH="#{HOMEBREW_PREFIX}/lib:$LD_LIBRARY_PATH"
+      exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
+    SH
+    FileUtils.chmod "+x", wrapper
   end
 
   zap trash: [
