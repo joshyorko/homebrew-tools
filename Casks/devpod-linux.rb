@@ -62,9 +62,20 @@ cask "devpod-linux" do
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/sh
+      APPINDICATOR_SO="libayatana-appindicator3.so.1"
       APPINDICATOR_LIB="#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
-      if [ -f "$APPINDICATOR_LIB/libayatana-appindicator3.so.1" ]; then
+      if [ -f "$APPINDICATOR_LIB/$APPINDICATOR_SO" ]; then
         export LD_LIBRARY_PATH="$APPINDICATOR_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      elif ! (ldconfig -p 2>/dev/null | grep -q "$APPINDICATOR_SO") \
+           && [ ! -f "/usr/lib64/$APPINDICATOR_SO" ] \
+           && [ ! -f "/usr/lib/$APPINDICATOR_SO" ] \
+           && [ ! -f "/lib64/$APPINDICATOR_SO" ] \
+           && [ ! -f "/lib/$APPINDICATOR_SO" ]; then
+        echo "DevPod Desktop requires $APPINDICATOR_SO."
+        echo "Install one of:"
+        echo "  rpm-ostree install libayatana-appindicator-gtk3"
+        echo "  brew install libayatana-appindicator"
+        exit 1
       fi
       exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
     SH
