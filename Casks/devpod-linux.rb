@@ -63,9 +63,19 @@ cask "devpod-linux" do
 
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
-      #!/bin/sh
+      #!/bin/bash
       APPINDICATOR_SO="libayatana-appindicator3.so.1"
       APPINDICATOR_LIB="#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
+
+      # Fedora/Bluefin GTK icon loading can crash when glycin spawns bwrap.
+      # Allow users to override, but default to the known-safe setting.
+      export GLYCIN_SANDBOX="${GLYCIN_SANDBOX:-off}"
+      export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+      export GSK_RENDERER="${GSK_RENDERER:-ngl}"
+      if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] && [ -z "${GDK_BACKEND:-}" ]; then
+        export GDK_BACKEND="wayland,x11"
+      fi
+
       if [ -f "$APPINDICATOR_LIB/$APPINDICATOR_SO" ]; then
         export LD_LIBRARY_PATH="$APPINDICATOR_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       elif ! (ldconfig -p 2>/dev/null | grep -q "$APPINDICATOR_SO") \
@@ -79,7 +89,9 @@ cask "devpod-linux" do
         echo "  brew install libayatana-appindicator"
         exit 1
       fi
-      exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
+      # gdk-pixbuf only disables glycin sandboxing for selected tool names.
+      # Running as gdk-pixbuf-thumbnailer avoids a known bwrap spawn crash.
+      exec -a gdk-pixbuf-thumbnailer "#{staged_path}/usr/bin/DevPod Desktop" "$@"
     SH
     FileUtils.chmod "+x", wrapper
   end
