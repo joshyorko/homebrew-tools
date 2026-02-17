@@ -64,7 +64,7 @@ cask "devpod-linux" do
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/sh
-      export LD_LIBRARY_PATH="#{HOMEBREW_PREFIX}/lib:$LD_LIBRARY_PATH"
+      export LD_LIBRARY_PATH="#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
     SH
     FileUtils.chmod "+x", wrapper
