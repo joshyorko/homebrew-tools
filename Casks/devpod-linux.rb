@@ -57,6 +57,10 @@ cask "devpod-linux" do
     desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop")
     icon_path = "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
     desktop_contents.gsub!(/^Icon=.*/, "Icon=#{icon_path}")
+    desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=gdk-pixbuf-thumbnailer")
+    unless desktop_contents.match?(/^StartupWMClass=/)
+      desktop_contents << "\nStartupWMClass=gdk-pixbuf-thumbnailer\n"
+    end
     File.write(desktop_file, desktop_contents)
 
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
@@ -89,6 +93,9 @@ cask "devpod-linux" do
       fi
       # gdk-pixbuf only disables glycin sandboxing for selected tool names.
       # Running as gdk-pixbuf-thumbnailer avoids a known bwrap spawn crash.
+      if [ "${DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND:-0}" = "1" ]; then
+        exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
+      fi
       exec -a gdk-pixbuf-thumbnailer "#{staged_path}/usr/bin/DevPod Desktop" "$@"
     SH
     FileUtils.chmod "+x", wrapper
@@ -130,5 +137,11 @@ cask "devpod-linux" do
 
       This cask intentionally avoids a hard Homebrew formula dependency because
       current Homebrew dependency recursion can hang cask uninstall on some Linux setups.
+
+    Desktop launcher note:
+      To avoid a GTK/glycin crash on some Bluefin/Fedora systems, the wrapper
+      uses a gdk-pixbuf thumbnailer launcher path by default.
+      To opt out and run with normal process identity:
+        DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND=1 devpod-desktop
   EOS
 end
