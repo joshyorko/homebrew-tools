@@ -1,0 +1,139 @@
+name: Update DevPod Linux Cask
+
+on:
+  schedule:
+    # Run daily at 8 AM UTC (after other cask updates)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest DevPod release
+        id: get_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Get latest stable (non-prerelease) release from skevetter/devpod.
+          RELEASE_JSON=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/skevetter/devpod/releases/latest")
+
+          TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          VERSION="${TAG_NAME#v}"
+          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r \
+            '.assets[] | select(.name == "DevPod_linux_amd64.deb") | .browser_download_url')
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "ERROR: Failed to read release version"
+            echo "$RELEASE_JSON"
+            exit 1
+          fi
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "ERROR: DevPod_linux_amd64.deb asset not found in latest release"
+            echo "$RELEASE_JSON"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "Latest version: $VERSION"
+          echo "Asset URL: $ASSET_URL"
+
+      - name: Get current cask values
+        id: current_values
+        run: |
+          set -euo pipefail
+          CURRENT_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Casks/devpod-linux.rb | head -n1)
+          CURRENT_SHA=$(sed -nE 's/^[[:space:]]*sha256 x86_64_linux: "([a-f0-9]{64})"/\1/p' Casks/devpod-linux.rb | head -n1)
+
+          if [ -z "$CURRENT_VERSION" ] || [ -z "$CURRENT_SHA" ]; then
+            echo "ERROR: Failed to read current version/sha from Casks/devpod-linux.rb"
+            exit 1
+          fi
+
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "linux_sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current version: $CURRENT_VERSION"
+          echo "Current Linux SHA256: $CURRENT_SHA"
+
+      - name: Download and calculate SHA256
+        id: get_sha
+        run: |
+          set -euo pipefail
+          ASSET_URL="${{ steps.get_release.outputs.asset_url }}"
+
+          curl -fSL "$ASSET_URL" -o /tmp/DevPod_linux_amd64.deb
+          LINUX_SHA=$(sha256sum /tmp/DevPod_linux_amd64.deb | awk '{print $1}')
+          rm -f /tmp/DevPod_linux_amd64.deb
+
+          echo "linux_sha=$LINUX_SHA" >> "$GITHUB_OUTPUT"
+          echo "New Linux SHA256: $LINUX_SHA"
+
+      - name: Check if update needed
+        id: check_update
+        run: |
+          set -euo pipefail
+          NEEDS_UPDATE=false
+
+          if [ "${{ steps.get_release.outputs.version }}" != "${{ steps.current_values.outputs.version }}" ]; then
+            echo "Version changed: ${{ steps.current_values.outputs.version }} -> ${{ steps.get_release.outputs.version }}"
+            NEEDS_UPDATE=true
+          fi
+
+          if [ "${{ steps.get_sha.outputs.linux_sha }}" != "${{ steps.current_values.outputs.linux_sha }}" ]; then
+            echo "Linux SHA256 changed"
+            NEEDS_UPDATE=true
+          fi
+
+          echo "needs_update=$NEEDS_UPDATE" >> "$GITHUB_OUTPUT"
+          if [ "$NEEDS_UPDATE" = "false" ]; then
+            echo "Already up to date"
+          fi
+
+      - name: Update cask
+        if: steps.check_update.outputs.needs_update == 'true'
+        env:
+          VERSION: ${{ steps.get_release.outputs.version }}
+          LINUX_SHA: ${{ steps.get_sha.outputs.linux_sha }}
+        run: |
+          set -euo pipefail
+
+          # Update only the dynamic fields to keep the rest of the cask intact.
+          perl -0pi -e 's/^(\s*version\s+)"[^"]+"/${1}"$ENV{VERSION}"/m' Casks/devpod-linux.rb
+          perl -0pi -e 's/^(\s*sha256\s+x86_64_linux:\s+)"[a-f0-9]{64}"/${1}"$ENV{LINUX_SHA}"/m' Casks/devpod-linux.rb
+
+          UPDATED_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Casks/devpod-linux.rb | head -n1)
+          UPDATED_SHA=$(sed -nE 's/^[[:space:]]*sha256 x86_64_linux: "([a-f0-9]{64})"/\1/p' Casks/devpod-linux.rb | head -n1)
+
+          if [ "$UPDATED_VERSION" != "$VERSION" ]; then
+            echo "ERROR: version update failed (expected $VERSION, got $UPDATED_VERSION)"
+            exit 1
+          fi
+          if [ "$UPDATED_SHA" != "$LINUX_SHA" ]; then
+            echo "ERROR: sha update failed (expected $LINUX_SHA, got $UPDATED_SHA)"
+            exit 1
+          fi
+
+          echo "Updated cask:"
+          sed -n '1,120p' Casks/devpod-linux.rb
+
+      - name: Commit and push changes
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/devpod-linux.rb
+          git commit -m "Update devpod-linux cask to v${{ steps.get_release.outputs.version }}"
+          git push

@@ -54,10 +54,34 @@ The upstream RCC Homebrew package is macOS-only. This cask provides cross-platfo
 ### DevPod (Linux Cask)
 
 DevPod - Open Source Dev-Environments-As-Code. Contains both the Desktop UI and CLI.
-See [loft-sh/devpod](https://github.com/loft-sh/devpod) for more details.
+This cask follows the Bluefin/uBlue Linux tap convention of using a Linux-specific token (`devpod-linux`).
+See [skevetter/devpod](https://github.com/skevetter/devpod) for release details.
 
 > [!NOTE]
-> This Cask uses the `tar.gz` distribution to support immutable distros (like Bluefin/uBlue) better than AppImages.
+> This cask uses the upstream `.deb` asset so both the desktop app and `devpod` CLI are installed together.
+
+```bash
+brew install --cask joshyorko/tools/devpod-linux
+devpod version
+devpod-desktop
+
+# Provider setup
+devpod provider add docker
+devpod provider add kubernetes
+devpod provider add gcloud -o PROJECT=<gcp-project-id>   # Google Cloud
+devpod provider add aws -o AWS_REGION=us-east-1
+devpod provider add ssh -o HOST=<host-or-ip>
+
+# Some providers currently require explicit source
+devpod provider add loft-sh/devpod-provider-azure
+devpod provider add loft-sh/devpod-provider-digitalocean
+devpod provider add loft-sh/devpod-provider-terraform
+devpod provider add loft-sh/devpod-provider-civo
+devpod provider add loft-sh/devpod-provider-ecs
+devpod provider add loft-sh/devpod-provider-dockerless
+
+devpod provider list-available
+```
 
 ## For Brewfile Users
 
