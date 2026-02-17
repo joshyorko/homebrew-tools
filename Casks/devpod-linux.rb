@@ -94,10 +94,16 @@ cask "devpod-linux" do
         exit 1
       fi
 
-      # DevPod currently initializes Chakra from the system color mode whenever
-      # a new window is created. Map the persisted experimental mode to GTK so
-      # tray reopens pick the expected mode.
-      apply_startup_color_mode() {
+      APP_BIN="#{staged_path}/usr/bin/DevPod Desktop"
+      APP_ARGS=("$@")
+      WATCH_COLOR_MODE_CHANGES="${DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES:-1}"
+      COLOR_MODE_POLL_INTERVAL="${DEVPOD_DESKTOP_COLOR_MODE_POLL_INTERVAL:-2}"
+
+      if ! [[ "$COLOR_MODE_POLL_INTERVAL" =~ ^[0-9]+$ ]] || [ "$COLOR_MODE_POLL_INTERVAL" -lt 1 ]; then
+        COLOR_MODE_POLL_INTERVAL=2
+      fi
+
+      resolve_color_mode() {
         local mode
         mode="${DEVPOD_DESKTOP_FORCE_COLOR_MODE:-}"
         if [ -z "$mode" ] && [ -f "$DEVPOD_SETTINGS_FILE" ]; then
@@ -105,24 +111,89 @@ cask "devpod-linux" do
         fi
 
         case "$mode" in
-          dark)
-            export GTK_THEME="Adwaita:dark"
-            ;;
-          light)
-            export GTK_THEME="Adwaita"
+          dark|light)
+            printf "%s" "$mode"
             ;;
           *)
+            printf ""
             ;;
         esac
       }
-      apply_startup_color_mode
 
-      # gdk-pixbuf only disables glycin sandboxing for selected tool names.
-      # Running as gdk-pixbuf-csource avoids a known bwrap spawn crash.
-      if [ "${DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND:-0}" = "1" ]; then
-        exec "#{staged_path}/usr/bin/DevPod Desktop" "$@"
+      apply_color_mode_env() {
+        case "$1" in
+          dark)
+            export GTK_THEME="Adwaita:dark"
+            export GTK_APPLICATION_PREFER_DARK_THEME=1
+            ;;
+          light)
+            export GTK_THEME="Adwaita"
+            export GTK_APPLICATION_PREFER_DARK_THEME=0
+            ;;
+          *)
+            unset GTK_THEME
+            unset GTK_APPLICATION_PREFER_DARK_THEME
+            ;;
+        esac
+      }
+
+      start_desktop() {
+        apply_color_mode_env "$1"
+        if [ "${DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND:-0}" = "1" ]; then
+          "$APP_BIN" "${APP_ARGS[@]}" &
+        else
+          # gdk-pixbuf only disables glycin sandboxing for selected tool names.
+          # Running as gdk-pixbuf-csource avoids a known bwrap spawn crash.
+          (exec -a gdk-pixbuf-csource "$APP_BIN" "${APP_ARGS[@]}") &
+        fi
+        child_pid=$!
+      }
+
+      stop_desktop() {
+        local pid="$1"
+        local i
+        if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+          return
+        fi
+
+        kill -TERM "$pid" 2>/dev/null || true
+        for i in 1 2 3 4 5 6 7 8; do
+          if ! kill -0 "$pid" 2>/dev/null; then
+            return
+          fi
+          sleep 1
+        done
+        kill -KILL "$pid" 2>/dev/null || true
+      }
+
+      child_pid=""
+      trap 'stop_desktop "$child_pid"; exit 143' INT TERM HUP
+
+      current_mode="$(resolve_color_mode)"
+      if [ "$WATCH_COLOR_MODE_CHANGES" != "1" ] || [ -n "${DEVPOD_DESKTOP_FORCE_COLOR_MODE:-}" ]; then
+        apply_color_mode_env "$current_mode"
+        if [ "${DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND:-0}" = "1" ]; then
+          exec "$APP_BIN" "${APP_ARGS[@]}"
+        fi
+        exec -a gdk-pixbuf-csource "$APP_BIN" "${APP_ARGS[@]}"
       fi
-      exec -a gdk-pixbuf-csource "#{staged_path}/usr/bin/DevPod Desktop" "$@"
+
+      while true; do
+        start_desktop "$current_mode"
+        while kill -0 "$child_pid" 2>/dev/null; do
+          sleep "$COLOR_MODE_POLL_INTERVAL"
+          next_mode="$(resolve_color_mode)"
+          if [ -n "$next_mode" ] && [ "$next_mode" != "$current_mode" ]; then
+            stop_desktop "$child_pid"
+            wait "$child_pid" 2>/dev/null || true
+            current_mode="$next_mode"
+            continue 2
+          fi
+        done
+
+        wait "$child_pid"
+        exit $?
+      done
     SH
     FileUtils.chmod "+x", wrapper
   end
@@ -172,7 +243,12 @@ cask "devpod-linux" do
 
     Color mode note:
       DevPod currently initializes new windows from system color mode.
-      The wrapper maps your persisted experimental color mode to GTK on launch.
+      The wrapper maps your persisted experimental color mode to GTK and
+      restarts the running desktop process when the mode changes so tray
+      reopen follows your latest setting.
+      Optional controls:
+        DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES=0 devpod-desktop
+        DEVPOD_DESKTOP_COLOR_MODE_POLL_INTERVAL=1 devpod-desktop
       Optional override:
         DEVPOD_DESKTOP_FORCE_COLOR_MODE=dark devpod-desktop
         DEVPOD_DESKTOP_FORCE_COLOR_MODE=light devpod-desktop
