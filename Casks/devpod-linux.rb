@@ -33,7 +33,9 @@ cask "devpod-linux" do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/128x128/apps"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps"
 
-    deb = "#{staged_path}/DevPod_#{os}_#{arch}.deb"
+    deb = Dir["#{staged_path}/DevPod_*_*.deb"].first
+    raise "unable to find DevPod .deb in #{staged_path}" if deb.blank?
+
     system "ar", "x", deb, chdir: staged_path
 
     data_archive = Dir["#{staged_path}/data.tar.*"].first
