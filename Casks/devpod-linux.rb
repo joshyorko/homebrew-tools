@@ -2,8 +2,8 @@ cask "devpod-linux" do
   arch intel: "amd64"
   os linux: "linux"
 
-  version "0.12.15"
-  sha256 x86_64_linux: "39e12877a972d958dfa324adb0920091e3fd4075a1aea3146141b12e48a54a5e"
+  version "0.12.16"
+  sha256 x86_64_linux: "1eb6c98103df68f8ad21f1c6d6dc3567c13f829ce88bebf9cc66259b4edc70ee"
 
   url "https://github.com/skevetter/devpod/releases/download/v#{version}/DevPod_#{os}_#{arch}.deb",
       verified: "github.com/skevetter/devpod/"
@@ -96,7 +96,7 @@ cask "devpod-linux" do
 
       APP_BIN="#{staged_path}/usr/bin/DevPod Desktop"
       APP_ARGS=("$@")
-      WATCH_COLOR_MODE_CHANGES="${DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES:-1}"
+      WATCH_COLOR_MODE_CHANGES="${DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES:-0}"
       COLOR_MODE_POLL_INTERVAL="${DEVPOD_DESKTOP_COLOR_MODE_POLL_INTERVAL:-2}"
 
       if ! [[ "$COLOR_MODE_POLL_INTERVAL" =~ ^[0-9]+$ ]] || [ "$COLOR_MODE_POLL_INTERVAL" -lt 1 ]; then
@@ -206,7 +206,7 @@ cask "devpod-linux" do
   ]
 
   caveats <<~EOS
-    Provider setup (validated against DevPod v0.12.15):
+    Provider setup (validated against DevPod v0.12.16):
 
     Works by short name:
       devpod provider add docker
@@ -243,11 +243,9 @@ cask "devpod-linux" do
 
     Color mode note:
       DevPod currently initializes new windows from system color mode.
-      The wrapper maps your persisted experimental color mode to GTK and
-      restarts the running desktop process when the mode changes so tray
-      reopen follows your latest setting.
+      The wrapper maps your persisted experimental color mode to GTK on launch.
       Optional controls:
-        DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES=0 devpod-desktop
+        DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES=1 devpod-desktop
         DEVPOD_DESKTOP_COLOR_MODE_POLL_INTERVAL=1 devpod-desktop
       Optional override:
         DEVPOD_DESKTOP_FORCE_COLOR_MODE=dark devpod-desktop

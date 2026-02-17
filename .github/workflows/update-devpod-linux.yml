@@ -2,9 +2,14 @@ name: Update DevPod Linux Cask
 
 on:
   schedule:
-    # Run daily at 8 AM UTC (after other cask updates)
-    - cron: '0 8 * * *'
-  workflow_dispatch: # Allow manual trigger
+    # Run every 6 hours to reduce lag after upstream releases.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      include_prerelease:
+        description: "Track latest prerelease too (true/false)"
+        required: false
+        default: "false"
 
 jobs:
   update-cask:
@@ -21,15 +26,30 @@ jobs:
         id: get_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INCLUDE_PRERELEASE: ${{ github.event.inputs.include_prerelease || 'false' }}
         run: |
           set -euo pipefail
 
-          # Get latest stable (non-prerelease) release from skevetter/devpod.
-          RELEASE_JSON=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/skevetter/devpod/releases/latest")
+          RELEASES_JSON=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/skevetter/devpod/releases?per_page=20")
+
+          if [ "$INCLUDE_PRERELEASE" = "true" ]; then
+            RELEASE_JSON=$(echo "$RELEASES_JSON" | jq -c '[.[] | select(.draft == false)] | first')
+          else
+            RELEASE_JSON=$(echo "$RELEASES_JSON" | jq -c \
+              '[.[] | select(.draft == false and .prerelease == false)] | first')
+          fi
+
+          if [ -z "$RELEASE_JSON" ] || [ "$RELEASE_JSON" = "null" ]; then
+            echo "ERROR: Could not resolve a matching release (include_prerelease=$INCLUDE_PRERELEASE)"
+            echo "$RELEASES_JSON"
+            exit 1
+          fi
 
           TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
           VERSION="${TAG_NAME#v}"
+          PRERELEASE=$(echo "$RELEASE_JSON" | jq -r '.prerelease')
+          PUBLISHED_AT=$(echo "$RELEASE_JSON" | jq -r '.published_at')
           ASSET_URL=$(echo "$RELEASE_JSON" | jq -r \
             '.assets[] | select(.name == "DevPod_linux_amd64.deb") | .browser_download_url')
 
@@ -46,8 +66,10 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
-          echo "Latest version: $VERSION"
+          echo "Latest version: $VERSION (prerelease=$PRERELEASE)"
+          echo "Published at: $PUBLISHED_AT"
           echo "Asset URL: $ASSET_URL"
 
       - name: Get current cask values
