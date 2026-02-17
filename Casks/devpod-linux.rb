@@ -16,6 +16,8 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
+  depends_on formula: "libayatana-appindicator"
+
   binary "usr/bin/devpod"
   binary "devpod-desktop-wrapper", target: "devpod-desktop"
   artifact "usr/share/applications/DevPod.desktop",
@@ -111,8 +113,11 @@ cask "devpod-linux" do
       devpod provider list-available
 
     UI dependency note:
-      If DevPod UI fails with a missing libayatana-appindicator error, install one of:
-        brew install libayatana-appindicator
-        rpm-ostree install libayatana-appindicator-gtk3
+      This cask installs Homebrew's libayatana-appindicator dependency for DevPod Desktop.
+      If Homebrew shows xorg-server/xkeyboard-config link warnings during dependency install:
+        brew link --overwrite xkeyboard-config
+
+      After uninstalling this cask, remove unneeded dependency formulae with:
+        brew autoremove
   EOS
 end
