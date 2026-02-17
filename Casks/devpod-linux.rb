@@ -94,15 +94,6 @@ cask "devpod-linux" do
     FileUtils.chmod "+x", wrapper
   end
 
-  uninstall delete: [
-    "#{HOMEBREW_PREFIX}/bin/devpod",
-    "#{HOMEBREW_PREFIX}/bin/devpod-desktop",
-    "#{Dir.home}/.local/share/applications/devpod.desktop",
-    "#{Dir.home}/.local/share/icons/hicolor/32x32/apps/devpod-desktop.png",
-    "#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devpod-desktop.png",
-    "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png",
-  ]
-
   zap trash: [
     "~/.cache/sh.loft.devpod",
     "~/.config/sh.loft.devpod",
