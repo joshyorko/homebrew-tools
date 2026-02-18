@@ -60,9 +60,7 @@ cask "devpod-linux" do
     icon_path = "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
     desktop_contents.gsub!(/^Icon=.*/, "Icon=#{icon_path}")
     desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=gdk-pixbuf-csource")
-    unless desktop_contents.match?(/^StartupWMClass=/)
-      desktop_contents << "\nStartupWMClass=gdk-pixbuf-csource\n"
-    end
+    desktop_contents << "\nStartupWMClass=gdk-pixbuf-csource\n" unless desktop_contents.match?(/^StartupWMClass=/)
     File.write(desktop_file, desktop_contents)
 
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
