@@ -1,5 +1,5 @@
 require "tmpdir"
-class DevpodAppindicatorRuntime < Formula
+class DevpodAppindicatorRuntimeTools < Formula
   desc "Lightweight AppIndicator runtime libraries for DevPod Desktop"
   homepage "https://github.com/skevetter/devpod"
   url "https://archive.ubuntu.com/ubuntu/pool/main/liba/libayatana-appindicator/libayatana-appindicator3-1_0.5.90-7ubuntu2_amd64.deb"
@@ -31,7 +31,7 @@ class DevpodAppindicatorRuntime < Formula
   end
 
   def install
-    odie "devpod-appindicator-runtime is currently x86_64-only" unless Hardware::CPU.intel?
+    odie "devpod-appindicator-runtime-tools is currently x86_64-only" unless Hardware::CPU.intel?
 
     lib.mkpath
 
@@ -63,7 +63,7 @@ class DevpodAppindicatorRuntime < Formula
   end
 
   def extract_from_deb(deb_path, pattern)
-    Dir.mktmpdir("devpod-appindicator-runtime") do |dir|
+    Dir.mktmpdir("devpod-appindicator-runtime-tools") do |dir|
       cp deb_path, "#{dir}/pkg.deb"
       Dir.chdir(dir) do
         system "ar", "x", "pkg.deb"

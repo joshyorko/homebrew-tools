@@ -16,7 +16,7 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
-  depends_on formula: "devpod-appindicator-runtime"
+  depends_on formula: "devpod-appindicator-runtime-tools"
 
   binary "usr/bin/devpod"
   binary "devpod-desktop-wrapper", target: "devpod-desktop"
@@ -68,7 +68,7 @@ cask "devpod-linux" do
       #!/bin/bash
       APPINDICATOR_LIB_DIRS=(
         "${DEVPOD_APPINDICATOR_LIB_DIR:-}"
-        "#{HOMEBREW_PREFIX}/opt/devpod-appindicator-runtime/lib"
+        "#{HOMEBREW_PREFIX}/opt/devpod-appindicator-runtime-tools/lib"
         "#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
       )
       APPINDICATOR_SO_CANDIDATES=(
@@ -128,7 +128,7 @@ cask "devpod-linux" do
       else
         echo "DevPod Desktop requires an AppIndicator runtime library."
         echo "Install one of:"
-        echo "  brew install devpod-appindicator-runtime"
+        echo "  brew install joshyorko/tools/devpod-appindicator-runtime-tools"
         echo "  rpm-ostree install libayatana-appindicator-gtk3"
         echo "  brew install libayatana-appindicator"
         exit 1
@@ -268,7 +268,7 @@ cask "devpod-linux" do
 
     UI dependency note:
       This cask depends on a lightweight AppIndicator runtime formula:
-        brew install devpod-appindicator-runtime
+        brew install joshyorko/tools/devpod-appindicator-runtime-tools
 
       It installs only the required Ayatana/dbusmenu runtime libraries,
       avoiding the heavier full Homebrew GTK dependency tree.
