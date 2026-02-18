@@ -22,6 +22,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify runtime wiring
+        run: |
+          set -euo pipefail
+
+          if [ ! -f Formula/devpod-appindicator-runtime-tools.rb ]; then
+            echo "ERROR: Missing Formula/devpod-appindicator-runtime-tools.rb"
+            exit 1
+          fi
+
+          if ! grep -Fq 'depends_on formula: "devpod-appindicator-runtime-tools"' Casks/devpod-linux.rb; then
+            echo "ERROR: Casks/devpod-linux.rb is not wired to devpod-appindicator-runtime-tools"
+            exit 1
+          fi
+
       - name: Get latest DevPod release
         id: get_release
         env:
@@ -156,6 +170,6 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/devpod-linux.rb
+          git add Casks/devpod-linux.rb Formula/devpod-appindicator-runtime-tools.rb
           git commit -m "Update devpod-linux cask to v${{ steps.get_release.outputs.version }}"
           git push
