@@ -16,6 +16,8 @@ cask "devpod-linux" do
     strategy :github_latest
   end
 
+  depends_on formula: "devpod-appindicator-runtime"
+
   binary "usr/bin/devpod"
   binary "devpod-desktop-wrapper", target: "devpod-desktop"
   artifact "usr/share/applications/DevPod.desktop",
@@ -66,8 +68,18 @@ cask "devpod-linux" do
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
-      APPINDICATOR_SO="libayatana-appindicator3.so.1"
-      APPINDICATOR_LIB="#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
+      APPINDICATOR_LIB_DIRS=(
+        "${DEVPOD_APPINDICATOR_LIB_DIR:-}"
+        "#{HOMEBREW_PREFIX}/opt/devpod-appindicator-runtime/lib"
+        "#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
+      )
+      APPINDICATOR_SO_CANDIDATES=(
+        "libayatana-appindicator3.so.1"
+        "libappindicator3.so.1"
+      )
+      SYSTEM_LIB_DIRS=("/usr/lib64" "/usr/lib" "/lib64" "/lib")
+      APPINDICATOR_SO=""
+      APPINDICATOR_LIB=""
       DEVPOD_STATE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/sh.loft.devpod"
       DEVPOD_SETTINGS_FILE="$DEVPOD_STATE_DIR/.settings.json"
 
@@ -80,15 +92,45 @@ cask "devpod-linux" do
         export GDK_BACKEND="wayland,x11"
       fi
 
-      if [ -f "$APPINDICATOR_LIB/$APPINDICATOR_SO" ]; then
-        export LD_LIBRARY_PATH="$APPINDICATOR_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-      elif ! (ldconfig -p 2>/dev/null | grep -q "$APPINDICATOR_SO") \
-           && [ ! -f "/usr/lib64/$APPINDICATOR_SO" ] \
-           && [ ! -f "/usr/lib/$APPINDICATOR_SO" ] \
-           && [ ! -f "/lib64/$APPINDICATOR_SO" ] \
-           && [ ! -f "/lib/$APPINDICATOR_SO" ]; then
-        echo "DevPod Desktop requires $APPINDICATOR_SO."
+      find_appindicator() {
+        local candidate libdir
+
+        for libdir in "${APPINDICATOR_LIB_DIRS[@]}"; do
+          [ -n "$libdir" ] || continue
+          for candidate in "${APPINDICATOR_SO_CANDIDATES[@]}"; do
+            if [ -f "$libdir/$candidate" ]; then
+              APPINDICATOR_SO="$candidate"
+              APPINDICATOR_LIB="$libdir"
+              return 0
+            fi
+          done
+        done
+
+        for candidate in "${APPINDICATOR_SO_CANDIDATES[@]}"; do
+          if ldconfig -p 2>/dev/null | grep -Fq "$candidate"; then
+            APPINDICATOR_SO="$candidate"
+            return 0
+          fi
+
+          for libdir in "${SYSTEM_LIB_DIRS[@]}"; do
+            if [ -f "$libdir/$candidate" ]; then
+              APPINDICATOR_SO="$candidate"
+              return 0
+            fi
+          done
+        done
+
+        return 1
+      }
+
+      if find_appindicator; then
+        if [ -n "$APPINDICATOR_LIB" ]; then
+          export LD_LIBRARY_PATH="$APPINDICATOR_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        fi
+      else
+        echo "DevPod Desktop requires an AppIndicator runtime library."
         echo "Install one of:"
+        echo "  brew install devpod-appindicator-runtime"
         echo "  rpm-ostree install libayatana-appindicator-gtk3"
         echo "  brew install libayatana-appindicator"
         exit 1
@@ -227,13 +269,17 @@ cask "devpod-linux" do
       devpod provider list-available
 
     UI dependency note:
-      DevPod Desktop requires libayatana-appindicator at runtime.
-      Install one of:
-        brew install libayatana-appindicator
+      This cask depends on a lightweight AppIndicator runtime formula:
+        brew install devpod-appindicator-runtime
+
+      It installs only the required Ayatana/dbusmenu runtime libraries,
+      avoiding the heavier full Homebrew GTK dependency tree.
+
+      Alternative system package path:
         rpm-ostree install libayatana-appindicator-gtk3
 
-      This cask intentionally avoids a hard Homebrew formula dependency because
-      current Homebrew dependency recursion can hang cask uninstall on some Linux setups.
+      Full Homebrew stack (heavier):
+        brew install libayatana-appindicator
 
     Desktop launcher note:
       To avoid a GTK/glycin crash on some Bluefin/Fedora systems, the wrapper
