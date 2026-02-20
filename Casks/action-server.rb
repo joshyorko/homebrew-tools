@@ -22,7 +22,7 @@ cask "action-server" do
   end
 
   name "Action Server"
-  desc "Sema4.ai Action Server - Host AI agent actions via HTTP/MCP"
+  desc "Action Server - Host AI agent actions via HTTP/MCP"
   homepage "https://github.com/joshyorko/actions"
 
   caveats <<~EOS
