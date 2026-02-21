@@ -1,9 +1,9 @@
 cask "action-server" do
-  version "1.2.2"
+  version "1.2.3"
 
   on_macos do
     on_arm do
-      sha256 "2c00a7bae14dc2bb023a6c2088d49f65cd47da7fa645b397d1b994f9938b5659"
+      sha256 "acc587599ce966e9ddd57d301b0d385dd1b0700455caf85d6bcd8697b16cdb96"
       url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-macosarm64"
       binary "action-server-macosarm64", target: "action-server"
     end
@@ -16,13 +16,13 @@ cask "action-server" do
   end
 
   on_linux do
-    sha256 "5fbd23582d003651b617be2518fccfd4865d71a495cf376709a90f36df15c880"
+    sha256 "f0f1c0856e429445d06d33823196a1fed358979c04dc82769592e85c1190c10b"
     url "https://github.com/joshyorko/actions/releases/download/action-server-v#{version}/action-server-linux64"
     binary "action-server-linux64", target: "action-server"
   end
 
   name "Action Server"
-  desc "Action Server - Host AI agent actions via HTTP/MCP"
+  desc "Sema4.ai Action Server - Host AI agent actions via HTTP/MCP"
   homepage "https://github.com/joshyorko/actions"
 
   caveats <<~EOS
