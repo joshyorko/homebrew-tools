@@ -2,8 +2,8 @@ cask "devpod-linux" do
   arch intel: "amd64"
   os linux: "linux"
 
-  version "0.14.6"
-  sha256 x86_64_linux: "814db902193406779e9aefc7c17e76450c7ec15f75f5011431146ea21cd84c6c"
+  version "0.14.8"
+  sha256 x86_64_linux: "51de21cdff05c03158fd8024ea54fac26c583b2c2d6429ed28881d2a771d04c1"
 
   url "https://github.com/skevetter/devpod/releases/download/v#{version}/DevPod_#{os}_#{arch}.deb",
       verified: "github.com/skevetter/devpod/"
