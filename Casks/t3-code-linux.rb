@@ -49,6 +49,28 @@ cask "t3-code-linux" do
     wrapper = "#{staged_path}/t3-code-linux-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
+      path_prepend_if_dir() {
+        local dir="$1"
+        [ -d "$dir" ] || return 0
+        case ":${PATH:-}:" in
+          *":$dir:"*) ;;
+          *) PATH="$dir${PATH:+:$PATH}" ;;
+        esac
+      }
+
+      PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}"
+      path_prepend_if_dir "#{HOMEBREW_PREFIX}/bin"
+      path_prepend_if_dir "#{HOMEBREW_PREFIX}/sbin"
+      path_prepend_if_dir "$HOME/.local/bin"
+      path_prepend_if_dir "$HOME/bin"
+      path_prepend_if_dir "$HOME/.cargo/bin"
+      path_prepend_if_dir "$HOME/.deno/bin"
+      path_prepend_if_dir "$HOME/.bun/bin"
+      path_prepend_if_dir "$HOME/go/bin"
+      path_prepend_if_dir "$HOME/.opencode/bin"
+      path_prepend_if_dir "$HOME/.local/share/mise/shims"
+      export PATH
+
       exec "#{staged_path}/T3-Code-#{version}-#{arch}.AppImage" --no-sandbox "$@"
     SH
     system "chmod", "+x", wrapper
