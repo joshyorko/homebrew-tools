@@ -1,4 +1,4 @@
-name: Update T3 Code Linux Formula
+name: Update T3 Code Linux Cask
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  update-formula:
+  update-cask:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,17 +16,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify formula wiring
+      - name: Verify cask wiring
         run: |
           set -euo pipefail
 
-          if [ ! -f Formula/t3-code-linux.rb ]; then
-            echo "ERROR: Missing Formula/t3-code-linux.rb"
+          if [ ! -f Casks/t3-code-linux.rb ]; then
+            echo "ERROR: Missing Casks/t3-code-linux.rb"
             exit 1
           fi
 
-          if ! grep -Fq 'T3-Code-#{version}-x86_64.AppImage' Formula/t3-code-linux.rb; then
-            echo "ERROR: Formula/t3-code-linux.rb is not using version interpolation in the AppImage URL"
+          if ! grep -Fq 'T3-Code-' Casks/t3-code-linux.rb; then
+            echo "ERROR: Casks/t3-code-linux.rb is missing the upstream AppImage URL"
             exit 1
           fi
 
@@ -68,16 +68,16 @@ jobs:
           echo "Asset: $ASSET_NAME"
           echo "Asset URL: $ASSET_URL"
 
-      - name: Get current formula values
+      - name: Get current cask values
         id: current_values
         run: |
           set -euo pipefail
 
-          CURRENT_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Formula/t3-code-linux.rb | head -n1)
-          CURRENT_SHA=$(sed -nE 's/^[[:space:]]*sha256 "([a-f0-9]{64})"/\1/p' Formula/t3-code-linux.rb | head -n1)
+          CURRENT_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Casks/t3-code-linux.rb | head -n1)
+          CURRENT_SHA=$(sed -nE 's/^[[:space:]]*sha256 x86_64_linux: "([a-f0-9]{64})"/\1/p' Casks/t3-code-linux.rb | head -n1)
 
           if [ -z "$CURRENT_VERSION" ] || [ -z "$CURRENT_SHA" ]; then
-            echo "ERROR: Failed to read current version/sha from Formula/t3-code-linux.rb"
+            echo "ERROR: Failed to read current version/sha from Casks/t3-code-linux.rb"
             exit 1
           fi
 
@@ -121,19 +121,29 @@ jobs:
             echo "Already up to date"
           fi
 
-      - name: Update formula
+      - name: Update cask
         if: steps.check_update.outputs.needs_update == 'true'
         env:
+          ASSET_URL: ${{ steps.get_release.outputs.asset_url }}
           VERSION: ${{ steps.get_release.outputs.version }}
           LINUX_SHA: ${{ steps.get_sha.outputs.linux_sha }}
         run: |
           set -euo pipefail
 
-          perl -0pi -e 's/^(\s*version\s+)"[^"]+"/${1}"$ENV{VERSION}"/m' Formula/t3-code-linux.rb
-          perl -0pi -e 's/^(\s*sha256\s+)"[a-f0-9]{64}"/${1}"$ENV{LINUX_SHA}"/m' Formula/t3-code-linux.rb
+          perl -0pi -e 's#^(\s*url\s+)"[^"]+"#${1}"$ENV{ASSET_URL}"#m' Casks/t3-code-linux.rb
+          perl -0pi -e 's/^(\s*version\s+)"[^"]+"/${1}"$ENV{VERSION}"/m' Casks/t3-code-linux.rb
+          perl -0pi -e 's/^(\s*sha256\s+x86_64_linux:\s+)"[a-f0-9]{64}"/${1}"$ENV{LINUX_SHA}"/m' Casks/t3-code-linux.rb
 
-          UPDATED_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Formula/t3-code-linux.rb | head -n1)
-          UPDATED_SHA=$(sed -nE 's/^[[:space:]]*sha256 "([a-f0-9]{64})"/\1/p' Formula/t3-code-linux.rb | head -n1)
+          UPDATED_URL=$(sed -nE 's#^[[:space:]]*url "([^"]+)"#\1#p' Casks/t3-code-linux.rb | head -n1)
+          UPDATED_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Casks/t3-code-linux.rb | head -n1)
+          UPDATED_SHA=$(sed -nE 's/^[[:space:]]*sha256 x86_64_linux: "([a-f0-9]{64})"/\1/p' Casks/t3-code-linux.rb | head -n1)
+
+          if [ "$UPDATED_URL" != "$ASSET_URL" ]; then
+            echo "ERROR: url update failed"
+            echo "Expected: $ASSET_URL"
+            echo "Got: $UPDATED_URL"
+            exit 1
+          fi
 
           if [ "$UPDATED_VERSION" != "$VERSION" ]; then
             echo "ERROR: version update failed (expected $VERSION, got $UPDATED_VERSION)"
@@ -145,8 +155,8 @@ jobs:
             exit 1
           fi
 
-          echo "Updated formula:"
-          sed -n '1,120p' Formula/t3-code-linux.rb
+          echo "Updated cask:"
+          sed -n '1,160p' Casks/t3-code-linux.rb
 
       - name: Commit and push changes
         if: steps.check_update.outputs.needs_update == 'true'
@@ -154,6 +164,6 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/t3-code-linux.rb
-          git commit -m "Update t3-code-linux formula to v${{ steps.get_release.outputs.version }}"
+          git add Casks/t3-code-linux.rb
+          git commit -m "Update t3-code-linux cask to v${{ steps.get_release.outputs.version }}"
           git push
