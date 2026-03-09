@@ -30,6 +30,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 |---------|-------------|
 | `brew install --cask joshyorko/tools/rcc` | Install RCC |
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
+| `brew install joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
 | `brew uninstall --cask joshyorko/tools/rcc` | Uninstall |
 
@@ -81,6 +82,23 @@ devpod provider add loft-sh/devpod-provider-ecs
 devpod provider add loft-sh/devpod-provider-dockerless
 
 devpod provider list-available
+```
+
+### T3 Code (Linux Formula)
+
+T3 Code packaged for Linux Homebrew as a separate formula around the upstream AppImage.
+This intentionally uses a Linux-specific token so it does not collide with the official
+`homebrew/cask` `t3-code` package.
+
+> [!NOTE]
+> Use the full tap path to make the distinction explicit:
+> ```bash
+> brew install joshyorko/tools/t3-code-linux
+> ```
+
+```bash
+brew install joshyorko/tools/t3-code-linux
+t3-code-linux
 ```
 
 ## For Brewfile Users
