@@ -134,7 +134,7 @@ jobs:
           perl -0pi -e 's/^(\s*version\s+)"[^"]+"/${1}"$ENV{VERSION}"/m' Casks/t3-code-linux.rb
           perl -0pi -e 's/^(\s*sha256\s+x86_64_linux:\s+)"[a-f0-9]{64}"/${1}"$ENV{LINUX_SHA}"/m' Casks/t3-code-linux.rb
 
-          UPDATED_URL=$(sed -nE 's#^[[:space:]]*url "([^"]+)"#\1#p' Casks/t3-code-linux.rb | head -n1)
+          UPDATED_URL=$(sed -nE 's#^[[:space:]]*url "([^"]+)".*#\1#p' Casks/t3-code-linux.rb | head -n1)
           UPDATED_VERSION=$(sed -nE 's/^[[:space:]]*version "([^"]+)"/\1/p' Casks/t3-code-linux.rb | head -n1)
           UPDATED_SHA=$(sed -nE 's/^[[:space:]]*sha256 x86_64_linux: "([a-f0-9]{64})"/\1/p' Casks/t3-code-linux.rb | head -n1)
 
