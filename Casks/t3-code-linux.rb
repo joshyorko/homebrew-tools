@@ -2,10 +2,10 @@ cask "t3-code-linux" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "0.0.9"
-  sha256 x86_64_linux: "8dd2e6ae239bf56b2eb0e20268f85e8710f1e2002cc4755bf2624f2248054d98"
+  version "0.0.10"
+  sha256 x86_64_linux: "cdc3ec6a3e09c88f1497b559e30b18bcd1fdd4680a4190604400e1815bbfcc7f"
 
-  url "https://github.com/pingdotgg/t3code/releases/download/v#{version}/T3-Code-#{version}-#{arch}.AppImage",
+  url "https://github.com/pingdotgg/t3code/releases/download/v0.0.10/T3-Code-0.0.10-x86_64.AppImage",
       verified: "github.com/pingdotgg/t3code/"
   name "T3 Code"
   desc "Minimal GUI for AI code agents"
