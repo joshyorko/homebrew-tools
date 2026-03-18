@@ -1,0 +1,37 @@
+name: Test T3 Code CLI Main
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-t3code-cli-main.yml"
+      - ".github/workflows/update-t3code-cli-main.yml"
+      - "Formula/t3code-cli-main.rb"
+      - "scripts/package-t3code-cli-main.mjs"
+      - "dagger/t3code-cli-main-smoke/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/test-t3code-cli-main.yml"
+      - ".github/workflows/update-t3code-cli-main.yml"
+      - "Formula/t3code-cli-main.rb"
+      - "scripts/package-t3code-cli-main.mjs"
+      - "dagger/t3code-cli-main-smoke/**"
+  workflow_dispatch:
+
+jobs:
+  dagger-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Dagger smoke test
+        uses: dagger/dagger-for-github@v8.3.0
+        with:
+          version: "0.20.1"
+          verb: call
+          module: ./dagger/t3code-cli-main-smoke
+          args: smoke-test --tap=.

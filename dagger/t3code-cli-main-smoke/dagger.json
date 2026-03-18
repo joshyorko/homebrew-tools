@@ -1,0 +1,7 @@
+{
+  "name": "t3code-cli-main-smoke",
+  "engineVersion": "v0.20.1",
+  "sdk": {
+    "source": "typescript"
+  }
+}

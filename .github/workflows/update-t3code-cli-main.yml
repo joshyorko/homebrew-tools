@@ -1,0 +1,168 @@
+name: Update T3 Code CLI Main Formula
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+
+      - name: Verify tap wiring
+        run: |
+          set -euo pipefail
+
+          test -f Formula/t3code-cli-main.rb
+          test -f scripts/package-t3code-cli-main.mjs
+          test -f dagger/t3code-cli-main-smoke/dagger.json
+
+      - name: Resolve upstream main metadata
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          MAIN_JSON="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/pingdotgg/t3code/commits/main")"
+
+          COMMIT_SHA="$(echo "$MAIN_JSON" | jq -r '.sha')"
+          COMMIT_DATE="$(echo "$MAIN_JSON" | jq -r '.commit.committer.date')"
+          COMMIT_SHORT="${COMMIT_SHA:0:12}"
+          VERSION_DATE="$(date -u -d "$COMMIT_DATE" +%Y.%m.%d)"
+          VERSION="${VERSION_DATE}.${COMMIT_SHORT}"
+          RELEASE_TAG="t3code-cli-main-${VERSION}"
+          ASSET_NAME="t3code-cli-main-${VERSION}.tar.gz"
+
+          if [ -z "$COMMIT_SHA" ] || [ "$COMMIT_SHA" = "null" ]; then
+            echo "ERROR: failed to resolve upstream main SHA"
+            exit 1
+          fi
+
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "commit_short=$COMMIT_SHORT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Read current formula version
+        id: current
+        run: |
+          set -euo pipefail
+
+          CURRENT_VERSION="$(sed -nE 's/^  version "([^"]+)"/\1/p' Formula/t3code-cli-main.rb | head -n1)"
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check current release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${{ steps.upstream.outputs.release_tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide whether to rebuild
+        id: check
+        run: |
+          set -euo pipefail
+
+          NEEDS_UPDATE=false
+
+          if [ "${{ steps.current.outputs.version }}" != "${{ steps.upstream.outputs.version }}" ]; then
+            NEEDS_UPDATE=true
+          fi
+
+          if [ "${{ steps.release.outputs.exists }}" != "true" ]; then
+            NEEDS_UPDATE=true
+          fi
+
+          echo "needs_update=$NEEDS_UPDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Build CLI artifact with Dagger
+        if: steps.check.outputs.needs_update == 'true'
+        uses: dagger/dagger-for-github@v8.3.0
+        with:
+          version: "0.20.1"
+          verb: call
+          module: ./dagger/t3code-cli-main-smoke
+          args: >-
+            -o ${{ runner.temp }}/${{ steps.upstream.outputs.asset_name }}
+            package-artifact
+            --tap=.
+            --ref=${{ steps.upstream.outputs.commit_sha }}
+            --version=${{ steps.upstream.outputs.version }}
+
+      - name: Calculate SHA256
+        if: steps.check.outputs.needs_update == 'true'
+        id: artifact
+        env:
+          ASSET_NAME: ${{ steps.upstream.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+
+          ASSET_PATH="$RUNNER_TEMP/$ASSET_NAME"
+          SHA256="$(sha256sum "$ASSET_PATH" | awk '{print $1}')"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.upstream.outputs.release_tag }}/${ASSET_NAME}"
+
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "download_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release asset
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASSET_NAME: ${{ steps.upstream.outputs.asset_name }}
+          RELEASE_TAG: ${{ steps.upstream.outputs.release_tag }}
+          VERSION: ${{ steps.upstream.outputs.version }}
+          COMMIT_SHA: ${{ steps.upstream.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "T3 Code CLI main $VERSION" \
+              --notes "CLI snapshot from pingdotgg/t3code@${COMMIT_SHA}"
+          fi
+
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/$ASSET_NAME" --clobber
+
+      - name: Update formula
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          VERSION: ${{ steps.upstream.outputs.version }}
+          SHA256: ${{ steps.artifact.outputs.sha256 }}
+          DOWNLOAD_URL: ${{ steps.artifact.outputs.download_url }}
+        run: |
+          set -euo pipefail
+
+          perl -0pi -e 's#^  url "[^"]+"#  url "'"$DOWNLOAD_URL"'"#m' Formula/t3code-cli-main.rb
+          perl -0pi -e 's#^  version "[^"]+"#  version "'"$VERSION"'"#m' Formula/t3code-cli-main.rb
+          perl -0pi -e 's#^  sha256 "[a-f0-9]{64}"#  sha256 "'"$SHA256"'"#m' Formula/t3code-cli-main.rb
+
+      - name: Commit and push formula update
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- Formula/t3code-cli-main.rb; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/t3code-cli-main.rb
+          git commit -m "Update t3code-cli-main formula to ${{ steps.upstream.outputs.version }}"
+          git push

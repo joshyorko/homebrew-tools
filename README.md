@@ -31,6 +31,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/rcc` | Install RCC |
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
+| `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
 | `brew uninstall --cask joshyorko/tools/rcc` | Uninstall |
 
@@ -99,6 +100,29 @@ This intentionally uses a Linux-specific token so it does not collide with the o
 ```bash
 brew install --cask joshyorko/tools/t3-code-linux
 t3-code-linux
+```
+
+### T3 Code CLI (Main Formula)
+
+T3 Code CLI packaged from the latest upstream `main` commit for Linux/devcontainer use.
+The formula downloads an immutable source snapshot built by this tap's GitHub Actions workflow,
+then installs runtime dependencies locally with `npm ci` so native modules match your Homebrew Node.
+
+> [!NOTE]
+> Use the full tap path to make it explicit that this tracks `main`, not upstream npm releases:
+> ```bash
+> brew install joshyorko/tools/t3code-cli-main
+> ```
+
+```bash
+brew install joshyorko/tools/t3code-cli-main
+t3 --help
+```
+
+The tap also includes a reusable Dagger smoke test for this packaging path:
+
+```bash
+dagger -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
 ```
 
 ## For Brewfile Users
