@@ -111,6 +111,11 @@ function main() {
     stdio: "inherit",
   });
 
+  execFileSync("npm", ["ci", "--omit=dev"], {
+    cwd: packageDir,
+    stdio: "inherit",
+  });
+
   mkdirSync(dirname(outputPath), { recursive: true });
   execFileSync("tar", ["-czf", outputPath, "-C", packageDir, "."], {
     stdio: "inherit",

@@ -105,8 +105,8 @@ t3-code-linux
 ### T3 Code CLI (Main Formula)
 
 T3 Code CLI packaged from the latest upstream `main` commit for Linux/devcontainer use.
-The formula downloads an immutable source snapshot built by this tap's GitHub Actions workflow,
-then installs runtime dependencies locally with `npm ci` so native modules match your Homebrew Node.
+The formula downloads an immutable prebuilt tarball from this tap's GitHub Actions workflow,
+including runtime dependencies, and runs it with Homebrew's `node@24`.
 
 > [!NOTE]
 > Use the full tap path to make it explicit that this tracks `main`, not upstream npm releases:
@@ -124,6 +124,12 @@ The tap also includes a reusable Dagger smoke test for this packaging path:
 ```bash
 dagger -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
 ```
+
+That smoke test is the real end-to-end path:
+- build upstream `t3code` CLI from source
+- package the tarball the formula consumes
+- install the formula through Linuxbrew in-container
+- run `brew test` and `t3 --help`
 
 ## For Brewfile Users
 
