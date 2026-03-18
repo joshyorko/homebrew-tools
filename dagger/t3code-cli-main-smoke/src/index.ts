@@ -45,6 +45,18 @@ export class T3CodeCliMainSmoke {
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
       .withWorkdir("/upstream")
+      .withExec([
+        "node",
+        "-e",
+        [
+          "const fs = require('node:fs');",
+          "const path = 'apps/server/package.json';",
+          "const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));",
+          "pkg.version = process.argv[1];",
+          "fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\\n`);",
+        ].join(" "),
+        resolvedVersion,
+      ])
       .withExec(["bun", "install", "--frozen-lockfile"])
       .withExec(["bun", "run", "build", "--filter=@t3tools/web", "--filter=t3"])
       .withExec([
