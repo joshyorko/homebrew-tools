@@ -10,29 +10,20 @@ class T3codeCliMain < Formula
     skip "Updated by the tap's GitHub Actions workflow."
   end
 
-  depends_on "node"
+  depends_on "node@24"
   depends_on :linux
 
   def install
-    ENV["npm_config_cache"] = buildpath/"npm_cache"
-    ENV["npm_config_update_notifier"] = "false"
-    ENV["npm_config_fund"] = "false"
-    ENV["npm_config_audit"] = "false"
-
     libexec.install Dir["*"]
-
-    cd libexec do
-      system Formula["node"].opt_bin/"npm", "ci", "--omit=dev"
-    end
 
     (bin/"t3").write <<~SH
       #!/bin/bash
-      exec "#{Formula["node"].opt_bin}/node" "#{libexec}/dist/index.mjs" "$@"
+      exec "#{Formula["node@24"].opt_bin}/node" "#{libexec}/dist/index.mjs" "$@"
     SH
   end
 
   test do
     output = shell_output("#{bin}/t3 --help")
-    assert_match "Usage", output
+    assert_match "USAGE", output
   end
 end
