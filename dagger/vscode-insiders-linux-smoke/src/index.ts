@@ -1,6 +1,6 @@
 import { dag, Container, Directory, File, object, func } from "@dagger.io/dagger"
 
-const DEFAULT_SOURCE_URL = "https://update.code.visualstudio.com/latest/linux-x64/insider"
+const DEFAULT_SOURCE_URL = "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
 const NODE_IMAGE = "node:24-bookworm"
 const BREW_IMAGE = "homebrew/brew:latest"
 const CASK_PATH = "Casks/vscode-insiders-linux.rb"
@@ -14,13 +14,14 @@ export class VscodeInsidersLinuxSmoke {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl jq tar && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates cpio curl jq rpm tar && rm -rf /var/lib/apt/lists/*",
       ])
   }
 
   private async resolveMetadata(sourceUrl: string): Promise<{
     caskVersion: string
     packageVersion: string
+    releaseBuild: string
     resolvedUrl: string
   }> {
     const metadataContainer = this.baseContainer()
@@ -31,14 +32,13 @@ export class VscodeInsidersLinuxSmoke {
         [
           "set -euo pipefail",
           "resolved_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \"$SOURCE_URL\")",
-          "curl -fsSL \"$resolved_url\" -o /tmp/vscode-insiders-source.tar.gz",
-          "package_version=$(tar -xOf /tmp/vscode-insiders-source.tar.gz VSCode-linux-x64/resources/app/package.json | jq -r '.version')",
-          "build_id=$(printf '%s' \"$resolved_url\" | sed -nE 's#^.*/code-insider-x64-([0-9]+)\\.tar\\.gz$#\\1#p')",
+          "curl -fsSL \"$resolved_url\" -o /tmp/vscode-insiders-source.rpm",
+          "package_version=$(rpm -qp --queryformat '%{VERSION}' /tmp/vscode-insiders-source.rpm)",
+          "release_build=$(rpm -qp --queryformat '%{RELEASE}' /tmp/vscode-insiders-source.rpm)",
           "commit_sha=$(printf '%s' \"$resolved_url\" | sed -nE 's#^.*/download/insider/([0-9a-f]+)/.*#\\1#p')",
           "commit_short=${commit_sha:0:12}",
-          "base_version=${package_version%-insider}",
-          "printf 'resolved_url=%s\\npackage_version=%s\\ncask_version=%s,%s,%s\\n' \"$resolved_url\" \"$package_version\" \"$base_version\" \"$build_id\" \"$commit_short\"",
-        ].join(" && "),
+          "printf 'resolved_url=%s\\npackage_version=%s\\nrelease_build=%s\\ncask_version=%s,%s,%s\\n' \"$resolved_url\" \"$package_version\" \"$release_build\" \"$package_version\" \"$release_build\" \"$commit_short\"",
+        ].join("\n"),
       ])
 
     const metadata = await metadataContainer.stdout()
@@ -55,6 +55,7 @@ export class VscodeInsidersLinuxSmoke {
     return {
       caskVersion: entries.cask_version,
       packageVersion: entries.package_version,
+      releaseBuild: entries.release_build,
       resolvedUrl: entries.resolved_url,
     }
   }
@@ -78,12 +79,12 @@ export class VscodeInsidersLinuxSmoke {
 
     const container = this.baseContainer()
       .withDirectory("/tap", tap)
-      .withExec(["bash", "-lc", `curl -fsSL "${metadata.resolvedUrl}" -o /tmp/vscode-insiders-source.tar.gz`])
+      .withExec(["bash", "-lc", `curl -fsSL "${metadata.resolvedUrl}" -o /tmp/vscode-insiders-source.rpm`])
       .withExec([
         "node",
         "/tap/scripts/package-vscode-insiders-linux.mjs",
-        "--source-tarball",
-        "/tmp/vscode-insiders-source.tar.gz",
+        "--source-rpm",
+        "/tmp/vscode-insiders-source.rpm",
         "--output",
         artifactPath,
       ])
@@ -99,7 +100,7 @@ export class VscodeInsidersLinuxSmoke {
   }
 
   /**
-   * Build and export the packaged VS Code Insiders artifact from the current upstream Linux tarball.
+   * Build and export the packaged VS Code Insiders artifact from the current upstream Linux RPM.
    */
   @func()
   async packageArtifact(tap: Directory, sourceUrl = DEFAULT_SOURCE_URL, version = ""): Promise<File> {
@@ -108,7 +109,7 @@ export class VscodeInsidersLinuxSmoke {
   }
 
   /**
-   * Package the latest upstream Linux tarball, install the cask through Linuxbrew,
+   * Package the latest upstream Linux RPM, install the cask through Linuxbrew,
    * and verify the CLI launcher plus desktop integration work as expected.
    */
   @func()
@@ -121,14 +122,26 @@ export class VscodeInsidersLinuxSmoke {
     const updatedCask = caskContents
       .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
       .replace(/version ".*"/, `version "${build.caskVersion}"`)
-      .replace(/sha256 x86_64_linux: ".*"/, `sha256 x86_64_linux: "${sha256}"`)
+      .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
     const smokeTap = tap.withFile(CASK_PATH, dag.file("vscode-insiders-linux.rb", updatedCask))
     const output = await dag
       .container()
       .from(BREW_IMAGE)
+      .withUser("root")
       .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
       .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
       .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils libglib2.0-bin shared-mime-info xdg-utils",
+          "rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
+      ])
+      .withUser("linuxbrew")
       .withDirectory("/tap", smokeTap)
       .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
       .withExec([
@@ -146,18 +159,38 @@ export class VscodeInsidersLinuxSmoke {
           "brew install --cask test/tap/vscode-insiders-linux",
           "test -x \"$(brew --prefix)/bin/code-insiders\"",
           "test -x \"$(brew --prefix)/bin/code-tunnel-insiders\"",
-          "test -f \"$HOME/.local/share/applications/vscode-insiders-linux.desktop\"",
-          "test -f \"$HOME/.local/share/applications/vscode-insiders-linux-url-handler.desktop\"",
-          "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png\"",
-          "grep -q 'CHROME_DESKTOP=vscode-insiders-linux.desktop' \"$HOME/.local/share/applications/vscode-insiders-linux.desktop\"",
-          "grep -q -- '--open-url %U' \"$HOME/.local/share/applications/vscode-insiders-linux-url-handler.desktop\"",
-          "grep -q 'x-scheme-handler/vscode-insiders;' \"$HOME/.local/share/applications/vscode-insiders-linux-url-handler.desktop\"",
-          "pkg_path=$(find \"$(brew --prefix)/Caskroom/vscode-insiders-linux\" -path '*/VSCode-linux-x64/resources/app/package.json' | head -n1)",
+          "test -f \"$HOME/.local/share/applications/code-insiders.desktop\"",
+          "test -f \"$HOME/.local/share/applications/code-insiders-url-handler.desktop\"",
+          "test -f \"$HOME/.local/share/mime/packages/code-insiders-workspace.xml\"",
+          "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png\"",
+          "test ! -e \"$HOME/.local/share/applications/vscode-insiders-linux.desktop\"",
+          "test ! -e \"$HOME/.local/share/applications/vscode-insiders-linux-url-handler.desktop\"",
+          "test ! -e \"$HOME/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png\"",
+          "grep -q 'CHROME_DESKTOP=code-insiders.desktop' \"$HOME/.local/share/applications/code-insiders.desktop\"",
+          "grep -q 'application/x-code-insiders-workspace;' \"$HOME/.local/share/applications/code-insiders.desktop\"",
+          "grep -q -- '--open-url %U' \"$HOME/.local/share/applications/code-insiders-url-handler.desktop\"",
+          "grep -q 'x-scheme-handler/vscode-insiders;' \"$HOME/.local/share/applications/code-insiders-url-handler.desktop\"",
+          "pkg_path=$(find \"$(brew --prefix)/Caskroom/vscode-insiders-linux\" -path '*/usr/share/code-insiders/resources/app/package.json' | head -n1)",
           "test -n \"$pkg_path\"",
-          "test \"$(jq -r '.desktopName' \"$pkg_path\")\" = 'vscode-insiders-linux.desktop'",
+          "test \"$(jq -r '.desktopName' \"$pkg_path\")\" != 'vscode-insiders-linux.desktop'",
+          "installed_package_version=$(jq -r '.version' \"$pkg_path\")",
+          `test "\${installed_package_version%-insider}" = "${build.packageVersion}"`,
+          "xdg_handler=$(xdg-mime query default x-scheme-handler/vscode-insiders)",
+          "test \"$xdg_handler\" = 'code-insiders-url-handler.desktop'",
+          "if command -v xdg-settings >/dev/null 2>&1; then",
+          "  xdg_settings_handler=$(xdg-settings get default-url-scheme-handler vscode-insiders || true)",
+          "  if [ -n \"$xdg_settings_handler\" ]; then",
+          "    test \"$xdg_settings_handler\" = 'code-insiders-url-handler.desktop'",
+          "  fi",
+          "fi",
+          "if command -v gio >/dev/null 2>&1; then",
+          "  gio mime x-scheme-handler/vscode-insiders | grep -q 'code-insiders-url-handler.desktop'",
+          "fi",
           "echo '--- installed package version ---'",
           "grep -m1 '\"version\"' \"$pkg_path\"",
-        ].join(" && "),
+          "echo '--- xdg-mime default ---'",
+          "printf '%s\\n' \"$xdg_handler\"",
+        ].join("\n"),
       ])
       .stdout()
 

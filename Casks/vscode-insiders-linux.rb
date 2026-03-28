@@ -2,10 +2,10 @@ cask "vscode-insiders-linux" do
   arch intel: "x64"
   os linux: "linux"
 
-  version "1.114.0,1774631137,00515ed0a37c"
-  sha256 x86_64_linux: "363e032a09b75be0a3bb800729e9d613461ee156780f8c9c76237aedd77f32b4"
+  version "1.114.0,1774631350.el8,00515ed0a37c"
+  sha256 x86_64_linux: "c90c62f691ed165f58466f90d6048e13fd2c95fca51ed61bc1d7a6a5a87b0e64"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/vscode-insiders-linux-1.114.0-1774631137-00515ed0a37c/vscode-insiders-linux-1.114.0-1774631137-00515ed0a37c.tar.gz"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/vscode-insiders-linux-1.114.0-1774631350.el8-00515ed0a37c/vscode-insiders-linux-1.114.0-1774631350.el8-00515ed0a37c.tar.gz"
   name "Visual Studio Code - Insiders"
   desc "Insiders build of Visual Studio Code packaged for Linux Homebrew"
   homepage "https://code.visualstudio.com/insiders/"
@@ -14,65 +14,49 @@ cask "vscode-insiders-linux" do
     skip "Updated by the tap's GitHub Actions workflow."
   end
 
-  binary "VSCode-linux-x64/bin/code-insiders", target: "code-insiders"
-  binary "VSCode-linux-x64/bin/code-tunnel-insiders", target: "code-tunnel-insiders"
-  artifact "vscode-insiders-linux.desktop",
-           target: "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop"
-  artifact "vscode-insiders-linux-url-handler.desktop",
-           target: "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop"
-  artifact "VSCode-linux-x64/resources/app/resources/linux/code.png",
-           target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png"
+  binary "usr/share/code-insiders/bin/code-insiders", target: "code-insiders"
+  binary "usr/share/code-insiders/bin/code-tunnel-insiders", target: "code-tunnel-insiders"
+  artifact "usr/share/applications/code-insiders.desktop",
+           target: "#{Dir.home}/.local/share/applications/code-insiders.desktop"
+  artifact "usr/share/applications/code-insiders-url-handler.desktop",
+           target: "#{Dir.home}/.local/share/applications/code-insiders-url-handler.desktop"
+  artifact "usr/share/pixmaps/vscode-insiders.png",
+           target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png"
+  artifact "usr/share/mime/packages/code-insiders-workspace.xml",
+           target: "#{Dir.home}/.local/share/mime/packages/code-insiders-workspace.xml"
 
   preflight do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
+    FileUtils.mkdir_p "#{Dir.home}/.local/share/mime/packages"
 
-    desktop_file = "#{staged_path}/vscode-insiders-linux.desktop"
-    File.write(desktop_file, <<~EOS)
-      [Desktop Entry]
-      Version=1.0
-      Type=Application
-      Name=Visual Studio Code - Insiders
-      GenericName=Text Editor
-      Comment=Code Editing. Redefined.
-      Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders %F
-      Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
-      Terminal=false
-      StartupNotify=false
-      StartupWMClass=Code - Insiders
-      Categories=TextEditor;Development;IDE;
-      MimeType=text/plain;inode/directory;
-      Keywords=vscode;code;editor;insiders;
-      Actions=new-empty-window;
+    desktop_file = "#{staged_path}/usr/share/applications/code-insiders.desktop"
+    desktop_contents = File.read(desktop_file)
+    raise "missing upstream Exec in #{desktop_file}" unless desktop_contents.gsub!(
+      %r{^Exec=/usr/share/code-insiders/code-insiders %F$},
+      "Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop #{HOMEBREW_PREFIX}/bin/code-insiders %F",
+    )
+    raise "missing new-window action Exec in #{desktop_file}" unless desktop_contents.gsub!(
+      %r{^Exec=/usr/share/code-insiders/code-insiders --new-window %F$},
+      "Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --new-window %F",
+    )
+    desktop_contents.gsub!(/^Icon=.*/, "Icon=vscode-insiders")
+    File.write(desktop_file, desktop_contents)
 
-      [Desktop Action new-empty-window]
-      Name=New Empty Window
-      Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --new-window %F
-      Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
-    EOS
-
-    url_handler_file = "#{staged_path}/vscode-insiders-linux-url-handler.desktop"
-    File.write(url_handler_file, <<~EOS)
-      [Desktop Entry]
-      Version=1.0
-      Type=Application
-      Name=Visual Studio Code - Insiders - URL Handler
-      GenericName=Text Editor
-      Comment=Code Editing. Redefined.
-      Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --open-url %U
-      Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
-      NoDisplay=true
-      StartupNotify=true
-      StartupWMClass=Code - Insiders
-      Categories=Utility;TextEditor;Development;IDE;
-      MimeType=x-scheme-handler/vscode-insiders;
-      Keywords=vscode;code;editor;insiders;
-    EOS
+    url_handler_file = "#{staged_path}/usr/share/applications/code-insiders-url-handler.desktop"
+    url_handler_contents = File.read(url_handler_file)
+    raise "missing URL handler Exec in #{url_handler_file}" unless url_handler_contents.gsub!(
+      %r{^Exec=/usr/share/code-insiders/code-insiders --open-url %U$},
+      "Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --open-url %U",
+    )
+    url_handler_contents.gsub!(/^Icon=.*/, "Icon=vscode-insiders")
+    File.write(url_handler_file, url_handler_contents)
   end
 
   postflight do
     applications_dir = "#{Dir.home}/.local/share/applications"
-    desktop_id = "vscode-insiders-linux-url-handler.desktop"
+    mime_dir = "#{Dir.home}/.local/share/mime"
+    desktop_id = "code-insiders-url-handler.desktop"
 
     xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"].find do |candidate|
       File.executable?(candidate)
@@ -85,18 +69,25 @@ cask "vscode-insiders-linux" do
       "/bin/update-desktop-database",
       "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
     ].find { |candidate| File.executable?(candidate) }
+    update_mime_database = [
+      "/usr/bin/update-mime-database",
+      "/bin/update-mime-database",
+      "#{HOMEBREW_PREFIX}/bin/update-mime-database",
+    ].find { |candidate| File.executable?(candidate) }
 
     system xdg_mime, "default", desktop_id, "x-scheme-handler/vscode-insiders" if xdg_mime
     if xdg_settings
       system xdg_settings, "set", "default-url-scheme-handler", "vscode-insiders", desktop_id
     end
     system update_desktop_database, applications_dir if update_desktop_database
+    system update_mime_database, mime_dir if update_mime_database
   end
 
   zap trash: [
-    "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop",
-    "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop",
-    "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png",
+    "#{Dir.home}/.local/share/applications/code-insiders.desktop",
+    "#{Dir.home}/.local/share/applications/code-insiders-url-handler.desktop",
+    "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png",
+    "#{Dir.home}/.local/share/mime/packages/code-insiders-workspace.xml",
   ]
 
   caveats <<~EOS
@@ -107,10 +98,13 @@ cask "vscode-insiders-linux" do
       code-tunnel-insiders
 
     App launcher installed for immutable/atomic desktops:
-      #{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop
+      #{Dir.home}/.local/share/applications/code-insiders.desktop
 
     URL handler installed for vscode-insiders:// links:
-      #{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop
+      #{Dir.home}/.local/share/applications/code-insiders-url-handler.desktop
+
+    Workspace MIME definition installed at:
+      #{Dir.home}/.local/share/mime/packages/code-insiders-workspace.xml
 
     If it doesn't appear in your app grid immediately, log out and back in.
   EOS
