@@ -152,7 +152,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          dagger --version
+          dagger version
 
           set +e
           dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test \
