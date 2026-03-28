@@ -7,7 +7,7 @@ cask "devpod-linux" do
   version "0.17.0"
   sha256 x86_64_linux: "d295c6bc3b8bf96a676232be7ff782c675facfc91a8dde82c6ab05122c1533bf"
 
-  url "https://github.com/skevetter/devpod/releases/download/v#{version}/DevPod_#{os}_#{arch}.deb",
+  url "https://github.com/skevetter/devpod/releases/download/v#{version.csv.first}/DevPod_#{os}_#{arch}.deb",
       verified: "github.com/skevetter/devpod/"
   name "DevPod"
   desc "Open-source dev environments based on devcontainer.json"
@@ -71,6 +71,9 @@ cask "devpod-linux" do
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
+      # Desktop launchers on GNOME/Bluefin do not reliably inherit the user's
+      # interactive shell PATH, so ensure both Homebrew and system XDG tools
+      # are discoverable when DevPod tries to open IDEs or register handlers.
       path_prepend_if_dir() {
         local dir="$1"
         [ -d "$dir" ] || return 0
