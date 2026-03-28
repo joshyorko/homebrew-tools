@@ -104,6 +104,10 @@ cask "devpod-linux" do
       APPINDICATOR_LIB=""
       DEVPOD_STATE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/sh.loft.devpod"
       DEVPOD_SETTINGS_FILE="$DEVPOD_STATE_DIR/.settings.json"
+      USER_MOTD_SENTINEL="$HOME/.config/no-show-user-motd"
+      USER_MOTD_LOCK_DIR="${XDG_RUNTIME_DIR:-/tmp}/devpod-desktop-no-show-user-motd"
+      USER_MOTD_LOCK_FILE="$USER_MOTD_LOCK_DIR/$$"
+      USER_MOTD_SENTINEL_CREATED_BY_DEVPOD=0
 
       # Fedora/Bluefin GTK icon loading can crash when glycin spawns bwrap.
       # Allow users to override, but default to the known-safe setting.
@@ -197,8 +201,51 @@ cask "devpod-linux" do
           *)
             unset GTK_THEME
             unset GTK_APPLICATION_PREFER_DARK_THEME
-            ;;
+          ;;
         esac
+      }
+
+      enable_shell_probe_compat() {
+        # VS Code Remote-SSH probes the user's shell for PATH and treats any
+        # MOTD output as part of that value, which breaks ssh spawning.
+        local existing_file
+
+        mkdir -p "$HOME/.config" "$USER_MOTD_LOCK_DIR"
+        : > "$USER_MOTD_LOCK_FILE"
+
+        if [ ! -e "$USER_MOTD_SENTINEL" ]; then
+          existing_file=0
+          : > "$USER_MOTD_SENTINEL"
+        else
+          existing_file=1
+        fi
+
+        if [ "$existing_file" = "0" ]; then
+          USER_MOTD_SENTINEL_CREATED_BY_DEVPOD=1
+        fi
+      }
+
+      cleanup_shell_probe_compat() {
+        local candidate
+        local remaining_locks=0
+
+        rm -f "$USER_MOTD_LOCK_FILE"
+
+        if [ -d "$USER_MOTD_LOCK_DIR" ]; then
+          for candidate in "$USER_MOTD_LOCK_DIR"/*; do
+            [ -e "$candidate" ] || continue
+            remaining_locks=1
+            break
+          done
+        fi
+
+        if [ "$USER_MOTD_SENTINEL_CREATED_BY_DEVPOD" = "1" ] && [ "$remaining_locks" = "0" ]; then
+          rm -f "$USER_MOTD_SENTINEL"
+        fi
+
+        if [ "$remaining_locks" = "0" ]; then
+          rmdir "$USER_MOTD_LOCK_DIR" 2>/dev/null || true
+        fi
       }
 
       start_desktop() {
@@ -231,15 +278,15 @@ cask "devpod-linux" do
       }
 
       child_pid=""
-      trap 'stop_desktop "$child_pid"; exit 143' INT TERM HUP
+      trap 'cleanup_shell_probe_compat; stop_desktop "$child_pid"; exit 143' INT TERM HUP
+      trap 'cleanup_shell_probe_compat' EXIT
 
+      enable_shell_probe_compat
       current_mode="$(resolve_color_mode)"
       if [ "$WATCH_COLOR_MODE_CHANGES" != "1" ] || [ -n "${DEVPOD_DESKTOP_FORCE_COLOR_MODE:-}" ]; then
-        apply_color_mode_env "$current_mode"
-        if [ "${DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND:-0}" = "1" ]; then
-          exec "$APP_BIN" "${APP_ARGS[@]}"
-        fi
-        exec -a gdk-pixbuf-csource "$APP_BIN" "${APP_ARGS[@]}"
+        start_desktop "$current_mode"
+        wait "$child_pid"
+        exit $?
       fi
 
       while true; do
