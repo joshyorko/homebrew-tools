@@ -18,6 +18,8 @@ cask "vscode-insiders-linux" do
   binary "VSCode-linux-x64/bin/code-tunnel-insiders", target: "code-tunnel-insiders"
   artifact "vscode-insiders-linux.desktop",
            target: "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop"
+  artifact "vscode-insiders-linux-url-handler.desktop",
+           target: "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop"
   artifact "VSCode-linux-x64/resources/app/resources/linux/code.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png"
 
@@ -39,7 +41,7 @@ cask "vscode-insiders-linux" do
       StartupNotify=false
       StartupWMClass=Code - Insiders
       Categories=TextEditor;Development;IDE;
-      MimeType=text/plain;inode/directory;x-scheme-handler/vscode-insiders;
+      MimeType=text/plain;inode/directory;
       Keywords=vscode;code;editor;insiders;
       Actions=new-empty-window;
 
@@ -48,10 +50,52 @@ cask "vscode-insiders-linux" do
       Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --new-window %F
       Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
     EOS
+
+    url_handler_file = "#{staged_path}/vscode-insiders-linux-url-handler.desktop"
+    File.write(url_handler_file, <<~EOS)
+      [Desktop Entry]
+      Version=1.0
+      Type=Application
+      Name=Visual Studio Code - Insiders - URL Handler
+      GenericName=Text Editor
+      Comment=Code Editing. Redefined.
+      Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --open-url %U
+      Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
+      NoDisplay=true
+      StartupNotify=true
+      StartupWMClass=Code - Insiders
+      Categories=Utility;TextEditor;Development;IDE;
+      MimeType=x-scheme-handler/vscode-insiders;
+      Keywords=vscode;code;editor;insiders;
+    EOS
+  end
+
+  postflight do
+    applications_dir = "#{Dir.home}/.local/share/applications"
+    desktop_id = "vscode-insiders-linux-url-handler.desktop"
+
+    xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"].find do |candidate|
+      File.executable?(candidate)
+    end
+    xdg_settings = ["/usr/bin/xdg-settings", "/bin/xdg-settings", "#{HOMEBREW_PREFIX}/bin/xdg-settings"].find do |candidate|
+      File.executable?(candidate)
+    end
+    update_desktop_database = [
+      "/usr/bin/update-desktop-database",
+      "/bin/update-desktop-database",
+      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
+    ].find { |candidate| File.executable?(candidate) }
+
+    system xdg_mime, "default", desktop_id, "x-scheme-handler/vscode-insiders" if xdg_mime
+    if xdg_settings
+      system xdg_settings, "set", "default-url-scheme-handler", "vscode-insiders", desktop_id
+    end
+    system update_desktop_database, applications_dir if update_desktop_database
   end
 
   zap trash: [
     "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop",
+    "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop",
     "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png",
   ]
 
@@ -64,6 +108,9 @@ cask "vscode-insiders-linux" do
 
     App launcher installed for immutable/atomic desktops:
       #{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop
+
+    URL handler installed for vscode-insiders:// links:
+      #{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop
 
     If it doesn't appear in your app grid immediately, log out and back in.
   EOS
