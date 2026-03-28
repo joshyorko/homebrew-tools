@@ -66,6 +66,11 @@ cask "devpod-linux" do
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
+      # Desktop launchers on GNOME/Bluefin do not reliably inherit the user's
+      # interactive shell PATH, so ensure Homebrew-installed IDE CLIs are
+      # discoverable when DevPod tries to open them directly.
+      export PATH="#{HOMEBREW_PREFIX}/bin:#{HOMEBREW_PREFIX}/sbin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin}"
+
       APPINDICATOR_LIB_DIRS=(
         "${DEVPOD_APPINDICATOR_LIB_DIR:-}"
         "#{HOMEBREW_PREFIX}/opt/devpod-appindicator-runtime-tools/lib"
