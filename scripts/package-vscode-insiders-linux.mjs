@@ -4,9 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -32,67 +30,55 @@ function parseArgs(argv) {
   return args;
 }
 
-function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const sourceTarballArg = args["source-tarball"];
+  const sourceRpmArg = args["source-rpm"];
   const outputPathArg = args.output;
 
-  if (!sourceTarballArg || !outputPathArg) {
+  if (!sourceRpmArg || !outputPathArg) {
     throw new Error(
-      "Usage: package-vscode-insiders-linux.mjs --source-tarball <tar.gz> --output <tar.gz>",
+      "Usage: package-vscode-insiders-linux.mjs --source-rpm <rpm> --output <tar.gz>",
     );
   }
 
-  const sourceTarball = resolve(sourceTarballArg);
+  const sourceRpm = resolve(sourceRpmArg);
   const outputPath = resolve(outputPathArg);
 
   const stageRoot = mkdtempSync(join(tmpdir(), "vscode-insiders-linux-"));
   const packageDir = join(stageRoot, "package");
+  const requiredPaths = [
+    "usr/share/code-insiders/bin/code-insiders",
+    "usr/share/code-insiders/bin/code-tunnel-insiders",
+    "usr/share/code-insiders/code-insiders",
+    "usr/share/applications/code-insiders.desktop",
+    "usr/share/applications/code-insiders-url-handler.desktop",
+    "usr/share/mime/packages/code-insiders-workspace.xml",
+    "usr/share/code-insiders/resources/app/package.json",
+  ];
 
   try {
     mkdirSync(packageDir, { recursive: true });
 
-    execFileSync("tar", ["-xzf", sourceTarball, "-C", packageDir], {
-      stdio: "inherit",
-    });
+    execFileSync(
+      "bash",
+      [
+        "-lc",
+        "set -euo pipefail; rpm2cpio \"$1\" | cpio -idm --quiet",
+        "bash",
+        sourceRpm,
+      ],
+      {
+        cwd: packageDir,
+        stdio: "inherit",
+      },
+    );
 
-    const appDir = join(packageDir, "VSCode-linux-x64");
-    const packageJsonPath = join(appDir, "resources/app/package.json");
-    const cliPath = join(appDir, "bin/code-insiders");
-    const tunnelCliPath = join(appDir, "bin/code-tunnel-insiders");
-    const iconPath = join(appDir, "resources/app/resources/linux/code.png");
-
-    if (!existsSync(appDir)) {
-      throw new Error(`Expected extracted app directory at ${appDir}`);
+    for (const requiredPath of requiredPaths) {
+      const absolutePath = join(packageDir, requiredPath);
+      if (!existsSync(absolutePath)) {
+        throw new Error(`Missing required upstream file at ${absolutePath}`);
+      }
     }
-
-    if (!existsSync(packageJsonPath)) {
-      throw new Error(`Missing package metadata at ${packageJsonPath}`);
-    }
-
-    if (!existsSync(cliPath)) {
-      throw new Error(`Missing CLI launcher at ${cliPath}`);
-    }
-
-    if (!existsSync(tunnelCliPath)) {
-      throw new Error(`Missing tunnel CLI launcher at ${tunnelCliPath}`);
-    }
-
-    if (!existsSync(iconPath)) {
-      throw new Error(`Missing Linux icon at ${iconPath}`);
-    }
-
-    const packageJson = readJson(packageJsonPath);
-    if (!packageJson.version || typeof packageJson.version !== "string") {
-      throw new Error(`Missing version in ${packageJsonPath}`);
-    }
-
-    packageJson.desktopName = "vscode-insiders-linux.desktop";
-    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
     execFileSync(
       "tar",

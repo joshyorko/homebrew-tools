@@ -134,10 +134,13 @@ That smoke test is the real end-to-end path:
 
 ### VS Code Insiders (Linux Cask)
 
-VS Code Insiders packaged for Linux Homebrew as an immutable tarball published by this tap.
-The GitHub Actions workflow checks Microsoft's Linux Insiders tarball every two hours, repackages
-it into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
+VS Code Insiders packaged for Linux Homebrew from Microsoft's official Linux RPM.
+The GitHub Actions workflow checks the upstream Insiders RPM every two hours, repackages
+its payload into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
 uploads the artifact to this repository's releases, and updates the cask to point at that pinned asset.
+The installed desktop integration intentionally preserves the canonical upstream Linux identities such as
+`code-insiders.desktop`, `code-insiders-url-handler.desktop`, `code-insiders-workspace.xml`, and
+the `vscode-insiders` icon theme name.
 
 > [!NOTE]
 > Use the full tap path to make the Linux-specific token explicit:
@@ -157,11 +160,11 @@ dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
-- resolve the latest upstream VS Code Insiders Linux tarball
-- package it into the archive the cask consumes
+- resolve the latest upstream VS Code Insiders Linux RPM
+- repackage the RPM payload into the archive the cask consumes
 - install the cask through Linuxbrew in-container
-- run `code-insiders --version` and verify desktop integration artifacts
-- assert the packaged app advertises `vscode-insiders-linux.desktop` so GNOME docks bind the right launcher/icon
+- run `code-insiders --version` and verify canonical desktop integration artifacts
+- verify MIME registration for `vscode-insiders://` and `application/x-code-insiders-workspace`
 
 ## For Brewfile Users
 

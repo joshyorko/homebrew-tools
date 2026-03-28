@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          SOURCE_URL="https://update.code.visualstudio.com/latest/linux-x64/insider"
+          SOURCE_URL="https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
           HEADERS="$(curl -fsSI "$SOURCE_URL")"
           RESOLVED_URL="$(printf '%s\n' "$HEADERS" | awk -F': ' 'tolower($1)=="location" {print $2}' | tr -d '\r')"
           UPSTREAM_SHA256="$(printf '%s\n' "$HEADERS" | awk -F': ' 'tolower($1)=="x-sha256" {print $2}' | tr -d '\r')"
@@ -44,23 +44,25 @@ jobs:
             exit 1
           fi
 
-          curl -fsSL "$RESOLVED_URL" -o "$RUNNER_TEMP/vscode-insiders-source.tar.gz"
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cpio rpm
 
-          PACKAGE_VERSION="$(tar -xOf "$RUNNER_TEMP/vscode-insiders-source.tar.gz" VSCode-linux-x64/resources/app/package.json | jq -r '.version')"
-          BASE_VERSION="${PACKAGE_VERSION%-insider}"
-          BUILD_ID="$(printf '%s' "$RESOLVED_URL" | sed -nE 's#^.*/code-insider-x64-([0-9]+)\.tar\.gz$#\1#p')"
+          curl -fsSL "$RESOLVED_URL" -o "$RUNNER_TEMP/vscode-insiders-source.rpm"
+
+          PACKAGE_VERSION="$(rpm -qp --queryformat '%{VERSION}' "$RUNNER_TEMP/vscode-insiders-source.rpm")"
+          RELEASE_BUILD="$(rpm -qp --queryformat '%{RELEASE}' "$RUNNER_TEMP/vscode-insiders-source.rpm")"
           COMMIT_SHA="$(printf '%s' "$RESOLVED_URL" | sed -nE 's#^.*/download/insider/([0-9a-f]+)/.*#\1#p')"
           COMMIT_SHORT="${COMMIT_SHA:0:12}"
-          VERSION="${BASE_VERSION},${BUILD_ID},${COMMIT_SHORT}"
-          RELEASE_TAG="vscode-insiders-linux-${BASE_VERSION}-${BUILD_ID}-${COMMIT_SHORT}"
-          ASSET_NAME="vscode-insiders-linux-${BASE_VERSION}-${BUILD_ID}-${COMMIT_SHORT}.tar.gz"
+          VERSION="${PACKAGE_VERSION},${RELEASE_BUILD},${COMMIT_SHORT}"
+          RELEASE_TAG="vscode-insiders-linux-${PACKAGE_VERSION}-${RELEASE_BUILD}-${COMMIT_SHORT}"
+          ASSET_NAME="vscode-insiders-linux-${PACKAGE_VERSION}-${RELEASE_BUILD}-${COMMIT_SHORT}.tar.gz"
 
           if [ -z "$PACKAGE_VERSION" ] || [ "$PACKAGE_VERSION" = "null" ]; then
             echo "ERROR: failed to read package version"
             exit 1
           fi
 
-          if [ -z "$BUILD_ID" ] || [ -z "$COMMIT_SHA" ]; then
+          if [ -z "$RELEASE_BUILD" ] || [ -z "$COMMIT_SHA" ]; then
             echo "ERROR: failed to parse upstream build metadata from $RESOLVED_URL"
             exit 1
           fi
@@ -68,6 +70,7 @@ jobs:
           echo "resolved_url=$RESOLVED_URL" >> "$GITHUB_OUTPUT"
           echo "upstream_sha256=$UPSTREAM_SHA256" >> "$GITHUB_OUTPUT"
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_build=$RELEASE_BUILD" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
@@ -166,6 +169,7 @@ jobs:
           RELEASE_TAG: ${{ steps.upstream.outputs.release_tag }}
           VERSION: ${{ steps.upstream.outputs.version }}
           PACKAGE_VERSION: ${{ steps.upstream.outputs.package_version }}
+          RELEASE_BUILD: ${{ steps.upstream.outputs.release_build }}
           RESOLVED_URL: ${{ steps.upstream.outputs.resolved_url }}
         run: |
           set -euo pipefail
@@ -173,7 +177,7 @@ jobs:
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "VS Code Insiders Linux $VERSION" \
-              --notes "Packaged from ${RESOLVED_URL} (${PACKAGE_VERSION})"
+              --notes "Packaged from official RPM ${RESOLVED_URL} (${PACKAGE_VERSION}-${RELEASE_BUILD})"
           fi
 
           gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/$ASSET_NAME" --clobber
@@ -189,7 +193,7 @@ jobs:
 
           perl -0pi -e 's#^  url "[^"]+"#  url "'"$DOWNLOAD_URL"'"#m' Casks/vscode-insiders-linux.rb
           perl -0pi -e 's#^  version "[^"]+"#  version "'"$VERSION"'"#m' Casks/vscode-insiders-linux.rb
-          perl -0pi -e 's#^  sha256 x86_64_linux: ".*"#  sha256 x86_64_linux: "'"$SHA256"'"#m' Casks/vscode-insiders-linux.rb
+          perl -0pi -e 's#^  sha256 x86_64_linux: (?::no_check|"[^"]+")#  sha256 x86_64_linux: "'"$SHA256"'"#m' Casks/vscode-insiders-linux.rb
 
       - name: Commit and push cask update
         if: steps.check.outputs.needs_update == 'true'
