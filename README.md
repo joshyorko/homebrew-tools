@@ -31,6 +31,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/rcc` | Install RCC |
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
+| `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
 | `brew uninstall --cask joshyorko/tools/rcc` | Uninstall |
@@ -130,6 +131,36 @@ That smoke test is the real end-to-end path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
+
+### VS Code Insiders (Linux Cask)
+
+VS Code Insiders packaged for Linux Homebrew as an immutable tarball published by this tap.
+The GitHub Actions workflow checks Microsoft's Linux Insiders tarball every two hours, repackages
+it into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
+uploads the artifact to this repository's releases, and updates the cask to point at that pinned asset.
+
+> [!NOTE]
+> Use the full tap path to make the Linux-specific token explicit:
+> ```bash
+> brew install --cask joshyorko/tools/vscode-insiders-linux
+> ```
+
+```bash
+brew install --cask joshyorko/tools/vscode-insiders-linux
+code-insiders --version
+```
+
+The tap also includes a reusable Dagger smoke test for this packaging path:
+
+```bash
+dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
+```
+
+That smoke test exercises the real delivery path:
+- resolve the latest upstream VS Code Insiders Linux tarball
+- package it into the archive the cask consumes
+- install the cask through Linuxbrew in-container
+- run `code-insiders --version` and verify desktop integration artifacts
 
 ## For Brewfile Users
 
