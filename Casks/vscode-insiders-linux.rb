@@ -26,6 +26,16 @@ cask "vscode-insiders-linux" do
            target: "#{Dir.home}/.local/share/mime/packages/code-insiders-workspace.xml"
 
   preflight do
+    legacy_paths = [
+      "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop",
+      "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop",
+      "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png",
+    ]
+
+    legacy_paths.each do |path|
+      FileUtils.rm_f(path)
+    end
+
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/mime/packages"
@@ -86,7 +96,10 @@ cask "vscode-insiders-linux" do
   zap trash: [
     "#{Dir.home}/.local/share/applications/code-insiders.desktop",
     "#{Dir.home}/.local/share/applications/code-insiders-url-handler.desktop",
+    "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop",
+    "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop",
     "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png",
+    "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png",
     "#{Dir.home}/.local/share/mime/packages/code-insiders-workspace.xml",
   ]
 
