@@ -155,7 +155,7 @@ jobs:
           dagger --version
 
           set +e
-          dagger call -m ./dagger/vscode-insiders-linux-smoke smoke-test \
+          dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test \
             --tap=. \
             --source-url='${{ steps.upstream.outputs.resolved_url }}' \
             --version='${{ steps.upstream.outputs.version }}'
