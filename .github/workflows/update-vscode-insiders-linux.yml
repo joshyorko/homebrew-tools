@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "17 */2 * * *"
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Rebuild and replace the current release asset even if the upstream version is unchanged"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   update-cask:
@@ -89,10 +95,16 @@ jobs:
 
       - name: Decide whether to rebuild
         id: check
+        env:
+          FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild || false }}
         run: |
           set -euo pipefail
 
           NEEDS_UPDATE=false
+
+          if [ "$FORCE_REBUILD" = "true" ]; then
+            NEEDS_UPDATE=true
+          fi
 
           if [ "${{ steps.current.outputs.version }}" != "${{ steps.upstream.outputs.version }}" ]; then
             NEEDS_UPDATE=true

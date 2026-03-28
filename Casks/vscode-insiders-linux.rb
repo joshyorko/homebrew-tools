@@ -33,7 +33,7 @@ cask "vscode-insiders-linux" do
       Name=Visual Studio Code - Insiders
       GenericName=Text Editor
       Comment=Code Editing. Redefined.
-      Exec=#{HOMEBREW_PREFIX}/bin/code-insiders %F
+      Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders %F
       Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
       Terminal=false
       StartupNotify=false
@@ -45,7 +45,7 @@ cask "vscode-insiders-linux" do
 
       [Desktop Action new-empty-window]
       Name=New Empty Window
-      Exec=#{HOMEBREW_PREFIX}/bin/code-insiders --new-window %F
+      Exec=/usr/bin/env CHROME_DESKTOP=vscode-insiders-linux.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --new-window %F
       Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png
     EOS
   end

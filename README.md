@@ -161,6 +161,7 @@ That smoke test exercises the real delivery path:
 - package it into the archive the cask consumes
 - install the cask through Linuxbrew in-container
 - run `code-insiders --version` and verify desktop integration artifacts
+- assert the packaged app advertises `vscode-insiders-linux.desktop` so GNOME docks bind the right launcher/icon
 
 ## For Brewfile Users
 

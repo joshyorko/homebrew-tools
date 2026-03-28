@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -89,6 +90,9 @@ function main() {
     if (!packageJson.version || typeof packageJson.version !== "string") {
       throw new Error(`Missing version in ${packageJsonPath}`);
     }
+
+    packageJson.desktopName = "vscode-insiders-linux.desktop";
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
     execFileSync(
       "tar",
