@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 cask "devpod-linux" do
   arch intel: "amd64"
   os linux: "linux"
@@ -21,7 +23,7 @@ cask "devpod-linux" do
   binary "usr/bin/devpod"
   binary "devpod-desktop-wrapper", target: "devpod-desktop"
   artifact "usr/share/applications/DevPod.desktop",
-           target: "#{Dir.home}/.local/share/applications/devpod.desktop"
+           target: "#{Dir.home}/.local/share/applications/sh.loft.devpod.desktop"
   artifact "usr/share/icons/hicolor/32x32/apps/DevPod Desktop.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/32x32/apps/devpod-desktop.png"
   artifact "usr/share/icons/hicolor/128x128/apps/DevPod Desktop.png",
@@ -56,20 +58,37 @@ cask "devpod-linux" do
 
     desktop_file = "#{staged_path}/usr/share/applications/DevPod.desktop"
     desktop_contents = File.read(desktop_file)
-    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop")
+    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop %U")
     icon_path = "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
     desktop_contents.gsub!(/^Icon=.*/, "Icon=#{icon_path}")
     desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=gdk-pixbuf-csource")
     desktop_contents << "\nStartupWMClass=gdk-pixbuf-csource\n" unless desktop_contents.match?(/^StartupWMClass=/)
+    unless desktop_contents.match?(%r{^MimeType=.*x-scheme-handler/devpod;?})
+      desktop_contents << "MimeType=x-scheme-handler/devpod;\n"
+    end
     File.write(desktop_file, desktop_contents)
 
     wrapper = "#{staged_path}/devpod-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
       # Desktop launchers on GNOME/Bluefin do not reliably inherit the user's
-      # interactive shell PATH, so ensure Homebrew-installed IDE CLIs are
-      # discoverable when DevPod tries to open them directly.
-      export PATH="#{HOMEBREW_PREFIX}/bin:#{HOMEBREW_PREFIX}/sbin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin}"
+      # interactive shell PATH, so ensure both Homebrew and system XDG tools
+      # are discoverable when DevPod tries to open IDEs or register handlers.
+      path_prepend_if_dir() {
+        local dir="$1"
+        [ -d "$dir" ] || return 0
+        case ":${PATH:-}:" in
+          *":$dir:"*) ;;
+          *) PATH="$dir${PATH:+:$PATH}" ;;
+        esac
+      }
+
+      PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}"
+      path_prepend_if_dir "#{HOMEBREW_PREFIX}/bin"
+      path_prepend_if_dir "#{HOMEBREW_PREFIX}/sbin"
+      path_prepend_if_dir "$HOME/.local/bin"
+      path_prepend_if_dir "$HOME/bin"
+      export PATH
 
       APPINDICATOR_LIB_DIRS=(
         "${DEVPOD_APPINDICATOR_LIB_DIR:-}"
@@ -243,10 +262,29 @@ cask "devpod-linux" do
     FileUtils.chmod "+x", wrapper
   end
 
+  postflight do
+    applications_dir = "#{Dir.home}/.local/share/applications"
+    desktop_id = "sh.loft.devpod.desktop"
+
+    xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"].find do |candidate|
+      File.executable?(candidate)
+    end
+    update_desktop_database = [
+      "/usr/bin/update-desktop-database",
+      "/bin/update-desktop-database",
+      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
+    ].find { |candidate| File.executable?(candidate) }
+
+    system xdg_mime, "default", desktop_id, "x-scheme-handler/devpod" if xdg_mime
+    system update_desktop_database, applications_dir if update_desktop_database
+  end
+
   zap trash: [
     "~/.cache/sh.loft.devpod",
     "~/.config/sh.loft.devpod",
     "~/.devpod",
+    "~/.local/share/applications/devpod.desktop",
+    "~/.local/share/applications/sh.loft.devpod.desktop",
     "~/.local/share/sh.loft.devpod",
   ]
 
@@ -289,6 +327,10 @@ cask "devpod-linux" do
       uses a gdk-pixbuf launcher path by default.
       To opt out and run with normal process identity:
         DEVPOD_DESKTOP_NO_GLYCIN_WORKAROUND=1 devpod-desktop
+
+    Custom protocol note:
+      The cask pre-registers the devpod:// scheme with:
+        #{Dir.home}/.local/share/applications/sh.loft.devpod.desktop
 
     Color mode note:
       DevPod currently initializes new windows from system color mode.
