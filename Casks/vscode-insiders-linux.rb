@@ -20,14 +20,8 @@ cask "vscode-insiders-linux" do
            target: "#{Dir.home}/.local/share/applications/code-insiders.desktop"
   artifact "usr/share/applications/code-insiders-url-handler.desktop",
            target: "#{Dir.home}/.local/share/applications/code-insiders-url-handler.desktop"
-  artifact "vscode-insiders-linux.desktop",
-           target: "#{Dir.home}/.local/share/applications/vscode-insiders-linux.desktop"
-  artifact "vscode-insiders-linux-url-handler.desktop",
-           target: "#{Dir.home}/.local/share/applications/vscode-insiders-linux-url-handler.desktop"
   artifact "usr/share/pixmaps/vscode-insiders.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png"
-  artifact "vscode-insiders-linux.png",
-           target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png"
   artifact "usr/share/mime/packages/code-insiders-workspace.xml",
            target: "#{Dir.home}/.local/share/mime/packages/code-insiders-workspace.xml"
 
@@ -72,29 +66,9 @@ cask "vscode-insiders-linux" do
     package_json_contents = File.read(package_json_file)
     raise "missing desktopName in #{package_json_file}" unless package_json_contents.gsub!(
       /"desktopName"\s*:\s*"[^"]+"/,
-      '"desktopName": "vscode-insiders-linux.desktop"',
+      '"desktopName": "code-insiders.desktop"',
     )
     File.write(package_json_file, package_json_contents)
-
-    legacy_desktop_file = "#{staged_path}/vscode-insiders-linux.desktop"
-    legacy_desktop_contents = desktop_contents.dup
-    legacy_desktop_contents.gsub!("CHROME_DESKTOP=code-insiders.desktop", "CHROME_DESKTOP=vscode-insiders-linux.desktop")
-    legacy_desktop_contents.gsub!(
-      /^Icon=.*/,
-      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png",
-    )
-    File.write(legacy_desktop_file, legacy_desktop_contents)
-
-    legacy_url_handler_file = "#{staged_path}/vscode-insiders-linux-url-handler.desktop"
-    legacy_url_handler_contents = url_handler_contents.dup
-    legacy_url_handler_contents.gsub!("CHROME_DESKTOP=code-insiders.desktop", "CHROME_DESKTOP=vscode-insiders-linux.desktop")
-    legacy_url_handler_contents.gsub!(
-      /^Icon=.*/,
-      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders-linux.png",
-    )
-    File.write(legacy_url_handler_file, legacy_url_handler_contents)
-
-    FileUtils.cp "#{staged_path}/usr/share/pixmaps/vscode-insiders.png", "#{staged_path}/vscode-insiders-linux.png"
   end
 
   postflight do
