@@ -50,7 +50,10 @@ cask "vscode-insiders-linux" do
       %r{^Exec=/usr/share/code-insiders/code-insiders --new-window %F$},
       "Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --new-window %F",
     )
-    desktop_contents.gsub!(/^Icon=.*/, "Icon=vscode-insiders")
+    desktop_contents.gsub!(
+      /^Icon=.*/,
+      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png",
+    )
     File.write(desktop_file, desktop_contents)
 
     url_handler_file = "#{staged_path}/usr/share/applications/code-insiders-url-handler.desktop"
@@ -59,7 +62,10 @@ cask "vscode-insiders-linux" do
       %r{^Exec=/usr/share/code-insiders/code-insiders --open-url %U$},
       "Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop #{HOMEBREW_PREFIX}/bin/code-insiders --open-url %U",
     )
-    url_handler_contents.gsub!(/^Icon=.*/, "Icon=vscode-insiders")
+    url_handler_contents.gsub!(
+      /^Icon=.*/,
+      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png",
+    )
     File.write(url_handler_file, url_handler_contents)
 
     package_json_file = "#{staged_path}/usr/share/code-insiders/resources/app/package.json"
