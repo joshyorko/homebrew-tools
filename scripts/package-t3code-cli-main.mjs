@@ -49,6 +49,14 @@ function resolveCatalogDependencies(dependencies, catalog) {
   return resolved;
 }
 
+function normalizeBinEntry(binEntry) {
+  if (typeof binEntry !== "string" || binEntry.length === 0) {
+    throw new Error('Expected apps/server/package.json to define a string bin entry for "t3"');
+  }
+
+  return binEntry.startsWith("./") ? binEntry.slice(2) : binEntry;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const upstreamDirArg = args["upstream-dir"];
@@ -67,7 +75,8 @@ function main() {
   const licensePath = join(upstreamDir, "LICENSE");
   const readmePath = join(upstreamDir, "README.md");
   const distDir = join(upstreamDir, "apps/server/dist");
-  const cliEntry = join(distDir, "index.mjs");
+  const cliEntryRelativePath = normalizeBinEntry(serverPackageJson.bin?.t3);
+  const cliEntry = join(upstreamDir, "apps/server", cliEntryRelativePath);
   const bundledClientEntry = join(distDir, "client/index.html");
 
   if (!existsSync(cliEntry)) {
@@ -91,7 +100,7 @@ function main() {
     license: "MIT",
     type: "module",
     bin: {
-      t3: "./dist/index.mjs",
+      t3: `./${cliEntryRelativePath}`,
     },
     files: ["dist"],
     engines: serverPackageJson.engines,

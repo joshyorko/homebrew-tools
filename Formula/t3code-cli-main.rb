@@ -18,7 +18,11 @@ class T3codeCliMain < Formula
 
     (bin/"t3").write <<~SH
       #!/bin/bash
-      exec "#{Formula["node@24"].opt_bin}/node" "#{libexec}/dist/index.mjs" "$@"
+      entry="#{libexec}/dist/bin.mjs"
+      if [ ! -f "$entry" ]; then
+        entry="#{libexec}/dist/index.mjs"
+      fi
+      exec "#{Formula["node@24"].opt_bin}/node" "$entry" "$@"
     SH
   end
 
