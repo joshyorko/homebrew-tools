@@ -85,7 +85,14 @@ jobs:
             gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
           fi
 
-          gh release upload "$release_tag" "$RUNNER_TEMP/bundle/artifacts/$asset_name" --clobber
+          shopt -s nullglob
+          artifacts=("$RUNNER_TEMP/bundle/artifacts/"*)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No release artifacts were exported by dagger/tap-pipeline." >&2
+            exit 1
+          fi
+
+          gh release upload "$release_tag" "${artifacts[@]}" --clobber
           node scripts/apply-release-bundle.mjs --bundle "$RUNNER_TEMP/bundle" --repo "$GITHUB_WORKSPACE"
 
           if git diff --quiet; then

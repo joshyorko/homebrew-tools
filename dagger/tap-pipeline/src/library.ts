@@ -8,7 +8,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     supportsPrCi: true,
     supportsAutoUpdate: true,
     updatePolicy: "auto",
-    cadence: { everyMinutes: 360, minute: 41 },
+    cadence: { daily: { hour: 6, minute: 41 } },
     upstream: {
       kind: "git",
       repo: "https://github.com/pingdotgg/t3code",
@@ -46,8 +46,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     id: "rcc",
     kind: "github_release_binary_cask",
     homebrewPath: "Casks/rcc.rb",
-    supportsPrCi: false,
-    supportsAutoUpdate: false,
+    supportsPrCi: true,
+    supportsAutoUpdate: true,
     updatePolicy: "auto",
     cadence: { daily: { hour: 6, minute: 0 } },
     upstream: {
@@ -60,8 +60,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     id: "action-server",
     kind: "github_release_binary_cask",
     homebrewPath: "Casks/action-server.rb",
-    supportsPrCi: false,
-    supportsAutoUpdate: false,
+    supportsPrCi: true,
+    supportsAutoUpdate: true,
     updatePolicy: "auto",
     cadence: { daily: { hour: 7, minute: 0 } },
     upstream: {
@@ -75,8 +75,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     id: "devpod-linux",
     kind: "github_release_deb_cask",
     homebrewPath: "Casks/devpod-linux.rb",
-    supportsPrCi: false,
-    supportsAutoUpdate: false,
+    supportsPrCi: true,
+    supportsAutoUpdate: true,
     updatePolicy: "auto",
     cadence: { everyMinutes: 360, minute: 17 },
     upstream: {
@@ -89,8 +89,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     id: "t3-code-linux",
     kind: "github_release_appimage_cask",
     homebrewPath: "Casks/t3-code-linux.rb",
-    supportsPrCi: false,
-    supportsAutoUpdate: false,
+    supportsPrCi: true,
+    supportsAutoUpdate: true,
     updatePolicy: "auto",
     cadence: { everyMinutes: 360, minute: 41 },
     upstream: {

@@ -24,10 +24,31 @@ function parseTextLines(output: string): string[] {
 
 function tapStagingCommands(packageId: string): string[] {
   switch (packageId) {
+    case "rcc":
+      return [
+        "mkdir -p \"$tap_dir/Casks\"",
+        "cp /tap/Casks/rcc.rb \"$tap_dir/Casks/\"",
+      ]
+    case "action-server":
+      return [
+        "mkdir -p \"$tap_dir/Casks\"",
+        "cp /tap/Casks/action-server.rb \"$tap_dir/Casks/\"",
+      ]
+    case "devpod-linux":
+      return [
+        "mkdir -p \"$tap_dir/Casks\" \"$tap_dir/Formula\"",
+        "cp /tap/Casks/devpod-linux.rb \"$tap_dir/Casks/\"",
+        "cp /tap/Formula/devpod-appindicator-runtime-tools.rb \"$tap_dir/Formula/\"",
+      ]
     case "t3code-cli-main":
       return [
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
+      ]
+    case "t3-code-linux":
+      return [
+        "mkdir -p \"$tap_dir/Casks\"",
+        "cp /tap/Casks/t3-code-linux.rb \"$tap_dir/Casks/\"",
       ]
     case "vscode-insiders-linux":
       return [
@@ -91,6 +112,44 @@ type VoxtypeBuild = {
   commit: string
   container: Container
   version: string
+}
+
+type DownloadedAsset = {
+  assetName: string
+  artifactPath: string
+  sha256: string
+  sourceUrl: string
+}
+
+type RccBuild = {
+  version: string
+  container: Container
+  linux: DownloadedAsset
+  macosArm: DownloadedAsset
+  macosIntel: DownloadedAsset
+}
+
+type ActionServerBuild = {
+  version: string
+  upstreamTag: string
+  container: Container
+  linux: DownloadedAsset
+  macosArm: DownloadedAsset
+  macosIntel?: DownloadedAsset
+}
+
+type DevpodBuild = {
+  version: string
+  upstreamTag: string
+  container: Container
+  asset: DownloadedAsset
+}
+
+type T3CodeBuild = {
+  version: string
+  upstreamTag: string
+  container: Container
+  asset: DownloadedAsset
 }
 
 @object()
@@ -158,7 +217,7 @@ export class TapPipeline {
         [
           "set -euo pipefail",
           "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl build-essential clang cmake pkg-config git binutils libasound2-dev",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl nodejs build-essential clang cmake pkg-config git binutils libasound2-dev",
           "rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
@@ -359,11 +418,500 @@ export class TapPipeline {
     }
   }
 
+  private async fetchJson(url: string): Promise<unknown> {
+    const output = await dag
+      .container()
+      .from(NODE_IMAGE)
+      .withExec([
+        "node",
+        "--input-type=module",
+        "-e",
+        [
+          "const url = process.argv[1]",
+          "const response = await fetch(url, { headers: { 'User-Agent': 'tap-pipeline' } })",
+          "if (!response.ok) {",
+          "  throw new Error(`Failed to fetch ${url}: ${response.status}`)",
+          "}",
+          "process.stdout.write(JSON.stringify(await response.json()))",
+        ].join("\n"),
+        url,
+      ])
+      .stdout()
+
+    return JSON.parse(output)
+  }
+
+  private downloadAsset(container: Container, url: string, path: string): Container {
+    return container.withExec([
+      "node",
+      "--input-type=module",
+      "-e",
+      [
+        "import { writeFile } from 'node:fs/promises'",
+        "const [url, path] = process.argv.slice(1)",
+        "const response = await fetch(url, { headers: { 'User-Agent': 'tap-pipeline' } })",
+        "if (!response.ok) {",
+        "  throw new Error(`Failed to download ${url}: ${response.status}`)",
+        "}",
+        "await writeFile(path, Buffer.from(await response.arrayBuffer()))",
+      ].join("\n"),
+      url,
+      path,
+    ])
+  }
+
+  private async sha256For(container: Container, path: string): Promise<string> {
+    return (
+      await container.withExec(["sha256sum", path]).stdout()
+    ).trim().split(/\s+/)[0]
+  }
+
+  private async buildRccArtifacts(): Promise<RccBuild> {
+    const release = await this.fetchJson("https://api.github.com/repos/joshyorko/rcc/releases/latest") as {
+      tag_name: string
+      assets: Array<{ name: string; browser_download_url: string }>
+    }
+    const version = release.tag_name.replace(/^v/, "")
+
+    const resolveAsset = (name: string): { name: string; browser_download_url: string } => {
+      const asset = release.assets.find((candidate) => candidate.name === name)
+
+      if (!asset) {
+        throw new Error(`Missing RCC release asset: ${name}`)
+      }
+
+      return asset
+    }
+
+    const linuxAsset = resolveAsset("rcc-linux64")
+    const macosArmAsset = resolveAsset("rcc-macosarm64")
+    const macosIntelAsset = resolveAsset("rcc-macos64")
+
+    let container = dag.container().from(NODE_IMAGE)
+    container = this.downloadAsset(container, linuxAsset.browser_download_url, "/tmp/rcc-linux64")
+    container = this.downloadAsset(container, macosArmAsset.browser_download_url, "/tmp/rcc-macosarm64")
+    container = this.downloadAsset(container, macosIntelAsset.browser_download_url, "/tmp/rcc-macos64")
+
+    return {
+      version,
+      container,
+      linux: {
+        assetName: linuxAsset.name,
+        artifactPath: "/tmp/rcc-linux64",
+        sha256: await this.sha256For(container, "/tmp/rcc-linux64"),
+        sourceUrl: linuxAsset.browser_download_url,
+      },
+      macosArm: {
+        assetName: macosArmAsset.name,
+        artifactPath: "/tmp/rcc-macosarm64",
+        sha256: await this.sha256For(container, "/tmp/rcc-macosarm64"),
+        sourceUrl: macosArmAsset.browser_download_url,
+      },
+      macosIntel: {
+        assetName: macosIntelAsset.name,
+        artifactPath: "/tmp/rcc-macos64",
+        sha256: await this.sha256For(container, "/tmp/rcc-macos64"),
+        sourceUrl: macosIntelAsset.browser_download_url,
+      },
+    }
+  }
+
+  private async buildActionServerArtifacts(): Promise<ActionServerBuild> {
+    const releases = await this.fetchJson("https://api.github.com/repos/joshyorko/actions/releases?per_page=10") as Array<{
+      tag_name: string
+      assets: Array<{ name: string; browser_download_url: string }>
+    }>
+    const release = releases.find((candidate) => candidate.tag_name.startsWith("action-server-v"))
+
+    if (!release) {
+      throw new Error("No action-server release found")
+    }
+
+    const version = release.tag_name.replace(/^action-server-v/, "")
+    const resolveOptionalAsset = (name: string): { name: string; browser_download_url: string } | undefined =>
+      release.assets.find((candidate) => candidate.name === name)
+    const linuxAsset = resolveOptionalAsset("action-server-linux64")
+    const macosArmAsset = resolveOptionalAsset("action-server-macosarm64")
+
+    if (!linuxAsset || !macosArmAsset) {
+      throw new Error("Action Server release is missing required linux or macOS arm assets")
+    }
+
+    const macosIntelAsset = resolveOptionalAsset("action-server-macos64")
+
+    let container = dag.container().from(NODE_IMAGE)
+    container = this.downloadAsset(container, linuxAsset.browser_download_url, "/tmp/action-server-linux64")
+    container = this.downloadAsset(container, macosArmAsset.browser_download_url, "/tmp/action-server-macosarm64")
+
+    if (macosIntelAsset) {
+      container = this.downloadAsset(container, macosIntelAsset.browser_download_url, "/tmp/action-server-macos64")
+    }
+
+    return {
+      version,
+      upstreamTag: release.tag_name,
+      container,
+      linux: {
+        assetName: linuxAsset.name,
+        artifactPath: "/tmp/action-server-linux64",
+        sha256: await this.sha256For(container, "/tmp/action-server-linux64"),
+        sourceUrl: linuxAsset.browser_download_url,
+      },
+      macosArm: {
+        assetName: macosArmAsset.name,
+        artifactPath: "/tmp/action-server-macosarm64",
+        sha256: await this.sha256For(container, "/tmp/action-server-macosarm64"),
+        sourceUrl: macosArmAsset.browser_download_url,
+      },
+      macosIntel: macosIntelAsset ? {
+        assetName: macosIntelAsset.name,
+        artifactPath: "/tmp/action-server-macos64",
+        sha256: await this.sha256For(container, "/tmp/action-server-macos64"),
+        sourceUrl: macosIntelAsset.browser_download_url,
+      } : undefined,
+    }
+  }
+
+  private async buildDevpodArtifact(): Promise<DevpodBuild> {
+    const releases = await this.fetchJson("https://api.github.com/repos/skevetter/devpod/releases?per_page=20") as Array<{
+      draft: boolean
+      prerelease: boolean
+      tag_name: string
+      assets: Array<{ name: string; browser_download_url: string }>
+    }>
+    const release = releases.find((candidate) => !candidate.draft && !candidate.prerelease)
+
+    if (!release) {
+      throw new Error("No stable DevPod release found")
+    }
+
+    const asset = release.assets.find((candidate) => candidate.name === "DevPod_linux_amd64.deb")
+
+    if (!asset) {
+      throw new Error("DevPod release is missing DevPod_linux_amd64.deb")
+    }
+
+    const version = release.tag_name.replace(/^v/, "")
+    let container = dag.container().from(NODE_IMAGE)
+    container = this.downloadAsset(container, asset.browser_download_url, `/tmp/${asset.name}`)
+
+    return {
+      version,
+      upstreamTag: release.tag_name,
+      container,
+      asset: {
+        assetName: asset.name,
+        artifactPath: `/tmp/${asset.name}`,
+        sha256: await this.sha256For(container, `/tmp/${asset.name}`),
+        sourceUrl: asset.browser_download_url,
+      },
+    }
+  }
+
+  private async buildT3CodeArtifact(): Promise<T3CodeBuild> {
+    const release = await this.fetchJson("https://api.github.com/repos/pingdotgg/t3code/releases/latest") as {
+      tag_name: string
+      assets: Array<{ name: string; browser_download_url: string }>
+    }
+    const asset = release.assets.find((candidate) => /^T3-Code-.*-x86_64\.AppImage$/.test(candidate.name))
+
+    if (!asset) {
+      throw new Error("T3 Code release is missing the x86_64 AppImage asset")
+    }
+
+    const version = release.tag_name.replace(/^v/, "")
+    let container = dag.container().from(NODE_IMAGE)
+    container = this.downloadAsset(container, asset.browser_download_url, `/tmp/${asset.name}`)
+
+    return {
+      version,
+      upstreamTag: release.tag_name,
+      container,
+      asset: {
+        assetName: asset.name,
+        artifactPath: `/tmp/${asset.name}`,
+        sha256: await this.sha256For(container, `/tmp/${asset.name}`),
+        sourceUrl: asset.browser_download_url,
+      },
+    }
+  }
+
+  private renderRccCask(build: RccBuild, releaseTag: string): string {
+    return this.renderRccCaskWithUrls(build, {
+      linux: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linux.assetName}`,
+      macosArm: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosArm.assetName}`,
+      macosIntel: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosIntel.assetName}`,
+    })
+  }
+
+  private renderRccCaskWithUrls(
+    build: RccBuild,
+    urls: { linux: string; macosArm: string; macosIntel: string },
+  ): string {
+    return [
+      "cask \"rcc\" do",
+      `  version \"${build.version}\"`,
+      "",
+      "  livecheck do",
+      "    skip \"Updated by the tap's GitHub Actions workflow.\"",
+      "  end",
+      "",
+      "  on_macos do",
+      "    on_arm do",
+      `      sha256 \"${build.macosArm.sha256}\"`,
+      `      url \"${urls.macosArm}\"`,
+      `      binary \"${build.macosArm.assetName}\", target: \"rcc\"`,
+      "    end",
+      "",
+      "    on_intel do",
+      `      sha256 \"${build.macosIntel.sha256}\"`,
+      `      url \"${urls.macosIntel}\"`,
+      `      binary \"${build.macosIntel.assetName}\", target: \"rcc\"`,
+      "    end",
+      "  end",
+      "",
+      "  on_linux do",
+      `    sha256 \"${build.linux.sha256}\"`,
+      `    url \"${urls.linux}\"`,
+      `    binary \"${build.linux.assetName}\", target: \"rcc\"`,
+      "  end",
+      "",
+      "  name \"RCC\"",
+      "  desc \"RCC - Repeatable Contained Code automation runtime\"",
+      "  homepage \"https://github.com/joshyorko/rcc\"",
+      "",
+      "  caveats <<~EOS",
+      "    If 'rcc' is not found after installation, refresh your shell's cache:",
+      "      hash -r",
+      "",
+      "    Or start a new terminal session.",
+      "  EOS",
+      "end",
+      "",
+    ].join("\n")
+  }
+
+  private renderActionServerCask(build: ActionServerBuild, releaseTag: string): string {
+    return this.renderActionServerCaskWithUrls(build, {
+      linux: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linux.assetName}`,
+      macosArm: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosArm.assetName}`,
+      macosIntel: build.macosIntel
+        ? `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosIntel.assetName}`
+        : undefined,
+    })
+  }
+
+  private renderActionServerCaskWithUrls(
+    build: ActionServerBuild,
+    urls: { linux: string; macosArm: string; macosIntel?: string },
+  ): string {
+    const macIntelBlock = build.macosIntel ? [
+      "    on_intel do",
+      `      sha256 \"${build.macosIntel.sha256}\"`,
+      `      url \"${urls.macosIntel}\"`,
+      `      binary \"${build.macosIntel.assetName}\", target: \"action-server\"`,
+      "    end",
+      "",
+    ] : []
+
+    return [
+      "cask \"action-server\" do",
+      `  version \"${build.version}\"`,
+      "",
+      "  livecheck do",
+      "    skip \"Updated by the tap's GitHub Actions workflow.\"",
+      "  end",
+      "",
+      "  on_macos do",
+      "    on_arm do",
+      `      sha256 \"${build.macosArm.sha256}\"`,
+      `      url \"${urls.macosArm}\"`,
+      `      binary \"${build.macosArm.assetName}\", target: \"action-server\"`,
+      "    end",
+      "",
+      ...macIntelBlock,
+      "  end",
+      "",
+      "  on_linux do",
+      `    sha256 \"${build.linux.sha256}\"`,
+      `    url \"${urls.linux}\"`,
+      `    binary \"${build.linux.assetName}\", target: \"action-server\"`,
+      "  end",
+      "",
+      "  name \"Action Server\"",
+      "  desc \"Sema4.ai Action Server - Host AI agent actions via HTTP/MCP\"",
+      "  homepage \"https://github.com/joshyorko/actions\"",
+      "",
+      "  caveats <<~EOS",
+      "    If 'action-server' is not found after installation, refresh your shell's cache:",
+      "      hash -r",
+      "",
+      "    Or start a new terminal session.",
+      "",
+      "    Usage:",
+      "      action-server --help",
+      "      action-server version",
+      "  EOS",
+      "end",
+      "",
+    ].join("\n")
+  }
+
+  private renderDevpodCask(baseContents: string, downloadUrl: string, version: string, sha256: string): string {
+    return baseContents
+      .replace(/version ".*"/, `version "${version}"`)
+      .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
+      .replace(/url ".*",\n\s+verified: ".*"/, `url "${downloadUrl}"`)
+      .replace(
+        /livecheck do\n(?:.*\n)*?\s+end\n/m,
+        "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
+      )
+  }
+
+  private renderT3CodeCask(baseContents: string, downloadUrl: string, version: string, sha256: string): string {
+    return baseContents
+      .replace(/version ".*"/, `version "${version}"`)
+      .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
+      .replace(/url ".*",\n\s+verified: ".*"/, `url "${downloadUrl}"`)
+      .replace(
+        /livecheck do\n(?:.*\n)*?\s+end\n/m,
+        "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
+      )
+  }
+
   @func()
   async ciCheck(packageId: string): Promise<string> {
     const tap = this.source
 
     switch (packageId) {
+      case "rcc": {
+        const build = await this.buildRccArtifacts()
+        const smokeTap = tap.withFile(
+          "Casks/rcc.rb",
+          dag.file(
+            "rcc.rb",
+            this.renderRccCaskWithUrls(build, {
+              linux: `file:///artifacts/${build.linux.assetName}`,
+              macosArm: `file:///artifacts/${build.macosArm.assetName}`,
+              macosIntel: `file:///artifacts/${build.macosIntel.assetName}`,
+            }),
+          ),
+        )
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
+          .withFile(`/artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
+          .withFile(`/artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("rcc"),
+              "brew install --cask test/tap/rcc",
+              "test -x \"$(brew --prefix)/bin/rcc\"",
+              "rcc --version",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "action-server": {
+        const build = await this.buildActionServerArtifacts()
+        const smokeTap = tap.withFile(
+          "Casks/action-server.rb",
+          dag.file(
+            "action-server.rb",
+            this.renderActionServerCaskWithUrls(build, {
+              linux: `file:///artifacts/${build.linux.assetName}`,
+              macosArm: `file:///artifacts/${build.macosArm.assetName}`,
+              macosIntel: build.macosIntel ? `file:///artifacts/${build.macosIntel.assetName}` : undefined,
+            }),
+          ),
+        )
+
+        let smoke = dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
+          .withFile(`/artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
+
+        if (build.macosIntel) {
+          smoke = smoke.withFile(`/artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
+        }
+
+        return smoke.withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("action-server"),
+              "brew install --cask test/tap/action-server",
+              "test -x \"$(brew --prefix)/bin/action-server\"",
+              "action-server version",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "devpod-linux": {
+        const build = await this.buildDevpodArtifact()
+        const caskContents = await tap.file("Casks/devpod-linux.rb").contents()
+        const updatedCask = this.renderDevpodCask(
+          caskContents,
+          `file:///artifacts/${build.asset.assetName}`,
+          build.version,
+          build.asset.sha256,
+        )
+        const smokeTap = tap.withFile("Casks/devpod-linux.rb", dag.file("devpod-linux.rb", updatedCask))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withUser("root")
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withExec([
+            "bash",
+            "-lc",
+            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils zstd && rm -rf /var/lib/apt/lists/*",
+          ])
+          .withUser("linuxbrew")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("devpod-linux"),
+              "brew install --cask test/tap/devpod-linux",
+              "test -x \"$(brew --prefix)/bin/devpod\"",
+              "test -x \"$(brew --prefix)/bin/devpod-desktop\"",
+              "test -f \"$HOME/.local/share/applications/sh.loft.devpod.desktop\"",
+              "grep -q 'Exec=.*/bin/devpod-desktop %U' \"$HOME/.local/share/applications/sh.loft.devpod.desktop\"",
+              "grep -q 'x-scheme-handler/devpod' \"$HOME/.local/share/applications/sh.loft.devpod.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png\"",
+              "devpod version",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
       case "t3code-cli-main": {
         const build = await this.buildT3Artifact(tap, "main")
         const sha256 = (
@@ -395,6 +943,42 @@ export class TapPipeline {
               "brew install test/tap/t3code-cli-main",
               "brew test test/tap/t3code-cli-main",
               "t3 --help",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "t3-code-linux": {
+        const build = await this.buildT3CodeArtifact()
+        const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
+        const updatedCask = this.renderT3CodeCask(
+          caskContents,
+          `file:///artifacts/${build.asset.assetName}`,
+          build.version,
+          build.asset.sha256,
+        )
+        const smokeTap = tap.withFile("Casks/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("t3-code-linux"),
+              "brew install --cask test/tap/t3-code-linux",
+              "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
+              "test -f \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
+              "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/1024x1024/apps/t3-code-linux.png\"",
             ].join("\n"),
           ])
           .stdout()
@@ -519,6 +1103,73 @@ export class TapPipeline {
     const tap = this.source
 
     switch (packageId) {
+      case "rcc": {
+        const build = await this.buildRccArtifacts()
+        return json(
+          releaseMetadataForPackage(packageId, {
+            version: build.version,
+            releaseTag: `rcc-${build.version}`,
+            assetName: build.linux.assetName,
+            artifactSha256: build.linux.sha256,
+            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/rcc-${build.version}/${build.linux.assetName}`,
+            releaseTitle: `RCC ${build.version}`,
+            releaseNotes: `Release bundle mirrored from joshyorko/rcc v${build.version}`,
+            commitMessage: `Update rcc cask to v${build.version}`,
+            upstream: {
+              kind: "github_release",
+              repo: "https://github.com/joshyorko/rcc",
+              assetPrefix: "rcc-",
+              version: build.version,
+              commit: `v${build.version}`,
+            },
+          }),
+        )
+      }
+      case "action-server": {
+        const build = await this.buildActionServerArtifacts()
+        return json(
+          releaseMetadataForPackage(packageId, {
+            version: build.version,
+            releaseTag: `action-server-${build.version}`,
+            assetName: build.linux.assetName,
+            artifactSha256: build.linux.sha256,
+            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/action-server-${build.version}/${build.linux.assetName}`,
+            releaseTitle: `Action Server ${build.version}`,
+            releaseNotes: `Release bundle mirrored from ${build.upstreamTag}`,
+            commitMessage: `Update action-server cask to v${build.version}`,
+            upstream: {
+              kind: "github_release",
+              repo: "https://github.com/joshyorko/actions",
+              assetPrefix: "action-server-",
+              tagPrefix: "action-server-v",
+              version: build.version,
+              commit: build.upstreamTag,
+            },
+          }),
+        )
+      }
+      case "devpod-linux": {
+        const build = await this.buildDevpodArtifact()
+        return json(
+          releaseMetadataForPackage(packageId, {
+            version: build.version,
+            releaseTag: `devpod-linux-${build.version}`,
+            assetName: build.asset.assetName,
+            artifactSha256: build.asset.sha256,
+            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/devpod-linux-${build.version}/${build.asset.assetName}`,
+            releaseTitle: `DevPod Linux ${build.version}`,
+            releaseNotes: `Release bundle mirrored from skevetter/devpod ${build.upstreamTag}`,
+            commitMessage: `Update devpod-linux cask to v${build.version}`,
+            upstream: {
+              kind: "github_release",
+              repo: "https://github.com/skevetter/devpod",
+              assetName: build.asset.assetName,
+              version: build.version,
+              commit: build.upstreamTag,
+            },
+          }),
+        )
+      }
       case "t3code-cli-main": {
         const build = await this.buildT3Artifact(tap, "main")
         const sha256 = (
@@ -540,6 +1191,28 @@ export class TapPipeline {
               ref: "main",
               version: build.version,
               commit: build.commit,
+            },
+          }),
+        )
+      }
+      case "t3-code-linux": {
+        const build = await this.buildT3CodeArtifact()
+        return json(
+          releaseMetadataForPackage(packageId, {
+            version: build.version,
+            releaseTag: `t3-code-linux-${build.version}`,
+            assetName: build.asset.assetName,
+            artifactSha256: build.asset.sha256,
+            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3-code-linux-${build.version}/${build.asset.assetName}`,
+            releaseTitle: `T3 Code Linux ${build.version}`,
+            releaseNotes: `Release bundle mirrored from pingdotgg/t3code ${build.upstreamTag}`,
+            commitMessage: `Update t3-code-linux cask to v${build.version}`,
+            upstream: {
+              kind: "github_release",
+              repo: "https://github.com/pingdotgg/t3code",
+              assetPrefix: "T3-Code-",
+              version: build.version,
+              commit: build.upstreamTag,
             },
           }),
         )
@@ -604,6 +1277,63 @@ export class TapPipeline {
     const tap = this.source
 
     switch (packageId) {
+      case "rcc": {
+        const build = await this.buildRccArtifacts()
+        const releaseTag = `rcc-${build.version}`
+        const renderedCask = this.renderRccCask(build, releaseTag)
+        const release = JSON.parse(
+          await this.releaseMetadata(packageId),
+        ) as Record<string, unknown>
+
+        return dag.directory()
+          .withFile(`artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
+          .withFile(`artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
+          .withFile(`artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
+          .withFile("homebrew/rcc.rb", dag.file("rcc.rb", renderedCask))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "action-server": {
+        const build = await this.buildActionServerArtifacts()
+        const releaseTag = `action-server-${build.version}`
+        const renderedCask = this.renderActionServerCask(build, releaseTag)
+        const release = JSON.parse(
+          await this.releaseMetadata(packageId),
+        ) as Record<string, unknown>
+
+        let bundle = dag.directory()
+          .withFile(`artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
+          .withFile(`artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
+          .withFile("homebrew/action-server.rb", dag.file("action-server.rb", renderedCask))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+
+        if (build.macosIntel) {
+          bundle = bundle.withFile(`artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
+        }
+
+        return bundle
+      }
+      case "devpod-linux": {
+        const build = await this.buildDevpodArtifact()
+        const releaseTag = `devpod-linux-${build.version}`
+        const caskContents = await tap.file("Casks/devpod-linux.rb").contents()
+        const updatedCask = this.renderDevpodCask(
+          caskContents,
+          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.asset.assetName}`,
+          build.version,
+          build.asset.sha256,
+        )
+        const release = JSON.parse(
+          await this.releaseMetadata(packageId),
+        ) as Record<string, unknown>
+
+        return dag.directory()
+          .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withFile("homebrew/devpod-linux.rb", dag.file("devpod-linux.rb", updatedCask))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
       case "t3code-cli-main": {
         const build = await this.buildT3Artifact(tap, "main")
         const sha256 = (
@@ -621,6 +1351,26 @@ export class TapPipeline {
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "t3-code-linux": {
+        const build = await this.buildT3CodeArtifact()
+        const releaseTag = `t3-code-linux-${build.version}`
+        const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
+        const updatedCask = this.renderT3CodeCask(
+          caskContents,
+          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.asset.assetName}`,
+          build.version,
+          build.asset.sha256,
+        )
+        const release = JSON.parse(
+          await this.releaseMetadata(packageId),
+        ) as Record<string, unknown>
+
+        return dag.directory()
+          .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withFile("homebrew/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
