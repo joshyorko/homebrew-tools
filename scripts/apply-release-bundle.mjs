@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs"
-import { dirname, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 function parseArgs(argv) {
   const args = {}
@@ -47,12 +47,26 @@ function main() {
     throw new Error("release.json is missing homebrew_path")
   }
 
+  if (isAbsolute(homebrewPath) || !/^(Casks|Formula)\//.test(homebrewPath)) {
+    throw new Error(`release.json contains an invalid homebrew_path: ${homebrewPath}`)
+  }
+
   const renderedSource = join(bundleDir, "homebrew", homebrewPath.split("/").pop())
   if (!existsSync(renderedSource)) {
     throw new Error(`Missing rendered Homebrew file at ${renderedSource}`)
   }
 
-  const destination = join(repoDir, homebrewPath)
+  const destination = resolve(repoDir, homebrewPath)
+  const destinationRelative = relative(repoDir, destination)
+
+  if (
+    destinationRelative.startsWith("..") ||
+    destinationRelative.includes("../") ||
+    destinationRelative === ".."
+  ) {
+    throw new Error(`Refusing to write outside the repository: ${homebrewPath}`)
+  }
+
   mkdirSync(dirname(destination), { recursive: true })
   cpSync(renderedSource, destination)
 

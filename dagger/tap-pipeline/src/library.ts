@@ -121,6 +121,11 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["t3-code-linux", ["Casks/t3-code-linux.rb"]],
 ]
 
+const PLATFORM_PATH_PREFIXES = [
+  "dagger/tap-pipeline/",
+  "scripts/apply-release-bundle.mjs",
+]
+
 export function packageSummaries(): PackageRegistryEntry[] {
   return PACKAGE_REGISTRY.map((entry) => ({ ...entry }))
 }
@@ -137,6 +142,10 @@ export function changedPackagesFromPaths(paths: string[]): string[] {
   }
 
   return [...seen].sort()
+}
+
+export function platformPathsChanged(paths: string[]): boolean {
+  return paths.some((path) => PLATFORM_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix)))
 }
 
 export function changedCiPackagesFromPaths(paths: string[]): string[] {
@@ -156,7 +165,15 @@ function cadenceMatches(cadence: Cadence, now: Date): boolean {
     return now.getUTCHours() === cadence.daily.hour && now.getUTCMinutes() === cadence.daily.minute
   }
 
-  return now.getUTCMinutes() === cadence.minute && now.getUTCHours() % (cadence.everyMinutes / 60) === 0
+  if (cadence.everyMinutes % 60 !== 0) {
+    throw new Error(
+      `Invalid cadence: everyMinutes=${cadence.everyMinutes} must be a multiple of 60 for hourly planner matching`,
+    )
+  }
+
+  const everyHours = cadence.everyMinutes / 60
+
+  return now.getUTCMinutes() === cadence.minute && now.getUTCHours() % everyHours === 0
 }
 
 export function packagesDueAt(now: Date): PackageRegistryEntry[] {

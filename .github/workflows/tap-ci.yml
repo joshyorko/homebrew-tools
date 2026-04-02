@@ -31,8 +31,20 @@ permissions:
 
 env:
   DAGGER_VERSION: "0.20.3"
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
+  tap-pipeline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run tap-pipeline test suite
+        run: |
+          set -euo pipefail
+          npm test --prefix dagger/tap-pipeline
+
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -64,7 +76,9 @@ jobs:
           echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   ci:
-    needs: plan
+    needs:
+      - tap-pipeline-tests
+      - plan
     if: needs.plan.outputs.has_packages == 'true'
     runs-on: ubuntu-latest
     strategy:
@@ -92,7 +106,9 @@ jobs:
           path: ${{ runner.temp }}/ci.log
 
   no-op:
-    needs: plan
+    needs:
+      - tap-pipeline-tests
+      - plan
     if: needs.plan.outputs.has_packages != 'true'
     runs-on: ubuntu-latest
     steps:

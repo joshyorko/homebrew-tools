@@ -6,6 +6,7 @@ import {
   changedCiPackagesFromPaths,
   changedPackagesFromPaths,
   packagesDueAt,
+  platformPathsChanged,
 } from "../src/library.ts"
 
 test("packagesDueAt respects the daily T3 cadence", () => {
@@ -50,4 +51,10 @@ test("every PR-enabled package has a changed-path trigger", () => {
       `expected changed path fixture for ${entry.id}`,
     )
   }
+})
+
+test("platformPathsChanged detects shared orchestration changes", () => {
+  assert.equal(platformPathsChanged(["dagger/tap-pipeline/src/index.ts"]), true)
+  assert.equal(platformPathsChanged(["scripts/apply-release-bundle.mjs"]), true)
+  assert.equal(platformPathsChanged(["README.md"]), false)
 })

@@ -10,6 +10,7 @@ const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
 const NODE_IMAGE = "node:24-bookworm"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
+const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
@@ -236,6 +237,156 @@ export class TapPipeline {
       .withEnvVariable("PATH", "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
+  private githubApiContainer(): Container {
+    let container = dag.container().from(NODE_IMAGE)
+
+    if (GITHUB_AUTH_TOKEN) {
+      container = container.withEnvVariable("GH_TOKEN", GITHUB_AUTH_TOKEN)
+    }
+
+    return container
+  }
+
+  private rccReleaseMetadata(build: RccBuild): Record<string, unknown> {
+    return releaseMetadataForPackage("rcc", {
+      version: build.version,
+      releaseTag: `rcc-${build.version}`,
+      assetName: build.linux.assetName,
+      artifactSha256: build.linux.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/rcc-${build.version}/${build.linux.assetName}`,
+      releaseTitle: `RCC ${build.version}`,
+      releaseNotes: `Release bundle mirrored from joshyorko/rcc v${build.version}`,
+      commitMessage: `Update rcc cask to v${build.version}`,
+      upstream: {
+        kind: "github_release",
+        repo: "https://github.com/joshyorko/rcc",
+        assetPrefix: "rcc-",
+        version: build.version,
+        commit: `v${build.version}`,
+      },
+    })
+  }
+
+  private actionServerReleaseMetadata(build: ActionServerBuild): Record<string, unknown> {
+    return releaseMetadataForPackage("action-server", {
+      version: build.version,
+      releaseTag: `action-server-${build.version}`,
+      assetName: build.linux.assetName,
+      artifactSha256: build.linux.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/action-server-${build.version}/${build.linux.assetName}`,
+      releaseTitle: `Action Server ${build.version}`,
+      releaseNotes: `Release bundle mirrored from ${build.upstreamTag}`,
+      commitMessage: `Update action-server cask to v${build.version}`,
+      upstream: {
+        kind: "github_release",
+        repo: "https://github.com/joshyorko/actions",
+        assetPrefix: "action-server-",
+        tagPrefix: "action-server-v",
+        version: build.version,
+        commit: build.upstreamTag,
+      },
+    })
+  }
+
+  private devpodReleaseMetadata(build: DevpodBuild): Record<string, unknown> {
+    return releaseMetadataForPackage("devpod-linux", {
+      version: build.version,
+      releaseTag: `devpod-linux-${build.version}`,
+      assetName: build.asset.assetName,
+      artifactSha256: build.asset.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/devpod-linux-${build.version}/${build.asset.assetName}`,
+      releaseTitle: `DevPod Linux ${build.version}`,
+      releaseNotes: `Release bundle mirrored from skevetter/devpod ${build.upstreamTag}`,
+      commitMessage: `Update devpod-linux cask to v${build.version}`,
+      upstream: {
+        kind: "github_release",
+        repo: "https://github.com/skevetter/devpod",
+        assetName: build.asset.assetName,
+        version: build.version,
+        commit: build.upstreamTag,
+      },
+    })
+  }
+
+  private t3codeCliReleaseMetadata(build: T3Build, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("t3code-cli-main", {
+      version: build.version,
+      releaseTag: `t3code-cli-main-${build.version}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3code-cli-main-${build.version}/${build.assetName}`,
+      releaseTitle: `T3 Code CLI main ${build.version}`,
+      releaseNotes: `CLI snapshot from pingdotgg/t3code@${build.commit}`,
+      commitMessage: `Update t3code-cli-main formula to ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/pingdotgg/t3code",
+        ref: "main",
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
+  private t3CodeReleaseMetadata(build: T3CodeBuild): Record<string, unknown> {
+    return releaseMetadataForPackage("t3-code-linux", {
+      version: build.version,
+      releaseTag: `t3-code-linux-${build.version}`,
+      assetName: build.asset.assetName,
+      artifactSha256: build.asset.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3-code-linux-${build.version}/${build.asset.assetName}`,
+      releaseTitle: `T3 Code Linux ${build.version}`,
+      releaseNotes: `Release bundle mirrored from pingdotgg/t3code ${build.upstreamTag}`,
+      commitMessage: `Update t3-code-linux cask to v${build.version}`,
+      upstream: {
+        kind: "github_release",
+        repo: "https://github.com/pingdotgg/t3code",
+        assetPrefix: "T3-Code-",
+        version: build.version,
+        commit: build.upstreamTag,
+      },
+    })
+  }
+
+  private vscodeReleaseMetadata(build: VscodeBuild, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("vscode-insiders-linux", {
+      version: build.caskVersion,
+      releaseTag: `vscode-insiders-linux-${build.caskVersion.replace(/,/g, "-")}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/vscode-insiders-linux-${build.caskVersion.replace(/,/g, "-")}/${build.assetName}`,
+      releaseTitle: `VS Code Insiders Linux ${build.caskVersion}`,
+      releaseNotes: `Packaged from official RPM ${build.resolvedUrl} (${build.packageVersion}-${build.releaseBuild})`,
+      commitMessage: `Update vscode-insiders-linux cask to ${build.caskVersion}`,
+      upstream: {
+        kind: "rpm",
+        sourceUrl: build.resolvedUrl,
+        version: build.caskVersion,
+        commit: build.commitSha,
+      },
+    })
+  }
+
+  private voxtypeReleaseMetadata(build: VoxtypeBuild, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("voxtype", {
+      version: build.version,
+      releaseTag: `voxtype-${build.version}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/voxtype-${build.version}/${build.assetName}`,
+      releaseTitle: `Voxtype ${build.version} Homebrew artifact`,
+      releaseNotes: `Homebrew artifact built from peteonrails/voxtype@${build.version}`,
+      commitMessage: `Update voxtype formula to ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/peteonrails/voxtype",
+        ref: "refs/tags/v0.6.4",
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
   private async buildT3Artifact(tap: Directory, ref: string, version?: string): Promise<T3Build> {
     const upstreamRef = dag.git("https://github.com/pingdotgg/t3code").ref(ref)
     const commit = await upstreamRef.commit()
@@ -426,16 +577,18 @@ export class TapPipeline {
   }
 
   private async fetchJson(url: string): Promise<unknown> {
-    const output = await dag
-      .container()
-      .from(NODE_IMAGE)
+    const output = await this.githubApiContainer()
       .withExec([
         "node",
         "--input-type=module",
         "-e",
         [
           "const url = process.argv[1]",
-          "const response = await fetch(url, { headers: { 'User-Agent': 'tap-pipeline' } })",
+          "const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'tap-pipeline' }",
+          "if (process.env.GH_TOKEN) {",
+          "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
+          "}",
+          "const response = await fetch(url, { headers })",
           "if (!response.ok) {",
           "  throw new Error(`Failed to fetch ${url}: ${response.status}`)",
           "}",
@@ -449,14 +602,22 @@ export class TapPipeline {
   }
 
   private downloadAsset(container: Container, url: string, path: string): Container {
-    return container.withExec([
+    const authenticatedContainer = GITHUB_AUTH_TOKEN
+      ? container.withEnvVariable("GH_TOKEN", GITHUB_AUTH_TOKEN)
+      : container
+
+    return authenticatedContainer.withExec([
       "node",
       "--input-type=module",
       "-e",
       [
         "import { writeFile } from 'node:fs/promises'",
         "const [url, path] = process.argv.slice(1)",
-        "const response = await fetch(url, { headers: { 'User-Agent': 'tap-pipeline' } })",
+        "const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'tap-pipeline' }",
+        "if (process.env.GH_TOKEN) {",
+        "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
+        "}",
+        "const response = await fetch(url, { headers })",
         "if (!response.ok) {",
         "  throw new Error(`Failed to download ${url}: ${response.status}`)",
         "}",
@@ -494,7 +655,7 @@ export class TapPipeline {
     const macosArmAsset = resolveAsset("rcc-macosarm64")
     const macosIntelAsset = resolveAsset("rcc-macos64")
 
-    let container = dag.container().from(NODE_IMAGE)
+    let container = this.githubApiContainer()
     container = this.downloadAsset(container, linuxAsset.browser_download_url, "/tmp/rcc-linux64")
     container = this.downloadAsset(container, macosArmAsset.browser_download_url, "/tmp/rcc-macosarm64")
     container = this.downloadAsset(container, macosIntelAsset.browser_download_url, "/tmp/rcc-macos64")
@@ -546,7 +707,7 @@ export class TapPipeline {
 
     const macosIntelAsset = resolveOptionalAsset("action-server-macos64")
 
-    let container = dag.container().from(NODE_IMAGE)
+    let container = this.githubApiContainer()
     container = this.downloadAsset(container, linuxAsset.browser_download_url, "/tmp/action-server-linux64")
     container = this.downloadAsset(container, macosArmAsset.browser_download_url, "/tmp/action-server-macosarm64")
 
@@ -599,7 +760,7 @@ export class TapPipeline {
     }
 
     const version = release.tag_name.replace(/^v/, "")
-    let container = dag.container().from(NODE_IMAGE)
+    let container = this.githubApiContainer()
     container = this.downloadAsset(container, asset.browser_download_url, `/tmp/${asset.name}`)
 
     return {
@@ -627,7 +788,7 @@ export class TapPipeline {
     }
 
     const version = release.tag_name.replace(/^v/, "")
-    let container = dag.container().from(NODE_IMAGE)
+    let container = this.githubApiContainer()
     container = this.downloadAsset(container, asset.browser_download_url, `/tmp/${asset.name}`)
 
     return {
@@ -1112,166 +1273,40 @@ export class TapPipeline {
     switch (packageId) {
       case "rcc": {
         const build = await this.buildRccArtifacts()
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.version,
-            releaseTag: `rcc-${build.version}`,
-            assetName: build.linux.assetName,
-            artifactSha256: build.linux.sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/rcc-${build.version}/${build.linux.assetName}`,
-            releaseTitle: `RCC ${build.version}`,
-            releaseNotes: `Release bundle mirrored from joshyorko/rcc v${build.version}`,
-            commitMessage: `Update rcc cask to v${build.version}`,
-            upstream: {
-              kind: "github_release",
-              repo: "https://github.com/joshyorko/rcc",
-              assetPrefix: "rcc-",
-              version: build.version,
-              commit: `v${build.version}`,
-            },
-          }),
-        )
+        return json(this.rccReleaseMetadata(build))
       }
       case "action-server": {
         const build = await this.buildActionServerArtifacts()
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.version,
-            releaseTag: `action-server-${build.version}`,
-            assetName: build.linux.assetName,
-            artifactSha256: build.linux.sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/action-server-${build.version}/${build.linux.assetName}`,
-            releaseTitle: `Action Server ${build.version}`,
-            releaseNotes: `Release bundle mirrored from ${build.upstreamTag}`,
-            commitMessage: `Update action-server cask to v${build.version}`,
-            upstream: {
-              kind: "github_release",
-              repo: "https://github.com/joshyorko/actions",
-              assetPrefix: "action-server-",
-              tagPrefix: "action-server-v",
-              version: build.version,
-              commit: build.upstreamTag,
-            },
-          }),
-        )
+        return json(this.actionServerReleaseMetadata(build))
       }
       case "devpod-linux": {
         const build = await this.buildDevpodArtifact()
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.version,
-            releaseTag: `devpod-linux-${build.version}`,
-            assetName: build.asset.assetName,
-            artifactSha256: build.asset.sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/devpod-linux-${build.version}/${build.asset.assetName}`,
-            releaseTitle: `DevPod Linux ${build.version}`,
-            releaseNotes: `Release bundle mirrored from skevetter/devpod ${build.upstreamTag}`,
-            commitMessage: `Update devpod-linux cask to v${build.version}`,
-            upstream: {
-              kind: "github_release",
-              repo: "https://github.com/skevetter/devpod",
-              assetName: build.asset.assetName,
-              version: build.version,
-              commit: build.upstreamTag,
-            },
-          }),
-        )
+        return json(this.devpodReleaseMetadata(build))
       }
       case "t3code-cli-main": {
         const build = await this.buildT3Artifact(tap, "main")
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.version,
-            releaseTag: `t3code-cli-main-${build.version}`,
-            assetName: build.assetName,
-            artifactSha256: sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3code-cli-main-${build.version}/${build.assetName}`,
-            releaseTitle: `T3 Code CLI main ${build.version}`,
-            releaseNotes: `CLI snapshot from pingdotgg/t3code@${build.commit}`,
-            commitMessage: `Update t3code-cli-main formula to ${build.version}`,
-            upstream: {
-              kind: "git",
-              repo: "https://github.com/pingdotgg/t3code",
-              ref: "main",
-              version: build.version,
-              commit: build.commit,
-            },
-          }),
-        )
+        return json(this.t3codeCliReleaseMetadata(build, sha256))
       }
       case "t3-code-linux": {
         const build = await this.buildT3CodeArtifact()
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.version,
-            releaseTag: `t3-code-linux-${build.version}`,
-            assetName: build.asset.assetName,
-            artifactSha256: build.asset.sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3-code-linux-${build.version}/${build.asset.assetName}`,
-            releaseTitle: `T3 Code Linux ${build.version}`,
-            releaseNotes: `Release bundle mirrored from pingdotgg/t3code ${build.upstreamTag}`,
-            commitMessage: `Update t3-code-linux cask to v${build.version}`,
-            upstream: {
-              kind: "github_release",
-              repo: "https://github.com/pingdotgg/t3code",
-              assetPrefix: "T3-Code-",
-              version: build.version,
-              commit: build.upstreamTag,
-            },
-          }),
-        )
+        return json(this.t3CodeReleaseMetadata(build))
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.caskVersion,
-            releaseTag: `vscode-insiders-linux-${build.caskVersion.replace(/,/g, "-")}`,
-            assetName: build.assetName,
-            artifactSha256: sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/vscode-insiders-linux-${build.caskVersion.replace(/,/g, "-")}/${build.assetName}`,
-            releaseTitle: `VS Code Insiders Linux ${build.caskVersion}`,
-            releaseNotes: `Packaged from official RPM ${build.resolvedUrl} (${build.packageVersion}-${build.releaseBuild})`,
-            commitMessage: `Update vscode-insiders-linux cask to ${build.caskVersion}`,
-            upstream: {
-              kind: "rpm",
-              sourceUrl: build.resolvedUrl,
-              version: build.caskVersion,
-              commit: build.commitSha,
-            },
-          }),
-        )
+        return json(this.vscodeReleaseMetadata(build, sha256))
       }
       case "voxtype": {
         const build = await this.buildVoxtypeArtifact(tap)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        return json(
-          releaseMetadataForPackage(packageId, {
-            version: build.version,
-            releaseTag: `voxtype-${build.version}`,
-            assetName: build.assetName,
-            artifactSha256: sha256,
-            downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/voxtype-${build.version}/${build.assetName}`,
-            releaseTitle: `Voxtype ${build.version} Homebrew artifact`,
-            releaseNotes: `Homebrew artifact built from peteonrails/voxtype@${build.version}`,
-            commitMessage: `Update voxtype formula to ${build.version}`,
-            upstream: {
-              kind: "git",
-              repo: "https://github.com/peteonrails/voxtype",
-              ref: "refs/tags/v0.6.4",
-              version: build.version,
-              commit: build.commit,
-            },
-          }),
-        )
+        return json(this.voxtypeReleaseMetadata(build, sha256))
       }
       default:
         throw new Error(`releaseMetadata is not implemented for package: ${packageId}`)
@@ -1288,9 +1323,7 @@ export class TapPipeline {
         const build = await this.buildRccArtifacts()
         const releaseTag = `rcc-${build.version}`
         const renderedCask = this.renderRccCask(build, releaseTag)
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.rccReleaseMetadata(build)
 
         return dag.directory()
           .withFile(`artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
@@ -1304,9 +1337,7 @@ export class TapPipeline {
         const build = await this.buildActionServerArtifacts()
         const releaseTag = `action-server-${build.version}`
         const renderedCask = this.renderActionServerCask(build, releaseTag)
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.actionServerReleaseMetadata(build)
 
         let bundle = dag.directory()
           .withFile(`artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
@@ -1331,9 +1362,7 @@ export class TapPipeline {
           build.version,
           build.asset.sha256,
         )
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.devpodReleaseMetadata(build)
 
         return dag.directory()
           .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
@@ -1351,9 +1380,7 @@ export class TapPipeline {
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.t3codeCliReleaseMetadata(build, sha256)
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
@@ -1371,9 +1398,7 @@ export class TapPipeline {
           build.version,
           build.asset.sha256,
         )
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.t3CodeReleaseMetadata(build)
 
         return dag.directory()
           .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
@@ -1391,9 +1416,7 @@ export class TapPipeline {
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
           .replace(/version ".*"/, `version "${build.caskVersion}"`)
           .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.vscodeReleaseMetadata(build, sha256)
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
@@ -1411,9 +1434,7 @@ export class TapPipeline {
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const release = JSON.parse(
-          await this.releaseMetadata(packageId),
-        ) as Record<string, unknown>
+        const release = this.voxtypeReleaseMetadata(build, sha256)
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))

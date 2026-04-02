@@ -2,7 +2,7 @@ name: Tap Auto Update
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "0,17,41 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -10,6 +10,7 @@ permissions:
 
 env:
   DAGGER_VERSION: "0.20.3"
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   plan:
@@ -68,8 +69,6 @@ jobs:
           path: ${{ runner.temp }}/bundle
 
       - name: Publish release asset and update tap file
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           release_json="$RUNNER_TEMP/bundle/release.json"
