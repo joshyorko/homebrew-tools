@@ -61,20 +61,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Dagger CLI
-        run: |
-          set -euo pipefail
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Plan changed packages
+        id: dagger_plan
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          module: ./dagger/tap-pipeline
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          enable-github-summary: "true"
+          call: >-
+            detect-changed-packages
+            --base-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
+            --head-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Build matrix from planner output
         id: plan
-        env:
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          packages_json="$(dagger -s -m ./dagger/tap-pipeline call detect-changed-packages --base-ref="$BASE_REF" --head-ref="$HEAD_REF")"
+          packages_json='${{ steps.dagger_plan.outputs.output }}'
           matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .}))}')"
           count="$(jq '.include | length' <<<"$matrix")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -93,22 +97,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dagger CLI
-        run: |
-          set -euo pipefail
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Run package CI through Dagger
-        run: |
-          set -euo pipefail
-          dagger -s -m ./dagger/tap-pipeline call ci-check --package-id="${{ matrix.package_id }}" > "$RUNNER_TEMP/ci.log"
-
-      - name: Upload CI log
-        uses: actions/upload-artifact@v4
+        uses: dagger/dagger-for-github@v8.4.1
         with:
-          name: ci-log-${{ matrix.package_id }}
-          path: ${{ runner.temp }}/ci.log
+          version: ${{ env.DAGGER_VERSION }}
+          module: ./dagger/tap-pipeline
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          enable-github-summary: "true"
+          call: >-
+            ci-check
+            --package-id="${{ matrix.package_id }}"
 
   no-op:
     needs:

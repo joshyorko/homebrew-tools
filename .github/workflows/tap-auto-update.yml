@@ -22,18 +22,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dagger CLI
-        run: |
-          set -euo pipefail
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Plan due packages
+        id: dagger_plan
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          module: ./dagger/tap-pipeline
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          enable-github-summary: "true"
+          call: >-
+            plan-updates
+            --now-iso="$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")"
+
+      - name: Build matrix from planner output
         id: plan
         run: |
           set -euo pipefail
-          now_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          packages_json="$(dagger -s -m ./dagger/tap-pipeline call plan-updates --now-iso="$now_iso")"
+          packages_json='${{ steps.dagger_plan.outputs.output }}'
           matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .id}))}')"
           count="$(jq '.include | length' <<<"$matrix")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -51,16 +56,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dagger CLI
-        run: |
-          set -euo pipefail
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Export release bundle
-        run: |
-          set -euo pipefail
-          dagger -s -m ./dagger/tap-pipeline call -o "$RUNNER_TEMP/bundle" release-bundle --package-id="${{ matrix.package_id }}"
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          module: ./dagger/tap-pipeline
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          enable-github-summary: "true"
+          call: >-
+            -o "$RUNNER_TEMP/bundle"
+            release-bundle
+            --package-id="${{ matrix.package_id }}"
 
       - name: Upload release bundle artifact
         uses: actions/upload-artifact@v4
