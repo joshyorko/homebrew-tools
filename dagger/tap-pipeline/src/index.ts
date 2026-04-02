@@ -138,7 +138,7 @@ export class TapPipeline {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl unzip python3 make g++ jq tar && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl unzip python3 make g++ jq tar && npm install -g node-gyp && rm -rf /var/lib/apt/lists/*",
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
       .withEnvVariable("PATH", "/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
