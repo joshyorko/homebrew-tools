@@ -13,7 +13,7 @@ brew tap joshyorko/tools
 brew install --cask rcc
 ```
 
-## Available Casks
+## Available Packages
 
 ### RCC (Repeatable Contained Code)
 
@@ -33,6 +33,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
+| `brew install joshyorko/tools/voxtype` | Install Voxtype |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
 | `brew uninstall --cask joshyorko/tools/rcc` | Uninstall |
 
@@ -131,6 +132,39 @@ That smoke test is the real end-to-end path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
+
+### Voxtype (Formula)
+
+Voxtype packaged for Linux Homebrew as a pinned release artifact built from upstream source.
+The tap's Dagger workflow compiles Voxtype from the latest upstream GitHub release tag,
+packages a Homebrew-friendly tarball, smoke-tests installation through Linuxbrew, uploads
+that tarball to this repository's releases, and updates the formula to point at the new asset.
+
+> [!NOTE]
+> Use the full tap path to make it explicit that this package is delivered from this tap's
+> Linux-focused build pipeline:
+> ```bash
+> brew install joshyorko/tools/voxtype
+> ```
+
+```bash
+brew install joshyorko/tools/voxtype
+voxtype --version
+voxtype setup --download
+voxtype setup systemd
+```
+
+The tap also includes a reusable Dagger smoke test for this packaging path:
+
+```bash
+dagger -m ./dagger/voxtype-smoke call smoke-test --tap=.
+```
+
+That smoke test exercises the real delivery path:
+- build upstream `voxtype` from the tagged release source
+- package the tarball the formula consumes
+- install the formula through Linuxbrew in-container
+- run `brew test` and `voxtype --version`
 
 ### VS Code Insiders (Linux Cask)
 
