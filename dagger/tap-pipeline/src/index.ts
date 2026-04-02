@@ -1375,12 +1375,12 @@ export class TapPipeline {
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
+        const release = this.t3codeCliReleaseMetadata(build, sha256)
         const formulaContents = await tap.file("Formula/t3code-cli-main.rb").contents()
         const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const release = this.t3codeCliReleaseMetadata(build, sha256)
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
@@ -1411,12 +1411,12 @@ export class TapPipeline {
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
+        const release = this.vscodeReleaseMetadata(build, sha256)
         const caskContents = await tap.file("Casks/vscode-insiders-linux.rb").contents()
         const updatedCask = caskContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
           .replace(/version ".*"/, `version "${build.caskVersion}"`)
           .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
-        const release = this.vscodeReleaseMetadata(build, sha256)
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
@@ -1429,12 +1429,12 @@ export class TapPipeline {
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
+        const release = this.voxtypeReleaseMetadata(build, sha256)
         const formulaContents = await tap.file("Formula/voxtype.rb").contents()
         const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const release = this.voxtypeReleaseMetadata(build, sha256)
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
