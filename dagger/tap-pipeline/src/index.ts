@@ -80,7 +80,14 @@ async function gitChangedFiles(source: Directory, gitDir: Directory, baseRef: st
     .withExec([
       "bash",
       "-lc",
-      `set -euo pipefail; git diff --name-only "${baseRef}...${headRef}"`,
+      [
+        "set -euo pipefail",
+        `if git merge-base "${baseRef}" "${headRef}" >/dev/null 2>&1; then`,
+        `  git diff --name-only "${baseRef}...${headRef}"`,
+        "else",
+        `  git diff --name-only "${baseRef}" "${headRef}"`,
+        "fi",
+      ].join("\n"),
     ])
     .stdout()
 

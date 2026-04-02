@@ -283,10 +283,16 @@ Pull requests welcome! Please ensure:
 ### Local Release and CI
 
 ```bash
+npm test --prefix dagger/tap-pipeline
 dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
 dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3code-cli-main
 node scripts/apply-release-bundle.mjs --bundle /tmp/release-bundle --repo .
 ```
+
+The tap-pipeline test suite covers:
+- planner cadence decisions and clean no-op runs
+- changed-package routing for PR CI
+- release metadata contract shape across every registered package kind
 
 ### Fizzy Board
 
