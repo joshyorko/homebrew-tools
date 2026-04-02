@@ -158,7 +158,7 @@ export class TapPipeline {
         [
           "set -euo pipefail",
           "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl build-essential clang cmake pkg-config git binutils",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl build-essential clang cmake pkg-config git binutils libasound2-dev",
           "rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
