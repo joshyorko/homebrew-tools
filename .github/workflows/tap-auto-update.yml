@@ -1,0 +1,120 @@
+name: Tap Auto Update
+
+on:
+  schedule:
+    - cron: "0,17,41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DAGGER_VERSION: "0.20.3"
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      has_packages: ${{ steps.plan.outputs.has_packages }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Plan due packages
+        id: dagger_plan
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          module: ./dagger/tap-pipeline
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          enable-github-summary: "true"
+          call: >-
+            plan-updates
+            --now-iso="$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")"
+
+      - name: Build matrix from planner output
+        id: plan
+        run: |
+          set -euo pipefail
+          packages_json='${{ steps.dagger_plan.outputs.output }}'
+          matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .id}))}')"
+          count="$(jq '.include | length' <<<"$matrix")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: plan
+    if: needs.plan.outputs.has_packages == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Export release bundle
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          module: ./dagger/tap-pipeline
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          enable-github-summary: "true"
+          call: >-
+            -o "$RUNNER_TEMP/bundle"
+            release-bundle
+            --package-id="${{ matrix.package_id }}"
+
+      - name: Upload release bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-${{ matrix.package_id }}
+          path: ${{ runner.temp }}/bundle
+
+      - name: Publish release asset and update tap file
+        run: |
+          set -euo pipefail
+          release_json="$RUNNER_TEMP/bundle/release.json"
+          release_tag="$(jq -r '.release_tag' "$release_json")"
+          asset_name="$(jq -r '.asset_name' "$release_json")"
+          homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
+          release_title="$(jq -r '.release_title' "$release_json")"
+          commit_message="$(jq -r '.commit_message' "$release_json")"
+          notes_file="$RUNNER_TEMP/release-notes.txt"
+          jq -r '.release_notes' "$release_json" > "$notes_file"
+
+          if ! gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+          fi
+
+          shopt -s nullglob
+          artifacts=("$RUNNER_TEMP/bundle/artifacts/"*)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No release artifacts were exported by dagger/tap-pipeline." >&2
+            exit 1
+          fi
+
+          gh release upload "$release_tag" "${artifacts[@]}" --clobber
+          node scripts/apply-release-bundle.mjs --bundle "$RUNNER_TEMP/bundle" --repo "$GITHUB_WORKSPACE"
+
+          if git diff --quiet; then
+            echo "No repository update required for ${{ matrix.package_id }}."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$homebrew_path"
+          git commit -m "$commit_message"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  no-op:
+    needs: plan
+    if: needs.plan.outputs.has_packages != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No packages are due according to dagger/tap-pipeline."

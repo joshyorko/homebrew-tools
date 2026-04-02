@@ -122,7 +122,7 @@ export class T3CodeCliMainSmoke {
           `echo "packaged_version=${build.version}"`,
           `echo "artifact_sha256=${sha256}"`,
           "mkdir -p \"$tap_dir\"",
-          "cp -R /tap/. \"$tap_dir/\"",
+          "cp -R /tap/Formula \"$tap_dir/\"",
           "ls -la \"$tap_dir/Formula\"",
           "brew install test/tap/t3code-cli-main",
           "test -f $(brew --prefix)/Cellar/t3code-cli-main/*/libexec/node_modules/node-addon-api/napi.h",
