@@ -1,0 +1,92 @@
+name: Tap Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "ci, release, or force-release"
+        required: true
+        type: choice
+        options:
+          - ci
+          - release
+          - force-release
+      package_id:
+        description: "Package id from dagger/tap-pipeline listPackages()"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  DAGGER_VERSION: "0.20.3"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dagger CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run manual action
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTION_KIND: ${{ inputs.action }}
+          PACKAGE_ID: ${{ inputs.package_id }}
+        run: |
+          set -euo pipefail
+
+          case "$ACTION_KIND" in
+            ci)
+              dagger -s -m ./dagger/tap-pipeline call ci-check --package-id="$PACKAGE_ID" > "$RUNNER_TEMP/ci.log"
+              ;;
+            release|force-release)
+              dagger -s -m ./dagger/tap-pipeline call -o "$RUNNER_TEMP/bundle" release-bundle --package-id="$PACKAGE_ID"
+              release_json="$RUNNER_TEMP/bundle/release.json"
+              release_tag="$(jq -r '.release_tag' "$release_json")"
+              asset_name="$(jq -r '.asset_name' "$release_json")"
+              homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
+              release_title="$(jq -r '.release_title' "$release_json")"
+              commit_message="$(jq -r '.commit_message' "$release_json")"
+              notes_file="$RUNNER_TEMP/release-notes.txt"
+              jq -r '.release_notes' "$release_json" > "$notes_file"
+
+              if ! gh release view "$release_tag" >/dev/null 2>&1; then
+                gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+              fi
+
+              gh release upload "$release_tag" "$RUNNER_TEMP/bundle/artifacts/$asset_name" --clobber
+              node scripts/apply-release-bundle.mjs --bundle "$RUNNER_TEMP/bundle" --repo "$GITHUB_WORKSPACE"
+
+              if git diff --quiet; then
+                exit 0
+              fi
+
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add "$homebrew_path"
+              git commit -m "$commit_message"
+              git pull --rebase origin "${GITHUB_REF_NAME}"
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+              ;;
+            *)
+              echo "Unsupported action: $ACTION_KIND" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Upload manual run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-${{ inputs.action }}-${{ inputs.package_id }}
+          path: |
+            ${{ runner.temp }}/ci.log
+            ${{ runner.temp }}/bundle
+          if-no-files-found: ignore

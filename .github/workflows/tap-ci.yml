@@ -1,0 +1,99 @@
+name: Tap CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tap-ci.yml"
+      - ".github/workflows/tap-auto-update.yml"
+      - ".github/workflows/tap-manual.yml"
+      - "Casks/**"
+      - "Formula/**"
+      - "scripts/**"
+      - "dagger/**"
+      - "README.md"
+      - "AGENTS.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/tap-ci.yml"
+      - ".github/workflows/tap-auto-update.yml"
+      - ".github/workflows/tap-manual.yml"
+      - "Casks/**"
+      - "Formula/**"
+      - "scripts/**"
+      - "dagger/**"
+      - "README.md"
+      - "AGENTS.md"
+
+permissions:
+  contents: read
+
+env:
+  DAGGER_VERSION: "0.20.3"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      has_packages: ${{ steps.plan.outputs.has_packages }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Dagger CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Plan changed packages
+        id: plan
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          packages_json="$(dagger -s -m ./dagger/tap-pipeline call detect-changed-packages --base-ref="$BASE_REF" --head-ref="$HEAD_REF")"
+          matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .}))}')"
+          count="$(jq '.include | length' <<<"$matrix")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: plan
+    if: needs.plan.outputs.has_packages == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dagger CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" DAGGER_VERSION="$DAGGER_VERSION" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run package CI through Dagger
+        run: |
+          set -euo pipefail
+          dagger -s -m ./dagger/tap-pipeline call ci-check --package-id="${{ matrix.package_id }}" > "$RUNNER_TEMP/ci.log"
+
+      - name: Upload CI log
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-log-${{ matrix.package_id }}
+          path: ${{ runner.temp }}/ci.log
+
+  no-op:
+    needs: plan
+    if: needs.plan.outputs.has_packages != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No package-level CI work was detected by dagger/tap-pipeline."

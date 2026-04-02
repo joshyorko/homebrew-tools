@@ -10,8 +10,8 @@ class T3codeCliMain < Formula
     skip "Updated by the tap's GitHub Actions workflow."
   end
 
-  depends_on "node@24"
   depends_on :linux
+  depends_on "node@24"
 
   def install
     libexec.install Dir["*"]

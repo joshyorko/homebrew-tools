@@ -2,6 +2,39 @@
 
 This tap contains Homebrew casks and formulae for tools maintained by [@joshyorko](https://github.com/joshyorko).
 
+## Dagger Platform
+
+This tap is migrating to a Dagger-first platform. The orchestration entrypoint is `dagger/tap-pipeline/`, which owns:
+
+- the package registry
+- update planning and changed-package detection
+- package-level `ciCheck(packageId)`
+- package-level `releaseBundle(packageId)`
+
+GitHub Actions is intentionally thin and generic:
+
+- `.github/workflows/tap-ci.yml`
+- `.github/workflows/tap-auto-update.yml`
+- `.github/workflows/tap-manual.yml`
+
+Local platform commands:
+
+```bash
+dagger -m ./dagger/tap-pipeline call list-packages
+dagger -m ./dagger/tap-pipeline call detect-changed-packages --base-ref=origin/main --head-ref=HEAD
+dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
+dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=vscode-insiders-linux
+```
+
+The exported release bundle always has the same shape:
+
+```text
+artifacts/<asset_name>
+homebrew/<rendered_file>
+release.json
+ci.log
+```
+
 ## Quick Install
 
 ```bash
@@ -107,7 +140,7 @@ t3-code-linux
 ### T3 Code CLI (Main Formula)
 
 T3 Code CLI packaged from the latest upstream `main` commit for Linux/devcontainer use.
-The formula downloads an immutable prebuilt tarball from this tap's GitHub Actions workflow,
+The formula downloads an immutable prebuilt tarball emitted by the tap's generic Dagger release bundle,
 including runtime dependencies, and runs it with Homebrew's `node@24`.
 
 > [!NOTE]
@@ -136,7 +169,7 @@ That smoke test is the real end-to-end path:
 ### Voxtype (Formula)
 
 Voxtype packaged for Linux Homebrew as a pinned release artifact built from upstream source.
-The tap's Dagger workflow compiles Voxtype from the latest upstream GitHub release tag,
+The tap's generic Dagger platform compiles Voxtype from the latest upstream GitHub release tag,
 packages a Homebrew-friendly tarball, smoke-tests installation through Linuxbrew, uploads
 that tarball to this repository's releases, and updates the formula to point at the new asset.
 
@@ -169,7 +202,7 @@ That smoke test exercises the real delivery path:
 ### VS Code Insiders (Linux Cask)
 
 VS Code Insiders packaged for Linux Homebrew from Microsoft's official Linux RPM.
-The GitHub Actions workflow checks the upstream Insiders RPM every two hours, repackages
+The generic Dagger release path checks the upstream Insiders RPM on the planner cadence, repackages
 its payload into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
 uploads the artifact to this repository's releases, and updates the cask to point at that pinned asset.
 The installed desktop integration intentionally preserves the canonical upstream Linux identities such as
@@ -239,11 +272,31 @@ Pull requests welcome! Please ensure:
 2. Casks work on both Linux and macOS
 3. Tests pass: `brew audit --cask <cask>`
 
-### Adding a New Version
+### Adding a Package
 
-1. Update `version` in the cask
-2. Update SHA256 checksums for each platform
-3. Test locally: `brew install --cask ./Casks/rcc.rb`
+1. Add a registry entry in `dagger/tap-pipeline/src/library.ts`
+2. Add or extend the package-specific Dagger logic in `dagger/tap-pipeline/src/index.ts`
+3. Keep release metadata, rendered Homebrew output, and CI validation inside Dagger
+4. Add or tighten local Homebrew validation for the package family
+5. Do not add a new package-specific workflow file
+
+### Local Release and CI
+
+```bash
+dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
+dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3code-cli-main
+node scripts/apply-release-bundle.mjs --bundle /tmp/release-bundle --repo .
+```
+
+### Fizzy Board
+
+Agent coordination for this migration runs on the `work-ai-board` Fizzy board:
+
+- board id: `03fs668i2uvjcv6y1tkbz0b06`
+- parent card: `Dagger-first tap platform migration`
+- execution cards move through `Shaping`, `Ready for Agents`, `In Flight`, `Needs Input`, `Synthesize & Verify`, and `Ready to Ship`
+
+Execution agents are expected to use the `Fizzy:fizzy` skill for card lookup, comments, status moves, and blockers.
 
 ## License
 
