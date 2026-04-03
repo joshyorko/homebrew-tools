@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+
 import type { AutoUpdateSlot, AutoUpdateSlotId, PackageRegistryEntry, ReleaseMetadata } from "./types.js"
 
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
@@ -80,38 +82,12 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   },
 ]
 
-export const AUTO_UPDATE_SLOTS: AutoUpdateSlot[] = [
-  {
-    id: "rcc-daily",
-    description: "Daily RCC refresh.",
-    packageIds: ["rcc"],
-  },
-  {
-    id: "action-server-daily",
-    description: "Daily Action Server refresh.",
-    packageIds: ["action-server"],
-  },
-  {
-    id: "desktop-6h",
-    description: "Six-hour desktop package refresh for VS Code Insiders, Voxtype, and DevPod.",
-    packageIds: ["vscode-insiders-linux", "voxtype", "devpod-linux"],
-  },
-  {
-    id: "vscode-insiders-2h",
-    description: "Two-hour VS Code Insiders refresh between the larger desktop slots.",
-    packageIds: ["vscode-insiders-linux"],
-  },
-  {
-    id: "t3-daily",
-    description: "Daily T3 package refresh for the CLI main build and Linux desktop cask.",
-    packageIds: ["t3code-cli-main", "t3-code-linux"],
-  },
-  {
-    id: "t3-code-6h",
-    description: "Six-hour Linux desktop refresh for the T3 Code AppImage cask.",
-    packageIds: ["t3-code-linux"],
-  },
-]
+function loadAutoUpdateSlots(): AutoUpdateSlot[] {
+  const file = readFileSync(new URL("../auto-update-slots.json", import.meta.url), "utf8")
+  return JSON.parse(file) as AutoUpdateSlot[]
+}
+
+export const AUTO_UPDATE_SLOTS: AutoUpdateSlot[] = loadAutoUpdateSlots()
 
 const CHANGED_PATHS: Array<[string, string[]]> = [
   [

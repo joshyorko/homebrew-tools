@@ -231,7 +231,6 @@ export class TapPipeline {
       .from(RUST_IMAGE)
       .withMountedCache("/usr/local/cargo/registry", dag.cacheVolume("tap-pipeline-cargo-registry-cache"))
       .withMountedCache("/usr/local/cargo/git", dag.cacheVolume("tap-pipeline-cargo-git-cache"))
-      .withMountedCache("/usr/local/rustup", dag.cacheVolume("tap-pipeline-rustup-cache"))
       .withExec([
         "bash",
         "-lc",

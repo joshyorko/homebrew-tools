@@ -71,18 +71,12 @@ jobs:
             trigger_source="schedule:$EVENT_SCHEDULE"
           fi
 
-          case "$slot_id" in
-            "rcc-daily") package_ids_json='["rcc"]' ;;
-            "action-server-daily") package_ids_json='["action-server"]' ;;
-            "desktop-6h") package_ids_json='["vscode-insiders-linux","voxtype","devpod-linux"]' ;;
-            "vscode-insiders-2h") package_ids_json='["vscode-insiders-linux"]' ;;
-            "t3-daily") package_ids_json='["t3code-cli-main","t3-code-linux"]' ;;
-            "t3-code-6h") package_ids_json='["t3-code-linux"]' ;;
-            *)
-              echo "Unknown slot id for Tap Auto Update: $slot_id" >&2
-              exit 1
-              ;;
-          esac
+          package_ids_json="$(
+            jq -cer --arg slot_id "$slot_id" '
+              map(select(.id == $slot_id) | .packageIds)
+              | if length == 1 then .[0] else error("Unknown slot id for Tap Auto Update: \($slot_id)") end
+            ' dagger/tap-pipeline/auto-update-slots.json
+          )"
 
           echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
           echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
