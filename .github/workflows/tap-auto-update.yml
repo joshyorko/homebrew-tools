@@ -167,15 +167,18 @@ jobs:
           mapfile -t package_ids < <(jq -r '.[]' <<<"$PACKAGE_IDS_JSON")
           updated_ids=()
           changed_paths=()
+          updated_release_jsons=()
 
           for package_id in "${package_ids[@]}"; do
-            bundle_dir="$RUNNER_TEMP/bundles/release-bundle-$package_id"
-            release_json="$bundle_dir/release.json"
+            bundle_root="$RUNNER_TEMP/bundles/release-bundle-$package_id"
+            release_json="$(find "$bundle_root" -mindepth 1 -maxdepth 3 -type f -name release.json | head -n 1 || true)"
 
-            if [ ! -f "$release_json" ]; then
-              echo "Missing release metadata for $package_id at $release_json" >&2
+            if [ -z "$release_json" ] || [ ! -f "$release_json" ]; then
+              echo "Missing release metadata for $package_id under $bundle_root" >&2
+              find "$bundle_root" -maxdepth 3 -print >&2 || true
               exit 1
             fi
+            bundle_dir="$(dirname "$release_json")"
 
             release_tag="$(jq -r '.release_tag' "$release_json")"
             homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
@@ -203,6 +206,7 @@ jobs:
               result="updated"
               updated_ids+=("$package_id")
               changed_paths+=("$homebrew_path")
+              updated_release_jsons+=("$release_json")
             fi
 
             {
@@ -229,7 +233,7 @@ jobs:
           git add "${changed_paths[@]}"
 
           if [ "${#updated_ids[@]}" -eq 1 ]; then
-            commit_message="$(jq -r '.commit_message' "$RUNNER_TEMP/bundles/release-bundle-${updated_ids[0]}/release.json")"
+            commit_message="$(jq -r '.commit_message' "${updated_release_jsons[0]}")"
           else
             updated_csv="$(printf '%s, ' "${updated_ids[@]}")"
             updated_csv="${updated_csv%, }"
