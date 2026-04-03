@@ -22,6 +22,7 @@ permissions:
 env:
   DAGGER_VERSION: "0.20.3"
   GH_TOKEN: ${{ github.token }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   run:
@@ -61,7 +62,8 @@ jobs:
           PACKAGE_ID: ${{ inputs.package_id }}
         run: |
           set -euo pipefail
-          release_json="$RUNNER_TEMP/bundle/release.json"
+          bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$RUNNER_TEMP/bundle")"
+          release_json="$bundle_dir/release.json"
           release_tag="$(jq -r '.release_tag' "$release_json")"
           homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
           release_title="$(jq -r '.release_title' "$release_json")"
@@ -84,14 +86,14 @@ jobs:
           fi
 
           shopt -s nullglob
-          artifacts=("$RUNNER_TEMP/bundle/artifacts/"*)
+          artifacts=("$bundle_dir/artifacts/"*)
           if [ "${#artifacts[@]}" -eq 0 ]; then
             echo "No release artifacts were exported by dagger/tap-pipeline." >&2
             exit 1
           fi
 
           gh release upload "$release_tag" "${artifacts[@]}" --clobber
-          node scripts/apply-release-bundle.mjs --bundle "$RUNNER_TEMP/bundle" --repo "$GITHUB_WORKSPACE"
+          node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE"
 
           if git diff --quiet; then
             exit 0

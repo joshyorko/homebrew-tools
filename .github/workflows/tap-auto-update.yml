@@ -29,6 +29,7 @@ permissions:
 env:
   DAGGER_VERSION: "0.20.3"
   GH_TOKEN: ${{ github.token }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   resolve:
@@ -171,14 +172,13 @@ jobs:
 
           for package_id in "${package_ids[@]}"; do
             bundle_root="$RUNNER_TEMP/bundles/release-bundle-$package_id"
-            release_json="$(find "$bundle_root" -mindepth 1 -maxdepth 3 -type f -name release.json | head -n 1 || true)"
+            bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$bundle_root")"
+            release_json="$bundle_dir/release.json"
 
-            if [ -z "$release_json" ] || [ ! -f "$release_json" ]; then
+            if [ ! -f "$release_json" ]; then
               echo "Missing release metadata for $package_id under $bundle_root" >&2
-              find "$bundle_root" -maxdepth 3 -print >&2 || true
               exit 1
             fi
-            bundle_dir="$(dirname "$release_json")"
 
             release_tag="$(jq -r '.release_tag' "$release_json")"
             homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
