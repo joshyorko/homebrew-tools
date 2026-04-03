@@ -42,6 +42,24 @@ def _headers() -> dict[str, str]:
     stop=stop_after_attempt(4),
     retry=retry_if_exception_type((requests.RequestException, GitHubAPIError)),
 )
+def _get_json(url: str) -> dict:
+    response = requests.get(url, headers=_headers(), timeout=30)
+    if response.status_code >= 400:
+        raise GitHubAPIError(f"GitHub API error {response.status_code}: {response.text}")
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise GitHubAPIError("Failed to decode JSON from GitHub API") from exc
+    if not isinstance(data, dict):
+        raise GitHubAPIError("Expected object response from GitHub API")
+    return data
+
+
+@retry(
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    stop=stop_after_attempt(4),
+    retry=retry_if_exception_type((requests.RequestException, GitHubAPIError)),
+)
 def _get(url: str, per_page: int = 100, max_pages: int = 3) -> list[dict]:
     all_results: list[dict] = []
 
@@ -78,11 +96,10 @@ def _normalize_tag(tag: str, sha: Optional[str] = None) -> Optional[ReleaseInfo]
 
 def _get_tag_sha(repo: str, tag: str) -> Optional[str]:
     url = f"{GITHUB_API_ROOT}/repos/{repo}/git/refs/tags/{tag}"
-    response = requests.get(url, headers=_headers(), timeout=30)
-    if response.status_code != 200:
+    try:
+        data = _get_json(url)
+    except GitHubAPIError:
         return None
-
-    data = response.json()
     obj = data.get("object", {})
     if obj.get("type") == "commit":
         return obj.get("sha")
@@ -93,11 +110,10 @@ def _get_tag_sha(repo: str, tag: str) -> Optional[str]:
     if not tag_url:
         return None
 
-    tag_response = requests.get(tag_url, headers=_headers(), timeout=30)
-    if tag_response.status_code != 200:
+    try:
+        tag_data = _get_json(tag_url)
+    except GitHubAPIError:
         return None
-
-    tag_data = tag_response.json()
     return tag_data.get("object", {}).get("sha")
 
 
@@ -125,6 +141,10 @@ def fetch_latest_version(
         if release_info is None:
             continue
         if max_major is not None and release_info.version.major > max_major:
+            continue
+        if not include_prerelease and (
+            release_info.version.is_prerelease or release_info.version.is_devrelease
+        ):
             continue
         if source == "release" and not include_prerelease and (entry.get("prerelease") or entry.get("draft")):
             continue
