@@ -103,11 +103,3 @@ jobs:
           git commit -m "$commit_message"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
-
-      - name: Upload manual run artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: manual-${{ inputs.action }}-${{ inputs.package_id }}
-          path: |
-            ${{ runner.temp }}/bundle
-          if-no-files-found: ignore

@@ -11,6 +11,7 @@ import {
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
 const NODE_IMAGE = "node:24-bookworm"
+const RUST_IMAGE = "rust:1-bookworm"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 
@@ -227,26 +228,20 @@ export class TapPipeline {
   private rustBaseContainer(): Container {
     return dag
       .container()
-      .from("ubuntu:22.04")
-      .withMountedCache("/root/.cargo/registry", dag.cacheVolume("tap-pipeline-cargo-registry-cache"))
-      .withMountedCache("/root/.cargo/git", dag.cacheVolume("tap-pipeline-cargo-git-cache"))
-      .withMountedCache("/root/.rustup", dag.cacheVolume("tap-pipeline-rustup-cache"))
+      .from(RUST_IMAGE)
+      .withMountedCache("/usr/local/cargo/registry", dag.cacheVolume("tap-pipeline-cargo-registry-cache"))
+      .withMountedCache("/usr/local/cargo/git", dag.cacheVolume("tap-pipeline-cargo-git-cache"))
       .withExec([
         "bash",
         "-lc",
         [
           "set -euo pipefail",
           "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl nodejs build-essential clang cmake pkg-config git binutils libasound2-dev",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates nodejs build-essential clang cmake pkg-config git binutils libasound2-dev",
           "rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
-      .withExec([
-        "bash",
-        "-lc",
-        "curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y",
-      ])
-      .withEnvVariable("PATH", "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+      .withEnvVariable("PATH", "/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
   private githubApiContainer(): Container {
