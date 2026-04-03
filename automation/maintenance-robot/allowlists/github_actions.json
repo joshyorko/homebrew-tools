@@ -2,7 +2,7 @@
   "actions/cache": {
     "repo": "actions/cache",
     "source": "release",
-    "max_major": 4,
+    "max_major": 5,
     "include_prerelease": false,
     "pin_to_sha": true
   },
