@@ -1,0 +1,20 @@
+# For more details on the format and content:
+# https://github.com/joshyorko/rcc/blob/master/docs/recipes.md#what-is-in-condayaml
+# Tip: Adding a link to the release notes of the packages helps maintenance and security.
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.13.11                 # https://www.python.org/downloads/
+  - uv=0.11.3                      # https://pypi.org/project/uv/
+  - pip:
+      - requests==2.33.1           # https://pypi.org/project/requests/
+      - ruamel.yaml==0.19.1        # https://pypi.org/project/ruamel.yaml/
+      - packaging==24.2            # https://pypi.org/project/packaging/
+      - tenacity==9.1.2            # https://pypi.org/project/tenacity/
+      - robocorp==3.1.1            # https://pypi.org/project/robocorp/
+      - robocorp-truststore==0.9.1 # https://pypi.org/project/robocorp-truststore/
+
+variables:
+  PYTHONPATH: "${ROBOT_ROOT}/src"

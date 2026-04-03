@@ -1,0 +1,44 @@
+{
+  "actions/cache": {
+    "repo": "actions/cache",
+    "source": "release",
+    "max_major": 4,
+    "include_prerelease": false,
+    "pin_to_sha": true
+  },
+  "actions/checkout": {
+    "repo": "actions/checkout",
+    "source": "release",
+    "max_major": 6,
+    "include_prerelease": false,
+    "pin_to_sha": true
+  },
+  "actions/download-artifact": {
+    "repo": "actions/download-artifact",
+    "source": "tag",
+    "max_major": 5,
+    "include_prerelease": false,
+    "pin_to_sha": true
+  },
+  "actions/setup-node": {
+    "repo": "actions/setup-node",
+    "source": "release",
+    "max_major": 6,
+    "include_prerelease": false,
+    "pin_to_sha": true
+  },
+  "actions/upload-artifact": {
+    "repo": "actions/upload-artifact",
+    "source": "tag",
+    "max_major": 4,
+    "include_prerelease": false,
+    "pin_to_sha": true
+  },
+  "dagger/dagger-for-github": {
+    "repo": "dagger/dagger-for-github",
+    "source": "release",
+    "max_major": 8,
+    "include_prerelease": false,
+    "pin_to_sha": true
+  }
+}

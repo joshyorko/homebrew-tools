@@ -2,13 +2,13 @@ name: Tap Auto Update
 
 on:
   schedule:
-    - cron: "0 6 * * *"
-    - cron: "0 7 * * *"
-    - cron: "17 0,6,12,18 * * *"
-    - cron: "17 2,4,8,10,14,16,20,22 * * *"
-    - cron: "41 6 * * *"
+  - cron: "0 6 * * *"
+  - cron: "0 7 * * *"
+  - cron: "17 0,6,12,18 * * *"
+  - cron: "17 2,4,8,10,14,16,20,22 * * *"
+  - cron: "41 6 * * *"
     # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
-    - cron: "41 0,12,18 * * *"
+  - cron: "41 0,12,18 * * *"
   workflow_dispatch:
     inputs:
       slot_id:
@@ -16,12 +16,12 @@ on:
         required: true
         type: choice
         options:
-          - rcc-daily
-          - action-server-daily
-          - desktop-6h
-          - vscode-insiders-2h
-          - t3-daily
-          - t3-code-6h
+        - rcc-daily
+        - action-server-daily
+        - desktop-6h
+        - vscode-insiders-2h
+        - t3-daily
+        - t3-code-6h
 
 permissions:
   contents: write
@@ -41,75 +41,74 @@ jobs:
       package_ids_json: ${{ steps.slot.outputs.package_ids_json }}
       matrix: ${{ steps.packages.outputs.matrix }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - name: Resolve auto-update slot
+      id: slot
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        EVENT_SCHEDULE: ${{ github.event.schedule }}
+        INPUT_SLOT_ID: ${{ inputs.slot_id }}
+      run: |
+        set -euo pipefail
 
-      - name: Resolve auto-update slot
-        id: slot
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
-          INPUT_SLOT_ID: ${{ inputs.slot_id }}
-        run: |
-          set -euo pipefail
+        if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          slot_id="$INPUT_SLOT_ID"
+          trigger_source="workflow_dispatch"
+        else
+          case "$EVENT_SCHEDULE" in
+            "0 6 * * *") slot_id="rcc-daily" ;;
+            "0 7 * * *") slot_id="action-server-daily" ;;
+            "17 0,6,12,18 * * *") slot_id="desktop-6h" ;;
+            "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
+            "41 6 * * *") slot_id="t3-daily" ;;
+            "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
+            *)
+              echo "Unknown scheduled slot for Tap Auto Update: $EVENT_SCHEDULE" >&2
+              exit 1
+              ;;
+          esac
+          trigger_source="schedule:$EVENT_SCHEDULE"
+        fi
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            slot_id="$INPUT_SLOT_ID"
-            trigger_source="workflow_dispatch"
-          else
-            case "$EVENT_SCHEDULE" in
-              "0 6 * * *") slot_id="rcc-daily" ;;
-              "0 7 * * *") slot_id="action-server-daily" ;;
-              "17 0,6,12,18 * * *") slot_id="desktop-6h" ;;
-              "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
-              "41 6 * * *") slot_id="t3-daily" ;;
-              "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
-              *)
-                echo "Unknown scheduled slot for Tap Auto Update: $EVENT_SCHEDULE" >&2
-                exit 1
-                ;;
-            esac
-            trigger_source="schedule:$EVENT_SCHEDULE"
-          fi
+        package_ids_json="$(
+          jq -cer --arg slot_id "$slot_id" '
+            map(select(.id == $slot_id) | .packageIds)
+            | if length == 1 then .[0] else error("Unknown slot id for Tap Auto Update: \($slot_id)") end
+          ' dagger/tap-pipeline/auto-update-slots.json
+        )"
 
-          package_ids_json="$(
-            jq -cer --arg slot_id "$slot_id" '
-              map(select(.id == $slot_id) | .packageIds)
-              | if length == 1 then .[0] else error("Unknown slot id for Tap Auto Update: \($slot_id)") end
-            ' dagger/tap-pipeline/auto-update-slots.json
-          )"
+        echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
+        echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
+        echo "package_ids_json=$package_ids_json" >> "$GITHUB_OUTPUT"
 
-          echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
-          echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
-          echo "package_ids_json=$package_ids_json" >> "$GITHUB_OUTPUT"
+    - name: Build matrix from slot output
+      id: packages
+      env:
+        SLOT_ID: ${{ steps.slot.outputs.slot_id }}
+        TRIGGER_SOURCE: ${{ steps.slot.outputs.trigger_source }}
+        PACKAGE_IDS_JSON: ${{ steps.slot.outputs.package_ids_json }}
+      run: |
+        set -euo pipefail
+        matrix="$(jq -cn --argjson package_ids "$PACKAGE_IDS_JSON" '{include: ($package_ids | map({package_id: .}))}')"
+        count="$(jq '.include | length' <<<"$matrix")"
+        package_ids="$(jq -r 'join(", ")' <<<"$PACKAGE_IDS_JSON")"
 
-      - name: Build matrix from slot output
-        id: packages
-        env:
-          SLOT_ID: ${{ steps.slot.outputs.slot_id }}
-          TRIGGER_SOURCE: ${{ steps.slot.outputs.trigger_source }}
-          PACKAGE_IDS_JSON: ${{ steps.slot.outputs.package_ids_json }}
-        run: |
-          set -euo pipefail
-          matrix="$(jq -cn --argjson package_ids "$PACKAGE_IDS_JSON" '{include: ($package_ids | map({package_id: .}))}')"
-          count="$(jq '.include | length' <<<"$matrix")"
-          package_ids="$(jq -r 'join(", ")' <<<"$PACKAGE_IDS_JSON")"
+        if [ "$count" -eq 0 ]; then
+          echo "Auto-update slot $SLOT_ID resolved zero packages, which is not allowed." >&2
+          exit 1
+        fi
 
-          if [ "$count" -eq 0 ]; then
-            echo "Auto-update slot $SLOT_ID resolved zero packages, which is not allowed." >&2
-            exit 1
-          fi
+        echo "Resolved slot $SLOT_ID -> $package_ids"
+        {
+          echo "## Auto Update Slot"
+          echo
+          echo "Slot id: \`$SLOT_ID\`"
+          echo "Trigger: \`$TRIGGER_SOURCE\`"
+          echo "Package ids: $package_ids"
+        } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Resolved slot $SLOT_ID -> $package_ids"
-          {
-            echo "## Auto Update Slot"
-            echo
-            echo "Slot id: \`$SLOT_ID\`"
-            echo "Trigger: \`$TRIGGER_SOURCE\`"
-            echo "Package ids: $package_ids"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+        echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve
@@ -119,135 +118,133 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - name: Export release bundle
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          -o "$RUNNER_TEMP/bundle"
+          release-bundle
+          --package-id="${{ matrix.package_id }}"
 
-      - name: Export release bundle
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          module: ./dagger/tap-pipeline
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          enable-github-summary: "true"
-          call: >-
-            -o "$RUNNER_TEMP/bundle"
-            release-bundle
-            --package-id="${{ matrix.package_id }}"
-
-      - name: Upload release bundle artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-bundle-${{ matrix.package_id }}
-          path: ${{ runner.temp }}/bundle
+    - name: Upload release bundle artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+      with:
+        name: release-bundle-${{ matrix.package_id }}
+        path: ${{ runner.temp }}/bundle
 
   publish:
     needs:
-      - resolve
-      - build
+    - resolve
+    - build
     name: Publish Auto Update Slot
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - name: Download release bundles
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
+      with:
+        pattern: release-bundle-*
+        path: ${{ runner.temp }}/bundles
 
-      - name: Download release bundles
-        uses: actions/download-artifact@v5
-        with:
-          pattern: release-bundle-*
-          path: ${{ runner.temp }}/bundles
+    - name: Publish release assets and update tap files
+      env:
+        SLOT_ID: ${{ needs.resolve.outputs.slot_id }}
+        TRIGGER_SOURCE: ${{ needs.resolve.outputs.trigger_source }}
+        PACKAGE_IDS_JSON: ${{ needs.resolve.outputs.package_ids_json }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        mapfile -t package_ids < <(jq -r '.[]' <<<"$PACKAGE_IDS_JSON")
+        updated_ids=()
+        changed_paths=()
+        updated_release_jsons=()
 
-      - name: Publish release assets and update tap files
-        env:
-          SLOT_ID: ${{ needs.resolve.outputs.slot_id }}
-          TRIGGER_SOURCE: ${{ needs.resolve.outputs.trigger_source }}
-          PACKAGE_IDS_JSON: ${{ needs.resolve.outputs.package_ids_json }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mapfile -t package_ids < <(jq -r '.[]' <<<"$PACKAGE_IDS_JSON")
-          updated_ids=()
-          changed_paths=()
-          updated_release_jsons=()
+        for package_id in "${package_ids[@]}"; do
+          bundle_root="$RUNNER_TEMP/bundles/release-bundle-$package_id"
+          bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$bundle_root")"
+          release_json="$bundle_dir/release.json"
 
-          for package_id in "${package_ids[@]}"; do
-            bundle_root="$RUNNER_TEMP/bundles/release-bundle-$package_id"
-            bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$bundle_root")"
-            release_json="$bundle_dir/release.json"
-
-            if [ ! -f "$release_json" ]; then
-              echo "Missing release metadata for $package_id under $bundle_root" >&2
-              exit 1
-            fi
-
-            release_tag="$(jq -r '.release_tag' "$release_json")"
-            homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
-            release_title="$(jq -r '.release_title' "$release_json")"
-            notes_file="$RUNNER_TEMP/${package_id}-release-notes.txt"
-            jq -r '.release_notes' "$release_json" > "$notes_file"
-
-            if ! gh release view "$release_tag" >/dev/null 2>&1; then
-              gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
-            fi
-
-            shopt -s nullglob
-            artifacts=("$bundle_dir/artifacts/"*)
-            if [ "${#artifacts[@]}" -eq 0 ]; then
-              echo "No release artifacts were exported for $package_id." >&2
-              exit 1
-            fi
-
-            gh release upload "$release_tag" "${artifacts[@]}" --clobber
-            node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE" >/dev/null
-
-            if git diff --quiet -- "$homebrew_path"; then
-              result="unchanged"
-            else
-              result="updated"
-              updated_ids+=("$package_id")
-              changed_paths+=("$homebrew_path")
-              updated_release_jsons+=("$release_json")
-            fi
-
-            {
-              echo "## ${package_id}"
-              echo
-              echo "Slot: \`$SLOT_ID\`"
-              echo "Trigger: \`$TRIGGER_SOURCE\`"
-              echo "Result: $result"
-              echo "Homebrew path: \`$homebrew_path\`"
-              echo "Release tag: \`$release_tag\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          done
-
-          if [ "${#changed_paths[@]}" -eq 0 ]; then
-            {
-              echo "## Publish Summary"
-              echo
-              echo "Slot: \`$SLOT_ID\`"
-              echo "Updated packages: none"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if [ ! -f "$release_json" ]; then
+            echo "Missing release metadata for $package_id under $bundle_root" >&2
+            exit 1
           fi
 
-          git add "${changed_paths[@]}"
+          release_tag="$(jq -r '.release_tag' "$release_json")"
+          homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
+          release_title="$(jq -r '.release_title' "$release_json")"
+          notes_file="$RUNNER_TEMP/${package_id}-release-notes.txt"
+          jq -r '.release_notes' "$release_json" > "$notes_file"
 
-          if [ "${#updated_ids[@]}" -eq 1 ]; then
-            commit_message="$(jq -r '.commit_message' "${updated_release_jsons[0]}")"
+          if ! gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+          fi
+
+          shopt -s nullglob
+          artifacts=("$bundle_dir/artifacts/"*)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No release artifacts were exported for $package_id." >&2
+            exit 1
+          fi
+
+          gh release upload "$release_tag" "${artifacts[@]}" --clobber
+          node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE" >/dev/null
+
+          if git diff --quiet -- "$homebrew_path"; then
+            result="unchanged"
           else
-            updated_csv="$(printf '%s, ' "${updated_ids[@]}")"
-            updated_csv="${updated_csv%, }"
-            commit_message="Update ${SLOT_ID}: ${updated_csv}"
+            result="updated"
+            updated_ids+=("$package_id")
+            changed_paths+=("$homebrew_path")
+            updated_release_jsons+=("$release_json")
           fi
 
-          git commit -m "$commit_message"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          {
+            echo "## ${package_id}"
+            echo
+            echo "Slot: \`$SLOT_ID\`"
+            echo "Trigger: \`$TRIGGER_SOURCE\`"
+            echo "Result: $result"
+            echo "Homebrew path: \`$homebrew_path\`"
+            echo "Release tag: \`$release_tag\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        done
 
+        if [ "${#changed_paths[@]}" -eq 0 ]; then
           {
             echo "## Publish Summary"
             echo
             echo "Slot: \`$SLOT_ID\`"
-            echo "Updated packages: $(printf '%s, ' "${updated_ids[@]}" | sed 's/, $//')"
-            echo "Commit: \`$commit_message\`"
+            echo "Updated packages: none"
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        git add "${changed_paths[@]}"
+
+        if [ "${#updated_ids[@]}" -eq 1 ]; then
+          commit_message="$(jq -r '.commit_message' "${updated_release_jsons[0]}")"
+        else
+          updated_csv="$(printf '%s, ' "${updated_ids[@]}")"
+          updated_csv="${updated_csv%, }"
+          commit_message="Update ${SLOT_ID}: ${updated_csv}"
+        fi
+
+        git commit -m "$commit_message"
+        git pull --rebase origin "${GITHUB_REF_NAME}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
+
+        {
+          echo "## Publish Summary"
+          echo
+          echo "Slot: \`$SLOT_ID\`"
+          echo "Updated packages: $(printf '%s, ' "${updated_ids[@]}" | sed 's/, $//')"
+          echo "Commit: \`$commit_message\`"
+        } >> "$GITHUB_STEP_SUMMARY"
