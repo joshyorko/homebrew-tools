@@ -96,7 +96,7 @@ jobs:
           echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   ci:
-    name: Package CI ${{ matrix.package_id }}
+    name: Package CI
     needs:
       - tap-pipeline-tests
       - plan
