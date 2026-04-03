@@ -39,13 +39,15 @@ jobs:
     - name: Install RCC
       run: |
         set -euo pipefail
-        if [ ! -x ".tools/rcc/${RCC_VERSION}/rcc" ]; then
-          mkdir -p ".tools/rcc/${RCC_VERSION}"
-          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/${RCC_VERSION}/rcc-linux64" -o ".tools/rcc/${RCC_VERSION}/rcc"
-          chmod +x ".tools/rcc/${RCC_VERSION}/rcc"
+        rcc_dir="${GITHUB_WORKSPACE}/.tools/rcc/${RCC_VERSION}"
+        rcc_bin="${rcc_dir}/rcc"
+        if [ ! -x "$rcc_bin" ]; then
+          mkdir -p "$rcc_dir"
+          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
+          chmod +x "$rcc_bin"
         fi
-        echo "${GITHUB_WORKSPACE}/.tools/rcc/${RCC_VERSION}" >> "$GITHUB_PATH"
-        rcc version
+        echo "$rcc_dir" >> "$GITHUB_PATH"
+        "$rcc_bin" version
 
     - name: Disable RCC telemetry
       run: rcc config identity -t
