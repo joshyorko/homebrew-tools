@@ -4,18 +4,16 @@ cask "devpod-linux" do
   arch intel: "amd64"
   os linux: "linux"
 
-  version "0.17.3"
-  sha256 x86_64_linux: "0ea215ed17523e6af90d10494279169eadf106a729db86ece979a5847654366d"
+  version "0.18.0"
+  sha256 x86_64_linux: "a5b3684366f8f142a8a1d54baaf6eab8a19564463656cbf9ec6d292516730395"
 
-  url "https://github.com/skevetter/devpod/releases/download/v#{version}/DevPod_#{os}_#{arch}.deb",
-      verified: "github.com/skevetter/devpod/"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/devpod-linux-0.18.0/DevPod_linux_amd64.deb"
   name "DevPod"
   desc "Open-source dev environments based on devcontainer.json"
   homepage "https://github.com/skevetter/devpod"
 
   livecheck do
-    url :url
-    strategy :github_latest
+    skip "Updated by the tap's GitHub Actions workflow."
   end
 
   depends_on formula: "devpod-appindicator-runtime-tools"
