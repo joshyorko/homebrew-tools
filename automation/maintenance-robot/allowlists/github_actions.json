@@ -16,7 +16,7 @@
   "actions/download-artifact": {
     "repo": "actions/download-artifact",
     "source": "tag",
-    "max_major": 5,
+    "max_major": 8,
     "include_prerelease": false,
     "pin_to_sha": true
   },
@@ -30,7 +30,7 @@
   "actions/upload-artifact": {
     "repo": "actions/upload-artifact",
     "source": "tag",
-    "max_major": 4,
+    "max_major": 7,
     "include_prerelease": false,
     "pin_to_sha": true
   },
