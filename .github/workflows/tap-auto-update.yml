@@ -31,6 +31,7 @@ env:
 
 jobs:
   resolve:
+    name: Resolve Auto Update Slot
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -115,7 +116,7 @@ jobs:
 
   release:
     needs: resolve
-    name: Release ${{ matrix.package_id }}
+    name: Publish ${{ matrix.package_id }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
