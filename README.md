@@ -7,7 +7,7 @@ This tap contains Homebrew casks and formulae for tools maintained by [@joshyork
 This tap is migrating to a Dagger-first platform. The orchestration entrypoint is `dagger/tap-pipeline/`, which owns:
 
 - the package registry
-- update planning and changed-package detection
+- named auto-update slots and changed-package detection
 - package-level `ciCheck(packageId)`
 - package-level `releaseBundle(packageId)`
 
@@ -21,10 +21,15 @@ Local platform commands:
 
 ```bash
 dagger -m ./dagger/tap-pipeline call list-packages
+dagger -m ./dagger/tap-pipeline call list-auto-update-slots
+dagger -m ./dagger/tap-pipeline call packages-for-auto-update-slot --slot-id=desktop-6h
 dagger -m ./dagger/tap-pipeline call detect-changed-packages --base-ref=origin/main --head-ref=HEAD
 dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
 dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=vscode-insiders-linux
 ```
+
+GitHub Actions owns the schedule. Dagger resolves package ids for a named auto-update slot and then handles
+the package-specific build, smoke test, release bundle export, and rendered Homebrew output.
 
 The exported release bundle always has the same shape:
 
@@ -202,7 +207,7 @@ That smoke test exercises the real delivery path:
 ### VS Code Insiders (Linux Cask)
 
 VS Code Insiders packaged for Linux Homebrew from Microsoft's official Linux RPM.
-The generic Dagger release path checks the upstream Insiders RPM on the planner cadence, repackages
+The generic Dagger release path checks the upstream Insiders RPM when the matching auto-update slot runs, repackages
 its payload into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
 uploads the artifact to this repository's releases, and updates the cask to point at that pinned asset.
 The installed desktop integration intentionally preserves the canonical upstream Linux identities such as
@@ -276,9 +281,10 @@ Pull requests welcome! Please ensure:
 
 1. Add a registry entry in `dagger/tap-pipeline/src/library.ts`
 2. Add or extend the package-specific Dagger logic in `dagger/tap-pipeline/src/index.ts`
-3. Keep release metadata, rendered Homebrew output, and CI validation inside Dagger
-4. Add or tighten local Homebrew validation for the package family
-5. Do not add a new package-specific workflow file
+3. Wire the package into one or more named auto-update slots in `dagger/tap-pipeline/src/library.ts` if it should auto-update
+4. Keep release metadata, rendered Homebrew output, and CI validation inside Dagger
+5. Add or tighten local Homebrew validation for the package family
+6. Do not add a new package-specific workflow file
 
 ### Local Release and CI
 
@@ -290,7 +296,7 @@ node scripts/apply-release-bundle.mjs --bundle /tmp/release-bundle --repo .
 ```
 
 The tap-pipeline test suite covers:
-- planner cadence decisions and clean no-op runs
+- slot resolution and package coverage for auto-update
 - changed-package routing for PR CI
 - release metadata contract shape across every registered package kind
 

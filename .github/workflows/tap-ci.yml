@@ -35,6 +35,7 @@ env:
 
 jobs:
   tap-pipeline-tests:
+    name: Tap Pipeline Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -51,6 +52,7 @@ jobs:
           npm test --prefix dagger/tap-pipeline
 
   plan:
+    name: Resolve Changed Packages
     runs-on: ubuntu-latest
     outputs:
       has_packages: ${{ steps.plan.outputs.has_packages }}
@@ -74,17 +76,27 @@ jobs:
             --base-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
             --head-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
-      - name: Build matrix from planner output
+      - name: Build package matrix
         id: plan
         run: |
           set -euo pipefail
           packages_json='${{ steps.dagger_plan.outputs.output }}'
           matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .}))}')"
           count="$(jq '.include | length' <<<"$matrix")"
+          package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$packages_json")"
+
+          echo "Changed package ids: $package_ids"
+          {
+            echo "## Changed Packages"
+            echo
+            echo "Package ids: $package_ids"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   ci:
+    name: Package CI
     needs:
       - tap-pipeline-tests
       - plan
@@ -108,11 +120,12 @@ jobs:
             ci-check
             --package-id="${{ matrix.package_id }}"
 
-  no-op:
+  no_package_ci_required:
+    name: No Package CI Required
     needs:
       - tap-pipeline-tests
       - plan
     if: needs.plan.outputs.has_packages != 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "No package-level CI work was detected by dagger/tap-pipeline."
+      - run: echo "No package-level CI work is required for this change set."
