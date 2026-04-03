@@ -5,15 +5,13 @@ cask "t3-code-linux" do
   version "0.0.15"
   sha256 x86_64_linux: "67ccbb4961f9e7e642edc469828d1c746dbbdeb6c38854b7a5742ddeea7bb038"
 
-  url "https://github.com/pingdotgg/t3code/releases/download/v0.0.15/T3-Code-0.0.15-x86_64.AppImage",
-      verified: "github.com/pingdotgg/t3code/"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-0.0.15/T3-Code-0.0.15-x86_64.AppImage"
   name "T3 Code"
   desc "Minimal GUI for AI code agents"
   homepage "https://t3.codes/"
 
   livecheck do
-    url :url
-    strategy :github_latest
+    skip "Updated by the tap's GitHub Actions workflow."
   end
 
   container type: :naked
