@@ -2,25 +2,34 @@ import test from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  AUTO_UPDATE_SLOTS,
   PACKAGE_REGISTRY,
   changedCiPackagesFromPaths,
   changedPackagesFromPaths,
-  packagesDueAt,
+  listAutoUpdateSlots,
+  packagesForAutoUpdateSlot,
   platformPathsChanged,
 } from "../src/library.ts"
 
-test("packagesDueAt respects the daily T3 cadence", () => {
-  const dueAtScheduledMinute = packagesDueAt(new Date("2026-04-02T06:41:00Z")).map((entry) => entry.id)
-  const dueLaterThatDay = packagesDueAt(new Date("2026-04-02T12:41:00Z")).map((entry) => entry.id)
-
-  assert.ok(dueAtScheduledMinute.includes("t3code-cli-main"))
-  assert.ok(!dueLaterThatDay.includes("t3code-cli-main"))
+test("listAutoUpdateSlots returns the stable slot order", () => {
+  assert.deepEqual(
+    listAutoUpdateSlots().map((slot) => slot.id),
+    AUTO_UPDATE_SLOTS.map((slot) => slot.id),
+  )
 })
 
-test("packagesDueAt cleanly no-ops when nothing matches the planner cadence", () => {
-  const due = packagesDueAt(new Date("2026-04-02T06:02:00Z"))
+test("packagesForAutoUpdateSlot resolves the expected package ids for every slot", () => {
+  for (const slot of AUTO_UPDATE_SLOTS) {
+    assert.deepEqual(
+      packagesForAutoUpdateSlot(slot.id).map((entry) => entry.id),
+      slot.packageIds,
+      `expected ordered package ids for ${slot.id}`,
+    )
+  }
+})
 
-  assert.deepEqual(due, [])
+test("packagesForAutoUpdateSlot rejects unknown slots", () => {
+  assert.throws(() => packagesForAutoUpdateSlot("imaginary-slot"), /Unknown auto-update slot/)
 })
 
 test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {

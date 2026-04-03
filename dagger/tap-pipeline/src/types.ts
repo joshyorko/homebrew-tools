@@ -6,12 +6,13 @@ export type PackageKind =
   | "github_release_deb_cask"
   | "github_release_appimage_cask"
 
-export type UpdatePolicy = "auto" | "manual" | "force"
-
-export type Cadence =
-  | { everyMinutes: number; minute: number }
-  | { daily: { hour: number; minute: number } }
-  | { manual: true }
+export type AutoUpdateSlotId =
+  | "rcc-daily"
+  | "action-server-daily"
+  | "desktop-6h"
+  | "vscode-insiders-2h"
+  | "t3-daily"
+  | "t3-code-6h"
 
 export type UpstreamSource =
   | {
@@ -36,10 +37,13 @@ export type PackageRegistryEntry = {
   kind: PackageKind
   homebrewPath: string
   supportsPrCi: boolean
-  supportsAutoUpdate: boolean
-  updatePolicy: UpdatePolicy
-  cadence: Cadence
   upstream: UpstreamSource
+}
+
+export type AutoUpdateSlot = {
+  id: AutoUpdateSlotId
+  description: string
+  packageIds: string[]
 }
 
 export type ReleaseMetadata = {

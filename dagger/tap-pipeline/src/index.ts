@@ -1,8 +1,9 @@
 import { dag, Container, Directory, File, argument, object, func } from "@dagger.io/dagger"
 import {
   changedCiPackagesFromPaths,
+  listAutoUpdateSlots as slotSummaries,
   packageSummaries,
-  packagesDueAt,
+  packagesForAutoUpdateSlot as slotPackages,
   releaseMetadataForPackage,
 } from "./library.js"
 
@@ -185,10 +186,20 @@ export class TapPipeline {
   }
 
   @func()
-  async planUpdates(nowIso?: string): Promise<string> {
-    const resolvedNow = nowIso ?? new Date().toISOString()
+  async listAutoUpdateSlots(): Promise<string> {
     return json(
-      packagesDueAt(new Date(resolvedNow)).map((entry) => ({
+      slotSummaries().map((slot) => ({
+        id: slot.id,
+        description: slot.description,
+        package_ids: slot.packageIds,
+      })),
+    )
+  }
+
+  @func()
+  async packagesForAutoUpdateSlot(slotId: string): Promise<string> {
+    return json(
+      slotPackages(slotId).map((entry) => ({
         id: entry.id,
         kind: entry.kind,
         homebrew_path: entry.homebrewPath,

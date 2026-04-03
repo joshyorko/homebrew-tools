@@ -2,8 +2,25 @@ name: Tap Auto Update
 
 on:
   schedule:
-    - cron: "0,17,41 * * * *"
+    - cron: "0 6 * * *"
+    - cron: "0 7 * * *"
+    - cron: "17 0,6,12,18 * * *"
+    - cron: "17 2,4,8,10,14,16,20,22 * * *"
+    - cron: "41 6 * * *"
+    - cron: "41 0,12,18 * * *"
   workflow_dispatch:
+    inputs:
+      slot_id:
+        description: "Named auto-update slot from dagger/tap-pipeline"
+        required: true
+        type: choice
+        options:
+          - rcc-daily
+          - action-server-daily
+          - desktop-6h
+          - vscode-insiders-2h
+          - t3-daily
+          - t3-code-6h
 
 permissions:
   contents: write
@@ -13,17 +30,49 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  plan:
+  resolve:
     runs-on: ubuntu-latest
     outputs:
-      has_packages: ${{ steps.plan.outputs.has_packages }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      slot_id: ${{ steps.slot.outputs.slot_id }}
+      trigger_source: ${{ steps.slot.outputs.trigger_source }}
+      matrix: ${{ steps.packages.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Plan due packages
-        id: dagger_plan
+      - name: Resolve auto-update slot
+        id: slot
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_SLOT_ID: ${{ inputs.slot_id }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            slot_id="$INPUT_SLOT_ID"
+            trigger_source="workflow_dispatch"
+          else
+            case "$EVENT_SCHEDULE" in
+              "0 6 * * *") slot_id="rcc-daily" ;;
+              "0 7 * * *") slot_id="action-server-daily" ;;
+              "17 0,6,12,18 * * *") slot_id="desktop-6h" ;;
+              "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
+              "41 6 * * *") slot_id="t3-daily" ;;
+              "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
+              *)
+                echo "Unknown scheduled slot for Tap Auto Update: $EVENT_SCHEDULE" >&2
+                exit 1
+                ;;
+            esac
+            trigger_source="schedule:$EVENT_SCHEDULE"
+          fi
+
+          echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
+          echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve slot packages through Dagger
+        id: dagger_slot
         uses: dagger/dagger-for-github@v8.4.1
         with:
           version: ${{ env.DAGGER_VERSION }}
@@ -31,27 +80,47 @@ jobs:
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           enable-github-summary: "true"
           call: >-
-            plan-updates
-            --now-iso="$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")"
+            packages-for-auto-update-slot
+            --slot-id="${{ steps.slot.outputs.slot_id }}"
 
-      - name: Build matrix from planner output
-        id: plan
+      - name: Build matrix from slot output
+        id: packages
+        env:
+          SLOT_ID: ${{ steps.slot.outputs.slot_id }}
+          TRIGGER_SOURCE: ${{ steps.slot.outputs.trigger_source }}
         run: |
           set -euo pipefail
-          packages_json='${{ steps.dagger_plan.outputs.output }}'
+          packages_json='${{ steps.dagger_slot.outputs.output }}'
           matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .id}))}')"
           count="$(jq '.include | length' <<<"$matrix")"
+          package_ids="$(jq -r 'map(.id) | join(", ")' <<<"$packages_json")"
+
+          if [ "$count" -eq 0 ]; then
+            echo "Auto-update slot $SLOT_ID resolved zero packages, which is not allowed." >&2
+            exit 1
+          fi
+
+          echo "Resolved slot $SLOT_ID -> $package_ids"
+          {
+            echo "## Auto Update Slot"
+            echo
+            echo "Slot id: \`$SLOT_ID\`"
+            echo "Trigger: \`$TRIGGER_SOURCE\`"
+            echo "Package ids: $package_ids"
+            echo
+            jq -r '.[] | "- `\(.id)` -> `\(.homebrew_path)`"' <<<"$packages_json"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   release:
-    needs: plan
-    if: needs.plan.outputs.has_packages == 'true'
+    needs: resolve
+    name: Release ${{ matrix.package_id }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       max-parallel: 1
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -75,11 +144,14 @@ jobs:
           path: ${{ runner.temp }}/bundle
 
       - name: Publish release asset and update tap file
+        id: publish
+        env:
+          PACKAGE_ID: ${{ matrix.package_id }}
+          SLOT_ID: ${{ needs.resolve.outputs.slot_id }}
         run: |
           set -euo pipefail
           release_json="$RUNNER_TEMP/bundle/release.json"
           release_tag="$(jq -r '.release_tag' "$release_json")"
-          asset_name="$(jq -r '.asset_name' "$release_json")"
           homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
           release_title="$(jq -r '.release_title' "$release_json")"
           commit_message="$(jq -r '.commit_message' "$release_json")"
@@ -101,7 +173,15 @@ jobs:
           node scripts/apply-release-bundle.mjs --bundle "$RUNNER_TEMP/bundle" --repo "$GITHUB_WORKSPACE"
 
           if git diff --quiet; then
-            echo "No repository update required for ${{ matrix.package_id }}."
+            echo "status=unchanged" >> "$GITHUB_OUTPUT"
+            {
+              echo "## ${PACKAGE_ID}"
+              echo
+              echo "Slot: \`$SLOT_ID\`"
+              echo "Result: unchanged"
+              echo "Homebrew path: \`$homebrew_path\`"
+              echo "Release tag: \`$release_tag\`"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -112,9 +192,12 @@ jobs:
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
-  no-op:
-    needs: plan
-    if: needs.plan.outputs.has_packages != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No packages are due according to dagger/tap-pipeline."
+          echo "status=updated" >> "$GITHUB_OUTPUT"
+          {
+            echo "## ${PACKAGE_ID}"
+            echo
+            echo "Slot: \`$SLOT_ID\`"
+            echo "Result: updated"
+            echo "Homebrew path: \`$homebrew_path\`"
+            echo "Release tag: \`$release_tag\`"
+          } >> "$GITHUB_STEP_SUMMARY"
