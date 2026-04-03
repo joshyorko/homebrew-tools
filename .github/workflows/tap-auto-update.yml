@@ -7,6 +7,7 @@ on:
     - cron: "17 0,6,12,18 * * *"
     - cron: "17 2,4,8,10,14,16,20,22 * * *"
     - cron: "41 6 * * *"
+    # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
     - cron: "41 0,12,18 * * *"
   workflow_dispatch:
     inputs:

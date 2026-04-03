@@ -1,4 +1,4 @@
-import type { AutoUpdateSlot, PackageRegistryEntry, ReleaseMetadata } from "./types.js"
+import type { AutoUpdateSlot, AutoUpdateSlotId, PackageRegistryEntry, ReleaseMetadata } from "./types.js"
 
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
@@ -178,6 +178,20 @@ function packageEntryForId(packageId: string): PackageRegistryEntry {
   return entry
 }
 
+function autoUpdateSlotForId(slotId: string): AutoUpdateSlot {
+  const slot = AUTO_UPDATE_SLOTS.find((candidate) => candidate.id === slotId)
+
+  if (!slot) {
+    throw new Error(`Unknown auto-update slot: ${slotId}`)
+  }
+
+  return slot
+}
+
+export function parseAutoUpdateSlotId(slotId: string): AutoUpdateSlotId {
+  return autoUpdateSlotForId(slotId).id
+}
+
 export function listAutoUpdateSlots(): AutoUpdateSlot[] {
   return AUTO_UPDATE_SLOTS.map((slot) => ({
     ...slot,
@@ -185,12 +199,8 @@ export function listAutoUpdateSlots(): AutoUpdateSlot[] {
   }))
 }
 
-export function packagesForAutoUpdateSlot(slotId: string): PackageRegistryEntry[] {
-  const slot = AUTO_UPDATE_SLOTS.find((candidate) => candidate.id === slotId)
-
-  if (!slot) {
-    throw new Error(`Unknown auto-update slot: ${slotId}`)
-  }
+export function packagesForAutoUpdateSlot(slotId: AutoUpdateSlotId): PackageRegistryEntry[] {
+  const slot = autoUpdateSlotForId(slotId)
 
   return slot.packageIds.map((packageId) => packageEntryForId(packageId))
 }

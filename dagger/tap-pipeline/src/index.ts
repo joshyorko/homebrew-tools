@@ -3,6 +3,7 @@ import {
   changedCiPackagesFromPaths,
   listAutoUpdateSlots as slotSummaries,
   packageSummaries,
+  parseAutoUpdateSlotId,
   packagesForAutoUpdateSlot as slotPackages,
   releaseMetadataForPackage,
 } from "./library.js"
@@ -199,7 +200,7 @@ export class TapPipeline {
   @func()
   async packagesForAutoUpdateSlot(slotId: string): Promise<string> {
     return json(
-      slotPackages(slotId).map((entry) => ({
+      slotPackages(parseAutoUpdateSlotId(slotId)).map((entry) => ({
         id: entry.id,
         kind: entry.kind,
         homebrew_path: entry.homebrewPath,
