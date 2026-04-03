@@ -169,6 +169,9 @@ jobs:
 
         for package_id in "${package_ids[@]}"; do
           bundle_root="$RUNNER_TEMP/bundles/release-bundle-$package_id"
+          if [ ! -d "$bundle_root" ]; then
+            bundle_root="$RUNNER_TEMP/bundles"
+          fi
           bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$bundle_root")"
           release_json="$bundle_dir/release.json"
 
