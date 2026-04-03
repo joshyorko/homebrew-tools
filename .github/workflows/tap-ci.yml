@@ -3,28 +3,28 @@ name: Tap CI
 on:
   pull_request:
     paths:
-      - ".github/workflows/tap-ci.yml"
-      - ".github/workflows/tap-auto-update.yml"
-      - ".github/workflows/tap-manual.yml"
-      - "Casks/**"
-      - "Formula/**"
-      - "scripts/**"
-      - "dagger/**"
-      - "README.md"
-      - "AGENTS.md"
+    - ".github/workflows/tap-ci.yml"
+    - ".github/workflows/tap-auto-update.yml"
+    - ".github/workflows/tap-manual.yml"
+    - "Casks/**"
+    - "Formula/**"
+    - "scripts/**"
+    - "dagger/**"
+    - "README.md"
+    - "AGENTS.md"
   push:
     branches:
-      - main
+    - main
     paths:
-      - ".github/workflows/tap-ci.yml"
-      - ".github/workflows/tap-auto-update.yml"
-      - ".github/workflows/tap-manual.yml"
-      - "Casks/**"
-      - "Formula/**"
-      - "scripts/**"
-      - "dagger/**"
-      - "README.md"
-      - "AGENTS.md"
+    - ".github/workflows/tap-ci.yml"
+    - ".github/workflows/tap-auto-update.yml"
+    - ".github/workflows/tap-manual.yml"
+    - "Casks/**"
+    - "Formula/**"
+    - "scripts/**"
+    - "dagger/**"
+    - "README.md"
+    - "AGENTS.md"
 
 permissions:
   contents: read
@@ -32,24 +32,24 @@ permissions:
 env:
   DAGGER_VERSION: "0.20.3"
   GH_TOKEN: ${{ github.token }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   tap-pipeline-tests:
     name: Tap Pipeline Tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - name: Set up Node.js
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+      with:
+        node-version: "24"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - name: Run tap-pipeline test suite
-        run: |
-          set -euo pipefail
-          npm test --prefix dagger/tap-pipeline
+    - name: Run tap-pipeline test suite
+      run: |
+        set -euo pipefail
+        npm test --prefix dagger/tap-pipeline
 
   plan:
     name: Resolve Changed Packages
@@ -58,74 +58,73 @@ jobs:
       has_packages: ${{ steps.plan.outputs.has_packages }}
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      with:
+        fetch-depth: 0
 
-      - name: Plan changed packages
-        id: dagger_plan
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          module: ./dagger/tap-pipeline
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          enable-github-summary: "true"
-          call: >-
-            detect-changed-packages
-            --base-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
-            --head-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+    - name: Plan changed packages
+      id: dagger_plan
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          detect-changed-packages
+          --base-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
+          --head-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
-      - name: Build package matrix
-        id: plan
-        run: |
-          set -euo pipefail
-          packages_json='${{ steps.dagger_plan.outputs.output }}'
-          matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .}))}')"
-          count="$(jq '.include | length' <<<"$matrix")"
-          package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$packages_json")"
+    - name: Build package matrix
+      id: plan
+      run: |
+        set -euo pipefail
+        packages_json='${{ steps.dagger_plan.outputs.output }}'
+        matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .}))}')"
+        count="$(jq '.include | length' <<<"$matrix")"
+        package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$packages_json")"
 
-          echo "Changed package ids: $package_ids"
-          {
-            echo "## Changed Packages"
-            echo
-            echo "Package ids: $package_ids"
-          } >> "$GITHUB_STEP_SUMMARY"
+        echo "Changed package ids: $package_ids"
+        {
+          echo "## Changed Packages"
+          echo
+          echo "Package ids: $package_ids"
+        } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+        echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   ci:
     name: Package CI
     needs:
-      - tap-pipeline-tests
-      - plan
+    - tap-pipeline-tests
+    - plan
     if: needs.plan.outputs.has_packages == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Run package CI through Dagger
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          module: ./dagger/tap-pipeline
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          enable-github-summary: "true"
-          call: >-
-            ci-check
-            --package-id="${{ matrix.package_id }}"
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - name: Run package CI through Dagger
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          ci-check
+          --package-id="${{ matrix.package_id }}"
 
   no_package_ci_required:
     name: No Package CI Required
     needs:
-      - tap-pipeline-tests
-      - plan
+    - tap-pipeline-tests
+    - plan
     if: needs.plan.outputs.has_packages != 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "No package-level CI work is required for this change set."
+    - run: echo "No package-level CI work is required for this change set."

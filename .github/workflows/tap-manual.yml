@@ -8,9 +8,9 @@ on:
         required: true
         type: choice
         options:
-          - ci
-          - release
-          - force-release
+        - ci
+        - release
+        - force-release
       package_id:
         description: "Package id from dagger/tap-pipeline listPackages()"
         required: true
@@ -22,84 +22,85 @@ permissions:
 env:
   DAGGER_VERSION: "0.20.3"
   GH_TOKEN: ${{ github.token }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+    - name: Run package CI through Dagger
+      if: inputs.action == 'ci'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          ci-check
+          --package-id="${{ inputs.package_id }}"
 
-      - name: Run package CI through Dagger
-        if: inputs.action == 'ci'
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          module: ./dagger/tap-pipeline
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          enable-github-summary: "true"
-          call: >-
-            ci-check
-            --package-id="${{ inputs.package_id }}"
+    - name: Export release bundle
+      if: inputs.action == 'release' || inputs.action == 'force-release'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          -o "$RUNNER_TEMP/bundle"
+          release-bundle
+          --package-id="${{ inputs.package_id }}"
 
-      - name: Export release bundle
-        if: inputs.action == 'release' || inputs.action == 'force-release'
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          module: ./dagger/tap-pipeline
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          enable-github-summary: "true"
-          call: >-
-            -o "$RUNNER_TEMP/bundle"
-            release-bundle
-            --package-id="${{ inputs.package_id }}"
+    - name: Publish manual release output
+      if: inputs.action == 'release' || inputs.action == 'force-release'
+      env:
+        PACKAGE_ID: ${{ inputs.package_id }}
+      run: |
+        set -euo pipefail
+        bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$RUNNER_TEMP/bundle")"
+        release_json="$bundle_dir/release.json"
+        release_tag="$(jq -r '.release_tag' "$release_json")"
+        homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
+        release_title="$(jq -r '.release_title' "$release_json")"
+        commit_message="$(jq -r '.commit_message' "$release_json")"
+        notes_file="$RUNNER_TEMP/release-notes.txt"
+        jq -r '.release_notes' "$release_json" > "$notes_file"
+        release_exists=false
 
-      - name: Publish manual release output
-        if: inputs.action == 'release' || inputs.action == 'force-release'
-        env:
-          PACKAGE_ID: ${{ inputs.package_id }}
-        run: |
-          set -euo pipefail
-          release_json="$RUNNER_TEMP/bundle/release.json"
-          release_tag="$(jq -r '.release_tag' "$release_json")"
-          homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
-          release_title="$(jq -r '.release_title' "$release_json")"
-          commit_message="$(jq -r '.commit_message' "$release_json")"
-          notes_file="$RUNNER_TEMP/release-notes.txt"
-          jq -r '.release_notes' "$release_json" > "$notes_file"
-          release_exists=false
+        if gh release view "$release_tag" >/dev/null 2>&1; then
+          release_exists=true
+        fi
 
-          if gh release view "$release_tag" >/dev/null 2>&1; then
-            release_exists=true
-          fi
+        if [ "${{ inputs.action }}" = release ] && [ "$release_exists" = true ]; then
+          echo "Release $release_tag already exists. Use force-release to overwrite assets and reapply bundle output."
+          exit 0
+        fi
 
-          if [ "${{ inputs.action }}" = release ] && [ "$release_exists" = true ]; then
-            echo "Release $release_tag already exists. Use force-release to overwrite assets and reapply bundle output."
-            exit 0
-          fi
+        if [ "$release_exists" = false ]; then
+          gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+        fi
 
-          if [ "$release_exists" = false ]; then
-            gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
-          fi
+        shopt -s nullglob
+        artifacts=("$bundle_dir/artifacts/"*)
+        if [ "${#artifacts[@]}" -eq 0 ]; then
+          echo "No release artifacts were exported by dagger/tap-pipeline." >&2
+          exit 1
+        fi
 
-          shopt -s nullglob
-          artifacts=("$RUNNER_TEMP/bundle/artifacts/"*)
-          if [ "${#artifacts[@]}" -eq 0 ]; then
-            echo "No release artifacts were exported by dagger/tap-pipeline." >&2
-            exit 1
-          fi
+        gh release upload "$release_tag" "${artifacts[@]}" --clobber
+        node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE"
 
-          gh release upload "$release_tag" "${artifacts[@]}" --clobber
-          node scripts/apply-release-bundle.mjs --bundle "$RUNNER_TEMP/bundle" --repo "$GITHUB_WORKSPACE"
+        if git diff --quiet; then
+          exit 0
+        fi
 
-          if git diff --quiet; then
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$homebrew_path"
-          git commit -m "$commit_message"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$homebrew_path"
+        git commit -m "$commit_message"
+        git pull --rebase origin "${GITHUB_REF_NAME}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"

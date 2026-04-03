@@ -1,0 +1,24 @@
+# For more details on the format and content:
+# https://github.com/joshyorko/rcc/blob/master/docs/recipes.md#what-is-in-robotyaml
+
+tasks:
+  maintenance:
+    shell: python -m robocorp.tasks run src/maintenance_robot/tasks.py -t maintenance
+
+  update-workflows:
+    shell: python -m robocorp.tasks run src/maintenance_robot/tasks.py -t update_workflows_only
+
+environmentConfigs:
+  - output/environment_linux_amd64_freeze.yaml
+  - output/environment_windows_amd64_freeze.yaml
+  - output/environment_darwin_amd64_freeze.yaml
+  - conda.yaml
+
+artifactsDir: output
+
+PATH:
+  - .
+PYTHONPATH:
+  - src
+ignoreFiles:
+  - .gitignore
