@@ -13,7 +13,7 @@ dependencies:
       - ruamel.yaml==0.19.1        # https://pypi.org/project/ruamel.yaml/
       - packaging==24.2            # https://pypi.org/project/packaging/
       - tenacity==9.1.2            # https://pypi.org/project/tenacity/
-      - robocorp==3.1.1            # https://pypi.org/project/robocorp/
+      - robocorp-tasks==4.1.1      # https://pypi.org/project/robocorp-tasks/
       - robocorp-truststore==0.9.1 # https://pypi.org/project/robocorp-truststore/
 
 variables:
