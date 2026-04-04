@@ -300,16 +300,6 @@ The tap-pipeline test suite covers:
 - changed-package routing for PR CI
 - release metadata contract shape across every registered package kind
 
-### Fizzy Board
-
-Agent coordination for this migration runs on the `work-ai-board` Fizzy board:
-
-- board id: `03fs668i2uvjcv6y1tkbz0b06`
-- parent card: `Dagger-first tap platform migration`
-- execution cards move through `Shaping`, `Ready for Agents`, `In Flight`, `Needs Input`, `Synthesize & Verify`, and `Ready to Ship`
-
-Execution agents are expected to use the `Fizzy:fizzy` skill for card lookup, comments, status moves, and blockers.
-
 ## License
 
 MIT
