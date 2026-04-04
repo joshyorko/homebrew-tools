@@ -20,5 +20,6 @@ PATH:
   - .
 PYTHONPATH:
   - src
+
 ignoreFiles:
   - .gitignore
