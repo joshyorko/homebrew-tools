@@ -7,6 +7,7 @@ import {
   packagesForAutoUpdateSlot as slotPackages,
   releaseMetadataForPackage,
 } from "./library.js"
+import { rewriteCaskUrl } from "./cask-render.js"
 
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
@@ -933,25 +934,31 @@ export class TapPipeline {
   }
 
   private renderDevpodCask(baseContents: string, downloadUrl: string, version: string, sha256: string): string {
-    return baseContents
-      .replace(/version ".*"/, `version "${version}"`)
-      .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
-      .replace(/url ".*",\n\s+verified: ".*"/, `url "${downloadUrl}"`)
-      .replace(
-        /livecheck do\n(?:.*\n)*?\s+end\n/m,
-        "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
-      )
+    const updatedContents = rewriteCaskUrl(
+      baseContents
+        .replace(/version ".*"/, `version "${version}"`)
+        .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`),
+      downloadUrl,
+    )
+
+    return updatedContents.replace(
+      /livecheck do\n(?:.*\n)*?\s+end\n/m,
+      "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
+    )
   }
 
   private renderT3CodeCask(baseContents: string, downloadUrl: string, version: string, sha256: string): string {
-    return baseContents
-      .replace(/version ".*"/, `version "${version}"`)
-      .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`)
-      .replace(/url ".*",\n\s+verified: ".*"/, `url "${downloadUrl}"`)
-      .replace(
-        /livecheck do\n(?:.*\n)*?\s+end\n/m,
-        "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
-      )
+    const updatedContents = rewriteCaskUrl(
+      baseContents
+        .replace(/version ".*"/, `version "${version}"`)
+        .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`),
+      downloadUrl,
+    )
+
+    return updatedContents.replace(
+      /livecheck do\n(?:.*\n)*?\s+end\n/m,
+      "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
+    )
   }
 
   @func()
