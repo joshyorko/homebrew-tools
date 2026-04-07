@@ -32,3 +32,36 @@ test("rewriteCaskUrl removes verified metadata when swapping release URLs", () =
   assert.match(updated, /url "https:\/\/github\.com\/org\/repo\/releases\/download\/v1\.2\.3\/example\.tar\.gz"/)
   assert.doesNotMatch(updated, /verified:/)
 })
+
+test("rewriteCaskUrl rejects casks without a supported url stanza", () => {
+  const baseContents = [
+    "cask \"example\" do",
+    "  version \"1.2.3\"",
+    "end",
+    "",
+  ].join("\n")
+
+  assert.throws(
+    () => rewriteCaskUrl(baseContents, "https://example.com/new.tar.gz"),
+    /Expected exactly one unverified url stanza, found 0/,
+  )
+})
+
+test("rewriteCaskUrl rejects ambiguous plain-url casks", () => {
+  const baseContents = [
+    "cask \"example\" do",
+    "  on_macos do",
+    "    url \"https://example.com/macos.tar.gz\"",
+    "  end",
+    "  on_linux do",
+    "    url \"https://example.com/linux.tar.gz\"",
+    "  end",
+    "end",
+    "",
+  ].join("\n")
+
+  assert.throws(
+    () => rewriteCaskUrl(baseContents, "https://example.com/new.tar.gz"),
+    /Expected exactly one unverified url stanza, found 2/,
+  )
+})
