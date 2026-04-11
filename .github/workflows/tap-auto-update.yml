@@ -30,6 +30,7 @@ env:
   DAGGER_VERSION: "0.20.3"
   GH_TOKEN: ${{ github.token }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  RELEASE_RETENTION_PER_PACKAGE: "3"
 
 jobs:
   resolve:
@@ -38,7 +39,8 @@ jobs:
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
       trigger_source: ${{ steps.slot.outputs.trigger_source }}
-      package_ids_json: ${{ steps.slot.outputs.package_ids_json }}
+      package_ids_json: ${{ steps.packages.outputs.package_ids_json }}
+      has_packages: ${{ steps.packages.outputs.has_packages }}
       matrix: ${{ steps.packages.outputs.matrix }}
     steps:
     - name: Checkout repository
@@ -71,33 +73,33 @@ jobs:
           trigger_source="schedule:$EVENT_SCHEDULE"
         fi
 
-        package_ids_json="$(
-          jq -cer --arg slot_id "$slot_id" '
-            map(select(.id == $slot_id) | .packageIds)
-            | if length == 1 then .[0] else error("Unknown slot id for Tap Auto Update: \($slot_id)") end
-          ' dagger/tap-pipeline/auto-update-slots.json
-        )"
-
         echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
         echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
-        echo "package_ids_json=$package_ids_json" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve packages needing update
+      id: dagger_plan
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          auto-update-status
+          --slot-id="${{ steps.slot.outputs.slot_id }}"
 
     - name: Build matrix from slot output
       id: packages
       env:
         SLOT_ID: ${{ steps.slot.outputs.slot_id }}
         TRIGGER_SOURCE: ${{ steps.slot.outputs.trigger_source }}
-        PACKAGE_IDS_JSON: ${{ steps.slot.outputs.package_ids_json }}
+        STATUS_JSON: ${{ steps.dagger_plan.outputs.output }}
       run: |
         set -euo pipefail
+        PACKAGE_IDS_JSON="$(jq -cer '[.[] | select(.needs_update) | .id]' <<<"$STATUS_JSON")"
         matrix="$(jq -cn --argjson package_ids "$PACKAGE_IDS_JSON" '{include: ($package_ids | map({package_id: .}))}')"
         count="$(jq '.include | length' <<<"$matrix")"
-        package_ids="$(jq -r 'join(", ")' <<<"$PACKAGE_IDS_JSON")"
-
-        if [ "$count" -eq 0 ]; then
-          echo "Auto-update slot $SLOT_ID resolved zero packages, which is not allowed." >&2
-          exit 1
-        fi
+        package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$PACKAGE_IDS_JSON")"
 
         echo "Resolved slot $SLOT_ID -> $package_ids"
         {
@@ -105,13 +107,20 @@ jobs:
           echo
           echo "Slot id: \`$SLOT_ID\`"
           echo "Trigger: \`$TRIGGER_SOURCE\`"
-          echo "Package ids: $package_ids"
+          echo "Packages needing build: $package_ids"
+          echo
+          echo "### Package Status"
+          echo
+          jq -r '.[] | "- \(.id): current=\(.current_version) upstream=\(.upstream_version) needs_update=\(.needs_update)"' <<<"$STATUS_JSON"
         } >> "$GITHUB_STEP_SUMMARY"
 
+        echo "package_ids_json=$PACKAGE_IDS_JSON" >> "$GITHUB_OUTPUT"
         echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+        echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve
+    if: needs.resolve.outputs.has_packages == 'true'
     name: Build ${{ matrix.package_id }} Bundle
     runs-on: ubuntu-latest
     strategy:
@@ -142,6 +151,7 @@ jobs:
     needs:
     - resolve
     - build
+    if: needs.resolve.outputs.has_packages == 'true'
     name: Publish Auto Update Slot
     runs-on: ubuntu-latest
     steps:
@@ -199,6 +209,11 @@ jobs:
 
           gh release upload "$release_tag" "${artifacts[@]}" --clobber
           node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE" >/dev/null
+          node scripts/prune-package-releases.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --package-id "$package_id" \
+            --current-tag "$release_tag" \
+            --keep "$RELEASE_RETENTION_PER_PACKAGE"
 
           if git diff --quiet -- "$homebrew_path"; then
             result="unchanged"
@@ -251,3 +266,11 @@ jobs:
           echo "Updated packages: $(printf '%s, ' "${updated_ids[@]}" | sed 's/, $//')"
           echo "Commit: \`$commit_message\`"
         } >> "$GITHUB_STEP_SUMMARY"
+
+  no_updates_required:
+    needs: resolve
+    if: needs.resolve.outputs.has_packages != 'true'
+    name: No Auto Updates Required
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo "No upstream package updates detected for this slot."

@@ -31,7 +31,10 @@ cask "t3-code-linux" do
     system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
 
     desktop_file = "#{staged_path}/t3-code-linux.desktop"
-    desktop_contents = File.read("#{staged_path}/squashfs-root/t3-code-desktop.desktop")
+    desktop_source = Dir["#{staged_path}/squashfs-root/*.desktop"].find { |path| File.file?(path) }
+    raise "No desktop entry found in extracted T3 Code AppImage" unless desktop_source
+
+    desktop_contents = File.read(desktop_source)
     desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/t3-code-linux %U")
     desktop_contents.gsub!(
       /^Icon=.*/,
@@ -39,10 +42,11 @@ cask "t3-code-linux" do
     )
     File.write(desktop_file, desktop_contents)
 
-    FileUtils.cp(
-      "#{staged_path}/squashfs-root/usr/share/icons/hicolor/1024x1024/apps/t3-code-desktop.png",
-      "#{staged_path}/t3-code-linux.png"
-    )
+    icon_source = Dir["#{staged_path}/squashfs-root/usr/share/icons/hicolor/1024x1024/apps/*.png"]
+      .find { |path| File.file?(path) }
+    raise "No 1024x1024 icon found in extracted T3 Code AppImage" unless icon_source
+
+    FileUtils.cp(icon_source, "#{staged_path}/t3-code-linux.png")
 
     wrapper = "#{staged_path}/t3-code-linux-wrapper"
     File.write(wrapper, <<~SH)

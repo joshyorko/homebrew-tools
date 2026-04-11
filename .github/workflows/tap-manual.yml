@@ -23,6 +23,7 @@ env:
   DAGGER_VERSION: "0.20.3"
   GH_TOKEN: ${{ github.token }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  RELEASE_RETENTION_PER_PACKAGE: "3"
 
 jobs:
   run:
@@ -93,6 +94,11 @@ jobs:
 
         gh release upload "$release_tag" "${artifacts[@]}" --clobber
         node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE"
+        node scripts/prune-package-releases.mjs \
+          --repo "$GITHUB_REPOSITORY" \
+          --package-id "$PACKAGE_ID" \
+          --current-tag "$release_tag" \
+          --keep "$RELEASE_RETENTION_PER_PACKAGE"
 
         if git diff --quiet; then
           exit 0
