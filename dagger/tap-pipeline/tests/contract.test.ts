@@ -66,6 +66,7 @@ test("registry entries expose the required orchestration fields", () => {
     assert.ok(entry.homebrewPath.startsWith("Casks/") || entry.homebrewPath.startsWith("Formula/"))
     assert.ok(typeof entry.supportsPrCi === "boolean")
     assert.ok(typeof entry.autoUpdate.kind === "string")
+    assert.ok(entry.upstream, `missing upstream for ${entry.id}`)
     assert.ok(typeof entry.upstream.kind === "string")
   }
 })
