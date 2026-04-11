@@ -27,6 +27,22 @@ function parseTextLines(output: string): string[] {
     .filter((line) => line.length > 0)
 }
 
+function stripRequiredPrefix(value: string, prefix?: string): string {
+  if (!prefix) {
+    return value
+  }
+
+  if (!value.startsWith(prefix)) {
+    throw new Error(`Expected ${value} to start with ${prefix}`)
+  }
+
+  return value.slice(prefix.length)
+}
+
+function githubApiRepoUrl(repoUrl: string): string {
+  return repoUrl.replace("https://github.com/", "https://api.github.com/repos/")
+}
+
 function tapStagingCommands(packageId: string): string[] {
   switch (packageId) {
     case "rcc":
@@ -123,6 +139,7 @@ type VoxtypeBuild = {
   assetName: string
   commit: string
   container: Container
+  upstreamTag: string
   version: string
 }
 
@@ -162,6 +179,15 @@ type T3CodeBuild = {
   upstreamTag: string
   container: Container
   asset: DownloadedAsset
+}
+
+type AutoUpdatePackageStatus = {
+  id: string
+  kind: string
+  homebrew_path: string
+  current_version: string
+  upstream_version: string
+  needs_update: boolean
 }
 
 @object()
@@ -208,6 +234,54 @@ export class TapPipeline {
         homebrew_path: entry.homebrewPath,
       })),
     )
+  }
+
+  @func()
+  async autoUpdateStatus(slotId: string): Promise<string> {
+    const entries = slotPackages(parseAutoUpdateSlotId(slotId))
+    const statuses = await Promise.all(entries.map(async (entry): Promise<AutoUpdatePackageStatus> => {
+      const currentVersion = await this.currentPackagedVersion(entry.id)
+      const upstreamVersion = await this.resolveUpstreamVersion(entry.id)
+
+      return {
+        id: entry.id,
+        kind: entry.kind,
+        homebrew_path: entry.homebrewPath,
+        current_version: currentVersion,
+        upstream_version: upstreamVersion,
+        needs_update: currentVersion !== upstreamVersion,
+      }
+    }))
+
+    return json(statuses)
+  }
+
+  @func()
+  async packagesNeedingAutoUpdate(slotId: string): Promise<string> {
+    const entries = JSON.parse(await this.autoUpdateStatus(slotId)) as AutoUpdatePackageStatus[]
+    return json(entries.filter((entry) => entry.needs_update).map((entry) => entry.id))
+  }
+
+  private packageEntry(packageId: string) {
+    const entry = packageSummaries().find((candidate) => candidate.id === packageId)
+
+    if (!entry) {
+      throw new Error(`Unknown package: ${packageId}`)
+    }
+
+    return entry
+  }
+
+  private async currentPackagedVersion(packageId: string): Promise<string> {
+    const entry = this.packageEntry(packageId)
+    const contents = await this.source.file(entry.homebrewPath).contents()
+    const match = contents.match(/^\s*version "([^"]+)"/m)
+
+    if (!match) {
+      throw new Error(`Failed to resolve packaged version from ${entry.homebrewPath}`)
+    }
+
+    return match[1]
   }
 
   private t3BaseContainer(): Container {
@@ -383,12 +457,12 @@ export class TapPipeline {
       artifactSha256: sha256,
       downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/voxtype-${build.version}/${build.assetName}`,
       releaseTitle: `Voxtype ${build.version} Homebrew artifact`,
-      releaseNotes: `Homebrew artifact built from peteonrails/voxtype@${build.version}`,
+      releaseNotes: `Homebrew artifact built from peteonrails/voxtype ${build.upstreamTag}`,
       commitMessage: `Update voxtype formula to ${build.version}`,
       upstream: {
         kind: "git",
         repo: "https://github.com/peteonrails/voxtype",
-        ref: "refs/tags/v0.6.4",
+        ref: `refs/tags/${build.upstreamTag}`,
         version: build.version,
         commit: build.commit,
       },
@@ -441,43 +515,12 @@ export class TapPipeline {
   }
 
   private async buildVscodeArtifact(tap: Directory, sourceUrl?: string, version?: string): Promise<VscodeBuild> {
-    const resolvedSourceUrl = sourceUrl ?? "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
-    const metadataContainer = dag
-      .container()
-      .from(NODE_IMAGE)
-      .withExec([
-        "bash",
-        "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates cpio curl jq rpm tar && rm -rf /var/lib/apt/lists/*",
-      ])
-      .withEnvVariable("SOURCE_URL", resolvedSourceUrl)
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "resolved_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \"$SOURCE_URL\")",
-          "curl -fsSL \"$resolved_url\" -o /tmp/vscode-insiders-source.rpm",
-          "package_version=$(rpm -qp --queryformat '%{VERSION}' /tmp/vscode-insiders-source.rpm)",
-          "release_build=$(rpm -qp --queryformat '%{RELEASE}' /tmp/vscode-insiders-source.rpm)",
-          "commit_sha=$(printf '%s' \"$resolved_url\" | sed -nE 's#^.*/download/insider/([0-9a-f]+)/.*#\\1#p')",
-          "commit_short=${commit_sha:0:12}",
-          "printf 'resolved_url=%s\\npackage_version=%s\\nrelease_build=%s\\ncask_version=%s,%s,%s\\ncommit_sha=%s\\n' \"$resolved_url\" \"$package_version\" \"$release_build\" \"$package_version\" \"$release_build\" \"$commit_short\" \"$commit_sha\"",
-        ].join("\n"),
-      ])
-
-    const metadata = Object.fromEntries(
-      parseTextLines(await metadataContainer.stdout()).map((line) => {
-        const [key, ...rest] = line.split("=")
-        return [key, rest.join("=")]
-      }),
-    )
-
-    const resolvedUrl = String(metadata.resolved_url)
-    const packageVersion = String(metadata.package_version)
-    const releaseBuild = String(metadata.release_build)
-    const commitSha = String(metadata.commit_sha)
-    const caskVersion = version && version.length > 0 ? version : String(metadata.cask_version)
+    const metadata = await this.resolveVscodeMetadata(sourceUrl)
+    const resolvedUrl = metadata.resolvedUrl
+    const packageVersion = metadata.packageVersion
+    const releaseBuild = metadata.releaseBuild
+    const commitSha = metadata.commitSha
+    const caskVersion = version && version.length > 0 ? version : metadata.caskVersion
     const assetName = `vscode-insiders-linux-${caskVersion.replace(/,/g, "-")}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
 
@@ -512,8 +555,11 @@ export class TapPipeline {
     }
   }
 
-  private async buildVoxtypeArtifact(tap: Directory, ref = "refs/tags/v0.6.4", version?: string): Promise<VoxtypeBuild> {
-    const upstreamRef = dag.git("https://github.com/peteonrails/voxtype").ref(ref)
+  private async buildVoxtypeArtifact(tap: Directory, ref?: string, version?: string): Promise<VoxtypeBuild> {
+    const upstreamTag = ref && ref.length > 0
+      ? ref.replace(/^refs\/tags\//, "")
+      : (await this.fetchJson("https://api.github.com/repos/peteonrails/voxtype/releases/latest") as { tag_name: string }).tag_name
+    const upstreamRef = dag.git("https://github.com/peteonrails/voxtype").ref(`refs/tags/${upstreamTag}`)
     const upstreamTree = upstreamRef.tree({ discardGitDir: true })
     const commit = await upstreamRef.commit()
     const cargoToml = await upstreamTree.file("Cargo.toml").contents()
@@ -580,6 +626,7 @@ export class TapPipeline {
       assetName,
       commit,
       container,
+      upstreamTag,
       version: resolvedVersion,
     }
   }
@@ -607,6 +654,94 @@ export class TapPipeline {
       .stdout()
 
     return JSON.parse(output)
+  }
+
+  private async resolveVscodeMetadata(sourceUrl?: string): Promise<{
+    resolvedUrl: string
+    packageVersion: string
+    releaseBuild: string
+    commitSha: string
+    caskVersion: string
+  }> {
+    const resolvedSourceUrl = sourceUrl ?? "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
+    const resolvedUrl = (await dag
+      .container()
+      .from(NODE_IMAGE)
+      .withExec([
+        "node",
+        "--input-type=module",
+        "-e",
+        [
+          "const url = process.argv[1]",
+          "const response = await fetch(url, { method: 'HEAD', redirect: 'follow' })",
+          "if (!response.ok) {",
+          "  throw new Error(`Failed to resolve ${url}: ${response.status}`)",
+          "}",
+          "process.stdout.write(response.url)",
+        ].join("\n"),
+        resolvedSourceUrl,
+      ])
+      .stdout()).trim()
+
+    const match = resolvedUrl.match(/\/download\/insider\/([0-9a-f]+)\/code-insiders-([0-9.]+)-(.+)\.x86_64\.rpm$/)
+
+    if (!match) {
+      throw new Error(`Failed to parse VS Code Insiders metadata from ${resolvedUrl}`)
+    }
+
+    const [, commitSha, packageVersion, releaseBuild] = match
+    const commitShort = commitSha.slice(0, 12)
+
+    return {
+      resolvedUrl,
+      packageVersion,
+      releaseBuild,
+      commitSha,
+      caskVersion: `${packageVersion},${releaseBuild},${commitShort}`,
+    }
+  }
+
+  private async resolveUpstreamVersion(packageId: string): Promise<string> {
+    const entry = this.packageEntry(packageId)
+
+    switch (entry.autoUpdate.kind) {
+      case "github_release_latest_tag": {
+        const repo = entry.upstream.kind === "github_release" || entry.upstream.kind === "git"
+          ? entry.upstream.repo
+          : undefined
+
+        if (!repo) {
+          throw new Error(`Expected GitHub-backed upstream for ${packageId}`)
+        }
+
+        const release = await this.fetchJson(`${githubApiRepoUrl(repo)}/releases/latest`) as {
+          tag_name: string
+        }
+        return stripRequiredPrefix(release.tag_name, entry.autoUpdate.stripPrefix)
+      }
+      case "git_head_sha": {
+        if (entry.upstream.kind !== "git") {
+          throw new Error(`Expected git upstream for ${packageId}`)
+        }
+
+        const ref = entry.autoUpdate.ref
+        const commit = await this.fetchJson(`${githubApiRepoUrl(entry.upstream.repo)}/commits/${ref}`) as {
+          sha: string
+        }
+        const shaLength = entry.autoUpdate.shaLength ?? 12
+        return `${entry.autoUpdate.prefix ?? ""}${commit.sha.slice(0, shaLength)}`
+      }
+      case "rpm_redirect": {
+        const sourceUrl = entry.autoUpdate.sourceUrl
+          ?? (entry.upstream.kind === "rpm" ? entry.upstream.sourceUrl : undefined)
+
+        if (!sourceUrl) {
+          throw new Error(`Expected rpm source URL for ${packageId}`)
+        }
+
+        return (await this.resolveVscodeMetadata(sourceUrl)).caskVersion
+      }
+    }
   }
 
   private downloadAsset(container: Container, url: string, path: string): Container {

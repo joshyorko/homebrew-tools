@@ -65,6 +65,7 @@ test("registry entries expose the required orchestration fields", () => {
     assert.ok(entry.id.length > 0)
     assert.ok(entry.homebrewPath.startsWith("Casks/") || entry.homebrewPath.startsWith("Formula/"))
     assert.ok(typeof entry.supportsPrCi === "boolean")
+    assert.ok(typeof entry.autoUpdate.kind === "string")
     assert.ok(typeof entry.upstream.kind === "string")
   }
 })
@@ -94,4 +95,14 @@ test("auto-update slots cover the expected package set", () => {
       "vscode-insiders-linux",
     ],
   )
+})
+
+test("every auto-updated package declares a version resolution strategy", () => {
+  const registryById = new Map(PACKAGE_REGISTRY.map((entry) => [entry.id, entry]))
+
+  for (const packageId of new Set(AUTO_UPDATE_SLOTS.flatMap((slot) => slot.packageIds))) {
+    const entry = registryById.get(packageId)
+    assert.ok(entry, `missing registry entry for ${packageId}`)
+    assert.ok(entry.autoUpdate, `missing auto-update strategy for ${packageId}`)
+  }
 })

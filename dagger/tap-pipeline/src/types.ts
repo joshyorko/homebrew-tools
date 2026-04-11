@@ -32,11 +32,28 @@ export type UpstreamSource =
       tagPrefix?: string
     }
 
+export type AutoUpdateStrategy =
+  | {
+      kind: "github_release_latest_tag"
+      stripPrefix?: string
+    }
+  | {
+      kind: "git_head_sha"
+      prefix?: string
+      ref: string
+      shaLength?: number
+    }
+  | {
+      kind: "rpm_redirect"
+      sourceUrl?: string
+    }
+
 export type PackageRegistryEntry = {
   id: string
   kind: PackageKind
   homebrewPath: string
   supportsPrCi: boolean
+  autoUpdate: AutoUpdateStrategy
   upstream: UpstreamSource
 }
 

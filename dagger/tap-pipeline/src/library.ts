@@ -8,6 +8,12 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "source_build_node_formula",
     homebrewPath: "Formula/t3code-cli-main.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "main",
+      prefix: "smoke.",
+      shaLength: 12,
+    },
     upstream: {
       kind: "git",
       repo: "https://github.com/pingdotgg/t3code",
@@ -19,6 +25,9 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "rpm_repack_cask",
     homebrewPath: "Casks/vscode-insiders-linux.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "rpm_redirect",
+    },
     upstream: {
       kind: "rpm",
       sourceUrl: "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider",
@@ -29,10 +38,14 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "source_build_rust_formula",
     homebrewPath: "Formula/voxtype.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "v",
+    },
     upstream: {
       kind: "git",
       repo: "https://github.com/peteonrails/voxtype",
-      ref: "refs/tags/v0.6.4",
+      ref: "refs/tags/v0.6.5",
     },
   },
   {
@@ -40,6 +53,10 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "github_release_binary_cask",
     homebrewPath: "Casks/rcc.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "v",
+    },
     upstream: {
       kind: "github_release",
       repo: "https://github.com/joshyorko/rcc",
@@ -51,6 +68,10 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "github_release_binary_cask",
     homebrewPath: "Casks/action-server.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "action-server-v",
+    },
     upstream: {
       kind: "github_release",
       repo: "https://github.com/joshyorko/actions",
@@ -63,6 +84,10 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "github_release_deb_cask",
     homebrewPath: "Casks/devpod-linux.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "v",
+    },
     upstream: {
       kind: "github_release",
       repo: "https://github.com/skevetter/devpod",
@@ -74,6 +99,10 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "github_release_appimage_cask",
     homebrewPath: "Casks/t3-code-linux.rb",
     supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "v",
+    },
     upstream: {
       kind: "github_release",
       repo: "https://github.com/pingdotgg/t3code",
