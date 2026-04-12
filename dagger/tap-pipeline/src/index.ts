@@ -1,4 +1,4 @@
-import { dag, Container, Directory, File, argument, object, func } from "@dagger.io/dagger"
+import { dag, CacheSharingMode, Container, Directory, File, argument, object, func } from "@dagger.io/dagger"
 import {
   changedCiPackagesFromPaths,
   listAutoUpdateSlots as slotSummaries,
@@ -360,8 +360,16 @@ export class TapPipeline {
     return dag
       .container()
       .from(NODE_IMAGE)
-      .withMountedCache("/root/.bun/install/cache", dag.cacheVolume("tap-pipeline-bun-cache"))
-      .withMountedCache("/root/.npm", dag.cacheVolume("tap-pipeline-npm-cache"))
+      .withMountedCache(
+        "/root/.bun/install/cache",
+        dag.cacheVolume("tap-pipeline-bun-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.npm",
+        dag.cacheVolume("tap-pipeline-npm-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withExec([
         "bash",
         "-lc",
@@ -376,8 +384,16 @@ export class TapPipeline {
     return dag
       .container()
       .from(RUST_IMAGE)
-      .withMountedCache("/usr/local/cargo/registry", dag.cacheVolume("tap-pipeline-cargo-registry-cache"))
-      .withMountedCache("/usr/local/cargo/git", dag.cacheVolume("tap-pipeline-cargo-git-cache"))
+      .withMountedCache(
+        "/usr/local/cargo/registry",
+        dag.cacheVolume("tap-pipeline-cargo-registry-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/usr/local/cargo/git",
+        dag.cacheVolume("tap-pipeline-cargo-git-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withExec([
         "bash",
         "-lc",
@@ -668,6 +684,11 @@ export class TapPipeline {
     const container = this.rustBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
+      .withMountedCache(
+        "/upstream/target",
+        dag.cacheVolume("tap-pipeline-cargo-target-voxtype"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withWorkdir("/upstream")
       .withEnvVariable(
         "RUSTFLAGS",
@@ -754,6 +775,11 @@ export class TapPipeline {
       ])
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
+      .withMountedCache(
+        "/upstream/target",
+        dag.cacheVolume("tap-pipeline-cargo-target-eitype"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withWorkdir("/upstream")
       .withExec(["cargo", "build", "--locked", "--release", "--bin", "eitype"])
       .withExec([
