@@ -36,10 +36,11 @@ test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
   const changed = changedCiPackagesFromPaths([
     "Casks/rcc.rb",
     "Formula/voxtype.rb",
+    "Formula/eitype.rb",
     "README.md",
   ])
 
-  assert.deepEqual([...changed].sort(), ["rcc", "voxtype"])
+  assert.deepEqual([...changed].sort(), ["eitype", "rcc", "voxtype"])
 })
 
 test("every PR-enabled package has a changed-path trigger", () => {
@@ -47,6 +48,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     "vscode-insiders-linux": "Casks/vscode-insiders-linux.rb",
     voxtype: "Formula/voxtype.rb",
+    eitype: "Formula/eitype.rb",
     rcc: "Casks/rcc.rb",
     "action-server": "Casks/action-server.rb",
     "devpod-linux": "Casks/devpod-linux.rb",

@@ -71,6 +71,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
+| `brew install joshyorko/tools/eitype` | Install Eitype |
 | `brew install joshyorko/tools/voxtype` | Install Voxtype |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
 | `brew uninstall --cask joshyorko/tools/rcc` | Uninstall |
@@ -203,6 +204,38 @@ That smoke test exercises the real delivery path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `voxtype --version`
+
+### Eitype (Formula)
+
+Eitype is the GNOME/KDE Wayland typing backend companion for Voxtype. It provides the
+host-side typing bridge that Voxtype can call when clipboard-only fallback is not enough.
+The launcher checks for a usable `libxkbcommon` runtime when you run it:
+- it prefers the host system copy when available
+- it can use Homebrew's copy if you later choose `brew install libxkbcommon`
+- it exits with a clear error if neither runtime exists
+
+> [!NOTE]
+> Use the full tap path to make it explicit that this package is delivered from this tap:
+> ```bash
+> brew install joshyorko/tools/eitype
+> ```
+
+```bash
+brew install joshyorko/tools/eitype
+eitype --version
+```
+
+Like Voxtype, Eitype is intended to run on the host OS. This formula avoids pulling
+Homebrew's larger desktop/X11 dependency tree by default, which keeps the install
+lighter on GNOME/KDE/Bluefin-style systems where the host runtime is already present.
+
+If your host does not already provide `libxkbcommon.so.0`, opt into the smallest
+extra Homebrew layer only when you need it:
+
+```bash
+brew install libxkbcommon
+eitype --version
+```
 
 ### VS Code Insiders (Linux Cask)
 

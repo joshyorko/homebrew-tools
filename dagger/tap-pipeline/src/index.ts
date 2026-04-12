@@ -81,6 +81,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/voxtype.rb \"$tap_dir/Formula/\"",
       ]
+    case "eitype":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/eitype.rb \"$tap_dir/Formula/\"",
+      ]
     default:
       throw new Error(`tapStagingCommands is not implemented for package: ${packageId}`)
   }
@@ -135,6 +140,15 @@ type VscodeBuild = {
 }
 
 type VoxtypeBuild = {
+  artifactPath: string
+  assetName: string
+  commit: string
+  container: Container
+  upstreamTag: string
+  version: string
+}
+
+type EitypeBuild = {
   artifactPath: string
   assetName: string
   commit: string
@@ -469,6 +483,26 @@ export class TapPipeline {
     })
   }
 
+  private eitypeReleaseMetadata(build: EitypeBuild, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("eitype", {
+      version: build.version,
+      releaseTag: `eitype-${build.version}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/eitype-${build.version}/${build.assetName}`,
+      releaseTitle: `Eitype ${build.version} Homebrew artifact`,
+      releaseNotes: `Homebrew artifact built from Adam-D-Lewis/eitype ${build.upstreamTag}`,
+      commitMessage: `Update eitype formula to ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/Adam-D-Lewis/eitype",
+        ref: `refs/tags/${build.upstreamTag}`,
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
   private async buildT3Artifact(tap: Directory, ref: string, version?: string): Promise<T3Build> {
     const upstreamRef = dag.git("https://github.com/pingdotgg/t3code").ref(ref)
     const commit = await upstreamRef.commit()
@@ -615,6 +649,62 @@ export class TapPipeline {
         "/upstream",
         "--binary",
         "/tmp/voxtype-avx2",
+        "--version",
+        resolvedVersion,
+        "--output",
+        artifactPath,
+      ])
+
+    return {
+      artifactPath,
+      assetName,
+      commit,
+      container,
+      upstreamTag,
+      version: resolvedVersion,
+    }
+  }
+
+  private async buildEitypeArtifact(tap: Directory, ref?: string, version?: string): Promise<EitypeBuild> {
+    const upstreamTag = ref && ref.length > 0
+      ? ref.replace(/^refs\/tags\//, "")
+      : (await this.fetchJson("https://api.github.com/repos/Adam-D-Lewis/eitype/releases/latest") as { tag_name: string }).tag_name
+    const upstreamRef = dag.git("https://github.com/Adam-D-Lewis/eitype").ref(`refs/tags/${upstreamTag}`)
+    const upstreamTree = upstreamRef.tree({ discardGitDir: true })
+    const commit = await upstreamRef.commit()
+    const cargoToml = await upstreamTree.file("Cargo.toml").contents()
+    const versionMatch = cargoToml.match(/^version = "([^"]+)"/m)
+
+    if (!versionMatch) {
+      throw new Error("Failed to resolve Eitype version from Cargo.toml")
+    }
+
+    const resolvedVersion = version && version.length > 0 ? version : versionMatch[1]
+    const assetName = `eitype-${resolvedVersion}-homebrew-x86_64-linux.tar.gz`
+    const artifactPath = `/tmp/${assetName}`
+
+    const container = this.rustBaseContainer()
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libxkbcommon-dev",
+          "rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
+      ])
+      .withDirectory("/tap", tap)
+      .withDirectory("/upstream", upstreamTree)
+      .withWorkdir("/upstream")
+      .withExec(["cargo", "build", "--locked", "--release", "--bin", "eitype"])
+      .withExec([
+        "node",
+        "/tap/scripts/package-eitype.mjs",
+        "--upstream-dir",
+        "/upstream",
+        "--binary",
+        "target/release/eitype",
         "--version",
         resolvedVersion,
         "--output",
@@ -1410,6 +1500,49 @@ export class TapPipeline {
           ])
           .stdout()
       }
+      case "eitype": {
+        const build = await this.buildEitypeArtifact(tap)
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        const formulaContents = await tap.file("Formula/eitype.rb").contents()
+        const updatedFormula = formulaContents
+          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+        const smokeTap = tap.withFile("Formula/eitype.rb", dag.file("eitype.rb", updatedFormula))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withUser("root")
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withExec([
+            "bash",
+            "-lc",
+            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libxkbcommon0 && rm -rf /var/lib/apt/lists/*",
+          ])
+          .withUser("linuxbrew")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("eitype"),
+              "brew install test/tap/eitype",
+              "brew test test/tap/eitype",
+              "test -x \"$(brew --prefix)/bin/eitype\"",
+              "eitype --help",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
       default:
         throw new Error(`ciCheck is not implemented for package: ${packageId}`)
     }
@@ -1456,6 +1589,13 @@ export class TapPipeline {
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
         return json(this.voxtypeReleaseMetadata(build, sha256))
+      }
+      case "eitype": {
+        const build = await this.buildEitypeArtifact(tap)
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        return json(this.eitypeReleaseMetadata(build, sha256))
       }
       default:
         throw new Error(`releaseMetadata is not implemented for package: ${packageId}`)
@@ -1588,6 +1728,24 @@ export class TapPipeline {
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/voxtype.rb", dag.file("voxtype.rb", updatedFormula))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "eitype": {
+        const build = await this.buildEitypeArtifact(tap)
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        const release = this.eitypeReleaseMetadata(build, sha256)
+        const formulaContents = await tap.file("Formula/eitype.rb").contents()
+        const updatedFormula = formulaContents
+          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+
+        return dag.directory()
+          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withFile("homebrew/eitype.rb", dag.file("eitype.rb", updatedFormula))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }

@@ -89,6 +89,7 @@ test("auto-update slots cover the expected package set", () => {
     [
       "action-server",
       "devpod-linux",
+      "eitype",
       "rcc",
       "t3-code-linux",
       "t3code-cli-main",
