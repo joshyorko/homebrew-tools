@@ -42,10 +42,10 @@ class Voxtype < Formula
         voxtype setup --download
         voxtype setup systemd
 
-      Runtime backends such as `wtype`, `wl-clipboard`, `dotool`, or `ydotool`
-      still come from your host OS package manager. On Bluefin and other immutable
-      Linux systems, install those with `rpm-ostree`, `dnf`, or your preferred host
-      package flow.
+      Runtime backends such as `eitype` for GNOME/KDE Wayland, `wtype`, `wl-clipboard`,
+      `dotool`, or `ydotool` still come from your host OS package manager. On Bluefin
+      and other immutable Linux systems, install those with `rpm-ostree`, `dnf`, or
+      your preferred host package flow.
     EOS
   end
 end

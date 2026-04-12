@@ -11,8 +11,8 @@
   },
   {
     "id": "desktop-6h",
-    "description": "Six-hour desktop package refresh for VS Code Insiders, Voxtype, and DevPod.",
-    "packageIds": ["vscode-insiders-linux", "voxtype", "devpod-linux"]
+    "description": "Six-hour desktop package refresh for VS Code Insiders, Voxtype, Eitype, and DevPod.",
+    "packageIds": ["vscode-insiders-linux", "voxtype", "eitype", "devpod-linux"]
   },
   {
     "id": "vscode-insiders-2h",

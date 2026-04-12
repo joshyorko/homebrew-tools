@@ -49,6 +49,20 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "eitype",
+    kind: "source_build_rust_formula",
+    homebrewPath: "Formula/eitype.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/Adam-D-Lewis/eitype",
+      ref: "refs/tags/0.2.0",
+    },
+  },
+  {
     id: "rcc",
     kind: "github_release_binary_cask",
     homebrewPath: "Casks/rcc.rb",
@@ -131,7 +145,11 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "dagger/vscode-insiders-linux-smoke/",
     ],
   ],
-  ["voxtype", ["Formula/voxtype.rb", "scripts/package-voxtype.mjs", "dagger/voxtype-smoke/"]],
+  [
+    "voxtype",
+    ["Formula/voxtype.rb", "scripts/package-voxtype.mjs", "dagger/voxtype-smoke/"],
+  ],
+  ["eitype", ["Formula/eitype.rb", "scripts/package-eitype.mjs", "dagger/eitype-smoke/"]],
   ["rcc", ["Casks/rcc.rb"]],
   ["action-server", ["Casks/action-server.rb"]],
   ["devpod-linux", ["Casks/devpod-linux.rb", "Formula/devpod-appindicator-runtime-tools.rb"]],
