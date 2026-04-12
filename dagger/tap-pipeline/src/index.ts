@@ -201,6 +201,7 @@ type AutoUpdatePackageStatus = {
   homebrew_path: string
   current_version: string
   upstream_version: string
+  current_release_published: boolean
   needs_update: boolean
 }
 
@@ -256,6 +257,7 @@ export class TapPipeline {
     const statuses = await Promise.all(entries.map(async (entry): Promise<AutoUpdatePackageStatus> => {
       const currentVersion = await this.currentPackagedVersion(entry.id)
       const upstreamVersion = await this.resolveUpstreamVersion(entry.id)
+      const currentReleasePublished = await this.tapReleaseExists(entry.id, currentVersion)
 
       return {
         id: entry.id,
@@ -263,7 +265,8 @@ export class TapPipeline {
         homebrew_path: entry.homebrewPath,
         current_version: currentVersion,
         upstream_version: upstreamVersion,
-        needs_update: currentVersion !== upstreamVersion,
+        current_release_published: currentReleasePublished,
+        needs_update: currentVersion !== upstreamVersion || !currentReleasePublished,
       }
     }))
 
@@ -296,6 +299,61 @@ export class TapPipeline {
     }
 
     return match[1]
+  }
+
+  private expectedTapReleaseTag(packageId: string, version: string): string {
+    switch (packageId) {
+      case "rcc":
+        return `rcc-${version}`
+      case "action-server":
+        return `action-server-${version}`
+      case "devpod-linux":
+        return `devpod-linux-${version}`
+      case "t3code-cli-main":
+        return `t3code-cli-main-${version}`
+      case "t3-code-linux":
+        return `t3-code-linux-${version}`
+      case "vscode-insiders-linux":
+        return `vscode-insiders-linux-${version.replace(/,/g, "-")}`
+      case "voxtype":
+        return `voxtype-${version}`
+      case "eitype":
+        return `eitype-${version}`
+      default:
+        throw new Error(`expectedTapReleaseTag is not implemented for package: ${packageId}`)
+    }
+  }
+
+  private async tapReleaseExists(packageId: string, version: string): Promise<boolean> {
+    const releaseTag = this.expectedTapReleaseTag(packageId, version)
+    const output = await this.githubApiContainer()
+      .withExec([
+        "node",
+        "--input-type=module",
+        "-e",
+        [
+          "const [repo, tag] = process.argv.slice(1)",
+          "const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'tap-pipeline' }",
+          "if (process.env.GH_TOKEN) {",
+          "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
+          "}",
+          "const url = `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`",
+          "const response = await fetch(url, { headers })",
+          "if (response.status === 404) {",
+          "  process.stdout.write('false')",
+          "  process.exit(0)",
+          "}",
+          "if (!response.ok) {",
+          "  throw new Error(`Failed to fetch ${url}: ${response.status}`)",
+          "}",
+          "process.stdout.write('true')",
+        ].join("\n"),
+        TAP_REPOSITORY,
+        releaseTag,
+      ])
+      .stdout()
+
+    return output.trim() === "true"
   }
 
   private t3BaseContainer(): Container {
