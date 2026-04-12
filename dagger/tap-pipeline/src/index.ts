@@ -627,7 +627,7 @@ export class TapPipeline {
         "CMAKE_CXX_FLAGS",
         "-mno-avx512f -mno-avx512vl -mno-avx512bw -mno-avx512dq -mno-avx512cd -mno-gfni -mno-avxvnni",
       )
-      .withExec(["cargo", "build", "--locked", "--release", "--bin", "eitype"])
+      .withExec(["cargo", "build", "--locked", "--release"])
       .withExec([
         "bash",
         "-lc",
@@ -697,7 +697,7 @@ export class TapPipeline {
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
       .withWorkdir("/upstream")
-      .withExec(["cargo", "build", "--locked", "--release"])
+      .withExec(["cargo", "build", "--locked", "--release", "--bin", "eitype"])
       .withExec([
         "node",
         "/tap/scripts/package-eitype.mjs",
