@@ -627,7 +627,7 @@ export class TapPipeline {
         "CMAKE_CXX_FLAGS",
         "-mno-avx512f -mno-avx512vl -mno-avx512bw -mno-avx512dq -mno-avx512cd -mno-gfni -mno-avxvnni",
       )
-      .withExec(["cargo", "build", "--locked", "--release"])
+      .withExec(["cargo", "build", "--locked", "--release", "--bin", "eitype"])
       .withExec([
         "bash",
         "-lc",
