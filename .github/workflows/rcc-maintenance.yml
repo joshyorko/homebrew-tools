@@ -2,7 +2,7 @@ name: RCC Maintenance
 
 on:
   schedule:
-  - cron: "0 8 * * 1"
+    - cron: "0 8 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -21,97 +21,113 @@ jobs:
     outputs:
       committed: ${{ steps.commit.outputs.committed }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-    - name: Set maintenance defaults
-      run: |
-        echo "RCC_VERSION=v18.17.3" >> "$GITHUB_ENV"
-        echo "MAINTENANCE_PUSH=true" >> "$GITHUB_ENV"
-        echo "MAINTENANCE_TARGET_BRANCH=main" >> "$GITHUB_ENV"
-    - name: Cache ROBOCORP_HOME
-      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
-      with:
-        path: ${{ env.ROBOCORP_HOME }}
-        key: rcc-home-${{ runner.os }}-${{ env.RCC_VERSION }}-${{ hashFiles('automation/maintenance-robot/robot.yaml', 'automation/maintenance-robot/conda.yaml') }}
-        restore-keys: |
-          rcc-home-${{ runner.os }}-${{ env.RCC_VERSION }}-
+      - name: Validate maintenance token configuration
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_PAT" ]; then
+            echo "Missing GH_PAT secret." >&2
+            echo "Configure GH_PAT with permission to push workflow-file changes and open pull requests for this repository." >&2
+            echo "Classic PATs need at least repo + workflow scopes; fine-grained tokens need Contents, Pull requests, and Workflows write access." >&2
+            exit 1
+          fi
 
-    - name: Install RCC
-      run: |
-        set -euo pipefail
-        rcc_dir="${GITHUB_WORKSPACE}/.tools/rcc/${RCC_VERSION}"
-        rcc_bin="${rcc_dir}/rcc"
-        if [ ! -x "$rcc_bin" ]; then
-          mkdir -p "$rcc_dir"
-          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
-          chmod +x "$rcc_bin"
-        fi
-        echo "$rcc_dir" >> "$GITHUB_PATH"
-        "$rcc_bin" version
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: true
 
-    - name: Disable RCC telemetry
-      run: rcc config identity -t
+      - name: Set maintenance defaults
+        run: |
+          echo "RCC_VERSION=v18.17.3" >> "$GITHUB_ENV"
+          echo "MAINTENANCE_PUSH=true" >> "$GITHUB_ENV"
+          echo "MAINTENANCE_TARGET_BRANCH=main" >> "$GITHUB_ENV"
+      - name: Cache ROBOCORP_HOME
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.ROBOCORP_HOME }}
+          key: rcc-home-${{ runner.os }}-${{ env.RCC_VERSION }}-${{ hashFiles('automation/maintenance-robot/robot.yaml', 'automation/maintenance-robot/conda.yaml') }}
+          restore-keys: |
+            rcc-home-${{ runner.os }}-${{ env.RCC_VERSION }}-
 
-    - name: Clear previous maintenance artifacts
-      run: rm -rf automation/maintenance-robot/output/*
+      - name: Install RCC
+        run: |
+          set -euo pipefail
+          rcc_dir="${GITHUB_WORKSPACE}/.tools/rcc/${RCC_VERSION}"
+          rcc_bin="${rcc_dir}/rcc"
+          if [ ! -x "$rcc_bin" ]; then
+            mkdir -p "$rcc_dir"
+            curl -fsSL "https://github.com/joshyorko/rcc/releases/download/${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
+            chmod +x "$rcc_bin"
+          fi
+          echo "$rcc_dir" >> "$GITHUB_PATH"
+          "$rcc_bin" version
 
-    - name: Prebuild maintenance robot environment
-      run: rcc ht vars -r automation/maintenance-robot/robot.yaml
+      - name: Disable RCC telemetry
+        run: rcc config identity -t
 
-    - name: Run maintenance robot
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: rcc run -r automation/maintenance-robot/robot.yaml -t maintenance --silent
+      - name: Clear previous maintenance artifacts
+        run: rm -rf automation/maintenance-robot/output/*
 
-    - name: Configure git
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Prebuild maintenance robot environment
+        run: rcc ht vars -r automation/maintenance-robot/robot.yaml
 
-    - name: Create maintenance branch
-      id: commit
-      run: |
-        set -euo pipefail
-        if [ -z "$(git status --porcelain)" ]; then
-          echo "committed=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+      - name: Run maintenance robot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: rcc run -r automation/maintenance-robot/robot.yaml -t maintenance --silent
 
-        if git status --porcelain | grep -qE '(^| )(\.rcc_home/|\.tools/)'; then
-          echo "RCC cache or tool state leaked into the worktree." >&2
-          git status --porcelain
-          exit 1
-        fi
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-        branch_name="maintenance/workflows-$(date +%Y%m%d-%H%M%S)"
-        git checkout -b "$branch_name"
-        git add .github/workflows automation/maintenance-robot .gitignore
-        git commit -m "chore: update workflow action refs"
-        echo "committed=true" >> "$GITHUB_OUTPUT"
-        echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+      - name: Create maintenance branch
+        id: commit
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-    - name: Push branch and create PR
-      if: steps.commit.outputs.committed == 'true' && env.MAINTENANCE_PUSH == 'true'
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        set -euo pipefail
-        git push origin "${{ steps.commit.outputs.branch_name }}"
-        pr_body_file="$(mktemp)"
-        changed_files="$(git show --name-status --format='' HEAD)"
-        cat > "$pr_body_file" <<EOF
-        ## Automated RCC Maintenance
+          if git status --porcelain | grep -qE '(^| )(\.rcc_home/|\.tools/)'; then
+            echo "RCC cache or tool state leaked into the worktree." >&2
+            git status --porcelain
+            exit 1
+          fi
 
-        This PR updates allowed GitHub Actions workflow references and refreshes the local RCC maintenance robot.
+          branch_name="maintenance/workflows-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$branch_name"
+          git add .github/workflows automation/maintenance-robot .gitignore
+          git commit -m "chore: update workflow action refs"
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
 
-        ### Changed files
+      - name: Push branch and create PR
+        if: steps.commit.outputs.committed == 'true' && env.MAINTENANCE_PUSH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          git push origin "${{ steps.commit.outputs.branch_name }}"
+          pr_body_file="$(mktemp)"
+          changed_files="$(git show --name-status --format='' HEAD)"
+          cat > "$pr_body_file" <<EOF
+          ## Automated RCC Maintenance
 
-        ```
-        $changed_files
-        ```
-        EOF
-        gh pr create \
-          --title "chore: update workflow action refs" \
-          --body-file "$pr_body_file" \
-          --base "${{ env.MAINTENANCE_TARGET_BRANCH }}" \
-          --head "${{ steps.commit.outputs.branch_name }}"
+          This PR updates allowed GitHub Actions workflow references and refreshes the local RCC maintenance robot.
+
+          ### Changed files
+
+          ```
+          $changed_files
+          ```
+          EOF
+          gh pr create \
+            --title "chore: update workflow action refs" \
+            --body-file "$pr_body_file" \
+            --base "${{ env.MAINTENANCE_TARGET_BRANCH }}" \
+            --head "${{ steps.commit.outputs.branch_name }}"

@@ -18,4 +18,23 @@ rcc ht vars -r automation/maintenance-robot/robot.yaml
 rcc run -r automation/maintenance-robot/robot.yaml -t update-workflows --silent
 ```
 
+## GitHub Actions Setup
+
+The scheduled `RCC Maintenance` workflow updates files under `.github/workflows/`, so the
+default `github.token` is not sufficient for pushes or PR creation. Configure this repository
+secret for the workflow:
+
+- `GH_PAT`
+
+The token behind `GH_PAT` must be able to:
+
+- push commits that modify `.github/workflows/*`
+- create pull requests in this repository
+- call the GitHub API for the maintenance robot
+
+In practice that means either:
+
+- a classic PAT with at least `repo` and `workflow` scopes, or
+- a fine-grained token with `Contents: Read and write`, `Pull requests: Read and write`, and `Workflows: Read and write`
+
 Artifacts are written to `output/`.
