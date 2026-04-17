@@ -8,6 +8,7 @@ import {
   releaseMetadataForPackage,
 } from "./library.js"
 import { rewriteCaskUrl } from "./cask-render.js"
+import { renderGithubApiFetchScript } from "./github-api.js"
 
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
@@ -326,30 +327,14 @@ export class TapPipeline {
 
   private async tapReleaseExists(packageId: string, version: string): Promise<boolean> {
     const releaseTag = this.expectedTapReleaseTag(packageId, version)
+    const url = `https://api.github.com/repos/${TAP_REPOSITORY}/releases/tags/${encodeURIComponent(releaseTag)}`
     const output = await this.githubApiContainer()
       .withExec([
         "node",
         "--input-type=module",
         "-e",
-        [
-          "const [repo, tag] = process.argv.slice(1)",
-          "const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'tap-pipeline' }",
-          "if (process.env.GH_TOKEN) {",
-          "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
-          "}",
-          "const url = `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`",
-          "const response = await fetch(url, { headers })",
-          "if (response.status === 404) {",
-          "  process.stdout.write('false')",
-          "  process.exit(0)",
-          "}",
-          "if (!response.ok) {",
-          "  throw new Error(`Failed to fetch ${url}: ${response.status}`)",
-          "}",
-          "process.stdout.write('true')",
-        ].join("\n"),
-        TAP_REPOSITORY,
-        releaseTag,
+        renderGithubApiFetchScript({ successOutput: "true", notFoundOutput: "false" }),
+        url,
       ])
       .stdout()
 
@@ -811,18 +796,7 @@ export class TapPipeline {
         "node",
         "--input-type=module",
         "-e",
-        [
-          "const url = process.argv[1]",
-          "const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'tap-pipeline' }",
-          "if (process.env.GH_TOKEN) {",
-          "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
-          "}",
-          "const response = await fetch(url, { headers })",
-          "if (!response.ok) {",
-          "  throw new Error(`Failed to fetch ${url}: ${response.status}`)",
-          "}",
-          "process.stdout.write(JSON.stringify(await response.json()))",
-        ].join("\n"),
+        renderGithubApiFetchScript(),
         url,
       ])
       .stdout()
