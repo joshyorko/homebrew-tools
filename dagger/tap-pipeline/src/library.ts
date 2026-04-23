@@ -21,6 +21,23 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "fizzy-cli-master",
+    kind: "source_build_go_formula",
+    homebrewPath: "Formula/fizzy-cli-master.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "master",
+      prefix: "master.",
+      shaLength: 12,
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/basecamp/fizzy-cli",
+      ref: "master",
+    },
+  },
+  {
     id: "vscode-insiders-linux",
     kind: "rpm_repack_cask",
     homebrewPath: "Casks/vscode-insiders-linux.rb",
@@ -136,6 +153,10 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   [
     "t3code-cli-main",
     ["Formula/t3code-cli-main.rb", "scripts/package-t3code-cli-main.mjs", "dagger/t3code-cli-main-smoke/"],
+  ],
+  [
+    "fizzy-cli-master",
+    ["Formula/fizzy-cli-master.rb", "scripts/package-fizzy-cli-master.mjs", "dagger/fizzy-cli-master-smoke/"],
   ],
   [
     "vscode-insiders-linux",

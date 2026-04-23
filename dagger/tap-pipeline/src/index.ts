@@ -13,6 +13,7 @@ import { renderGithubApiFetchScript } from "./github-api.js"
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
 const NODE_IMAGE = "node:24-bookworm"
+const GO_IMAGE = "golang:1.26-bookworm"
 const RUST_IMAGE = "rust:1-bookworm"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
@@ -66,6 +67,11 @@ function tapStagingCommands(packageId: string): string[] {
       return [
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
+      ]
+    case "fizzy-cli-master":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/fizzy-cli-master.rb \"$tap_dir/Formula/\"",
       ]
     case "t3-code-linux":
       return [
@@ -122,6 +128,14 @@ async function gitChangedFiles(source: Directory, gitDir: Directory, baseRef: st
 }
 
 type T3Build = {
+  artifactPath: string
+  assetName: string
+  commit: string
+  container: Container
+  version: string
+}
+
+type FizzyBuild = {
   artifactPath: string
   assetName: string
   commit: string
@@ -312,6 +326,8 @@ export class TapPipeline {
         return `devpod-linux-${version}`
       case "t3code-cli-main":
         return `t3code-cli-main-${version}`
+      case "fizzy-cli-master":
+        return `fizzy-cli-master-${version}`
       case "t3-code-linux":
         return `t3-code-linux-${version}`
       case "vscode-insiders-linux":
@@ -362,6 +378,28 @@ export class TapPipeline {
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
       .withEnvVariable("PATH", "/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+  }
+
+  private goBaseContainer(): Container {
+    return dag
+      .container()
+      .from(GO_IMAGE)
+      .withMountedCache(
+        "/go/pkg/mod",
+        dag.cacheVolume("tap-pipeline-go-mod-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.cache/go-build",
+        dag.cacheVolume("tap-pipeline-go-build-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withExec([
+        "bash",
+        "-lc",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates nodejs npm tar && rm -rf /var/lib/apt/lists/*",
+      ])
+      .withEnvVariable("CGO_ENABLED", "0")
   }
 
   // The contract platform owns shared cache policy before every adapter is migrated.
@@ -483,6 +521,26 @@ export class TapPipeline {
     })
   }
 
+  private fizzyReleaseMetadata(build: FizzyBuild, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("fizzy-cli-master", {
+      version: build.version,
+      releaseTag: `fizzy-cli-master-${build.version}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/fizzy-cli-master-${build.version}/${build.assetName}`,
+      releaseTitle: `Fizzy CLI master ${build.version}`,
+      releaseNotes: `CLI snapshot from basecamp/fizzy-cli@${build.commit}`,
+      commitMessage: `Update fizzy-cli-master formula to ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/basecamp/fizzy-cli",
+        ref: "master",
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
   private t3CodeReleaseMetadata(build: T3CodeBuild): Record<string, unknown> {
     return releaseMetadataForPackage("t3-code-linux", {
       version: build.version,
@@ -592,6 +650,49 @@ export class TapPipeline {
         "/tap/scripts/package-t3code-cli-main.mjs",
         "--upstream-dir",
         "/upstream",
+        "--version",
+        resolvedVersion,
+        "--output",
+        artifactPath,
+      ])
+
+    return {
+      artifactPath,
+      assetName,
+      commit,
+      container,
+      version: resolvedVersion,
+    }
+  }
+
+  private async buildFizzyArtifact(tap: Directory, ref: string, version?: string): Promise<FizzyBuild> {
+    const upstreamRef = dag.git("https://github.com/basecamp/fizzy-cli").ref(ref)
+    const commit = await upstreamRef.commit()
+    const resolvedVersion = version && version.length > 0 ? version : `master.${commit.slice(0, 12)}`
+    const assetName = `fizzy-cli-master-${resolvedVersion}-homebrew-x86_64-linux.tar.gz`
+    const artifactPath = `/tmp/${assetName}`
+
+    const container = this.goBaseContainer()
+      .withDirectory("/tap", tap)
+      .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
+      .withWorkdir("/upstream")
+      .withExec([
+        "go",
+        "build",
+        "-trimpath",
+        "-ldflags",
+        `-s -w -X main.version=${resolvedVersion}`,
+        "-o",
+        "/tmp/fizzy",
+        "./cmd/fizzy",
+      ])
+      .withExec([
+        "node",
+        "/tap/scripts/package-fizzy-cli-master.mjs",
+        "--upstream-dir",
+        "/upstream",
+        "--binary",
+        "/tmp/fizzy",
         "--version",
         resolvedVersion,
         "--output",
@@ -1412,6 +1513,41 @@ export class TapPipeline {
           ])
           .stdout()
       }
+      case "fizzy-cli-master": {
+        const build = await this.buildFizzyArtifact(tap, "master")
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        const formulaContents = await tap.file("Formula/fizzy-cli-master.rb").contents()
+        const updatedFormula = formulaContents
+          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+        const smokeTap = tap.withFile("Formula/fizzy-cli-master.rb", dag.file("fizzy-cli-master.rb", updatedFormula))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("fizzy-cli-master"),
+              "brew install test/tap/fizzy-cli-master",
+              "brew test test/tap/fizzy-cli-master",
+              "fizzy --version",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
       case "t3-code-linux": {
         const build = await this.buildT3CodeArtifact()
         const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
@@ -1630,6 +1766,13 @@ export class TapPipeline {
         ).trim().split(/\s+/)[0]
         return json(this.t3codeCliReleaseMetadata(build, sha256))
       }
+      case "fizzy-cli-master": {
+        const build = await this.buildFizzyArtifact(tap, "master")
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        return json(this.fizzyReleaseMetadata(build, sha256))
+      }
       case "t3-code-linux": {
         const build = await this.buildT3CodeArtifact()
         return json(this.t3CodeReleaseMetadata(build))
@@ -1732,6 +1875,24 @@ export class TapPipeline {
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "fizzy-cli-master": {
+        const build = await this.buildFizzyArtifact(tap, "master")
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        const release = this.fizzyReleaseMetadata(build, sha256)
+        const formulaContents = await tap.file("Formula/fizzy-cli-master.rb").contents()
+        const updatedFormula = formulaContents
+          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+
+        return dag.directory()
+          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withFile("homebrew/fizzy-cli-master.rb", dag.file("fizzy-cli-master.rb", updatedFormula))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
