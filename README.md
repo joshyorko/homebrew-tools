@@ -71,6 +71,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
+| `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/eitype` | Install Eitype |
 | `brew install joshyorko/tools/voxtype` | Install Voxtype |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
@@ -171,6 +172,49 @@ That smoke test is the real end-to-end path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
+
+### Fizzy CLI (Master Formula)
+
+Fizzy CLI packaged from a pinned upstream `master` commit for Linux/Homebrew use.
+The tap publishes an immutable Linux tarball to this repository's releases and the formula installs
+that artifact directly instead of waiting on upstream Fizzy release cadence.
+
+> [!NOTE]
+> Use the full tap path to make it explicit that this tracks upstream `master` snapshots:
+> ```bash
+> brew install joshyorko/tools/fizzy-cli-master
+> ```
+
+```bash
+brew install joshyorko/tools/fizzy-cli-master
+fizzy --version
+fizzy doctor
+```
+
+Binary/linking strategy:
+- the formula name stays unique as `fizzy-cli-master`
+- the installed executable stays `fizzy` so existing wrappers and agent tooling keep working
+- the formula declares a conflict with any upstream `fizzy` formula so Linuxbrew handles the shared executable name explicitly
+
+Update flow:
+- the `fizzy-daily` auto-update slot tracks upstream `basecamp/fizzy-cli` `master` and publishes a new immutable release asset when HEAD changes
+- if we want to freeze to our own snapshot instead, pin `upstream.ref` for `fizzy-cli-master` in `dagger/tap-pipeline/src/library.ts` to a commit SHA and run the Tap Manual `release` workflow for that package id
+
+Follow-up for `joshyorko/agent-skills`:
+- switch the Fizzy install wrapper/docs from upstream release downloads to `brew install joshyorko/tools/fizzy-cli-master`
+- keep invoking the CLI as `fizzy` after install
+
+The tap also includes a reusable Dagger smoke test for this packaging path:
+
+```bash
+dagger -m ./dagger/fizzy-cli-master-smoke call smoke-test --tap=.
+```
+
+That smoke test exercises the real delivery path:
+- build Fizzy from upstream `master`
+- package the tarball the formula consumes
+- install the formula through Linuxbrew in-container
+- run `brew test` and `fizzy --version`
 
 ### Voxtype (Formula)
 

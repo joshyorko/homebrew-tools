@@ -4,6 +4,7 @@ on:
   schedule:
   - cron: "0 6 * * *"
   - cron: "0 7 * * *"
+  - cron: "0 8 * * *"
   - cron: "17 0,6,12,18 * * *"
   - cron: "17 2,4,8,10,14,16,20,22 * * *"
   - cron: "41 6 * * *"
@@ -22,6 +23,7 @@ on:
         - vscode-insiders-2h
         - t3-daily
         - t3-code-6h
+        - fizzy-daily
 
 permissions:
   contents: write
@@ -61,6 +63,7 @@ jobs:
           case "$EVENT_SCHEDULE" in
             "0 6 * * *") slot_id="rcc-daily" ;;
             "0 7 * * *") slot_id="action-server-daily" ;;
+            "0 8 * * *") slot_id="fizzy-daily" ;;
             "17 0,6,12,18 * * *") slot_id="desktop-6h" ;;
             "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
             "41 6 * * *") slot_id="t3-daily" ;;

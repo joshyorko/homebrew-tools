@@ -28,5 +28,10 @@
     "id": "t3-code-6h",
     "description": "Six-hour Linux desktop refresh for the T3 Code AppImage cask.",
     "packageIds": ["t3-code-linux"]
+  },
+  {
+    "id": "fizzy-daily",
+    "description": "Daily Fizzy CLI refresh from upstream master.",
+    "packageIds": ["fizzy-cli-master"]
   }
 ]
