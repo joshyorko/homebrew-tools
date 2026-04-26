@@ -148,7 +148,7 @@ type FizzyBuild = {
   version: string
 }
 
-type FizzyPopperBuild = {
+type FizzyPopperSelfHostedBuild = {
   artifactPath: string
   assetName: string
   commit: string
@@ -556,7 +556,7 @@ export class TapPipeline {
     })
   }
 
-  private fizzyPopperReleaseMetadata(build: FizzyPopperBuild, sha256: string): Record<string, unknown> {
+  private fizzyPopperReleaseMetadata(build: FizzyPopperSelfHostedBuild, sha256: string): Record<string, unknown> {
     return releaseMetadataForPackage("fizzy-popper-self-hosted", {
       version: build.version,
       releaseTag: `fizzy-popper-self-hosted-${build.version}`,
@@ -743,7 +743,11 @@ export class TapPipeline {
     }
   }
 
-  private async buildFizzyPopperArtifact(tap: Directory, ref: string, version?: string): Promise<FizzyPopperBuild> {
+  private async buildFizzyPopperArtifact(
+    tap: Directory,
+    ref: string,
+    version?: string,
+  ): Promise<FizzyPopperSelfHostedBuild> {
     const upstreamRef = dag.git("https://github.com/joshyorko/fizzy-popper").ref(ref)
     const commit = await upstreamRef.commit()
     const resolvedVersion = version && version.length > 0 ? version : `selfhosted.${commit.slice(0, 12)}`
