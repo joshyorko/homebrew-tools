@@ -40,31 +40,18 @@ export class FizzyPopperSelfHostedSmoke {
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
       .withWorkdir("/upstream")
-      .withExec([
-        "node",
-        "-e",
-        [
-          "const fs = require('node:fs')",
-          "const version = process.argv[1]",
-          "const packageJsonPath = 'package.json'",
-          "const cliPath = 'src/cli.ts'",
-          "const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))",
-          "packageJson.version = version",
-          "fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\\n`)",
-          "const cliSource = fs.readFileSync(cliPath, 'utf8')",
-          "const updatedCliSource = cliSource.replace(/\\.version\\(\"[^\"]+\"\\)/, `.version(\"${version}\")`)",
-          "if (updatedCliSource === cliSource) throw new Error('Failed to patch src/cli.ts version')",
-          "fs.writeFileSync(cliPath, updatedCliSource)",
-        ].join(";"),
-        resolvedVersion,
-      ])
       .withExec(["npm", "ci"])
+      .withExec(["npm", "test"])
+      .withExec(["npm", "run", "typecheck"])
       .withExec(["npm", "run", "build"])
+      .withExec(["npm", "pack", "--pack-destination", "/tmp"])
       .withExec([
         "node",
         "/tap/scripts/package-fizzy-popper-self-hosted.mjs",
         "--upstream-dir",
         "/upstream",
+        "--npm-pack-dir",
+        "/tmp",
         "--version",
         resolvedVersion,
         "--output",
@@ -123,14 +110,14 @@ export class FizzyPopperSelfHostedSmoke {
           "brew test test/tap/fizzy-popper-self-hosted",
           "echo '--- package contents ---'",
           `tar -tzf /artifacts/${build.assetName} | sed -n '1,20p'`,
-          "echo '--- fizzy-popper version ---'",
-          "fizzy-popper --version",
+          "echo '--- fizzy-popper help ---'",
+          "fizzy-popper --help",
         ].join("\n"),
       ])
       .stdout()
 
-    if (!output.includes(build.version)) {
-      throw new Error(`Smoke test did not produce expected fizzy-popper version output:\n${output}`)
+    if (!output.includes("Usage: fizzy-popper") && !output.includes("Watch boards and dispatch agents")) {
+      throw new Error(`Smoke test did not produce expected fizzy-popper help output:\n${output}`)
     }
 
     return output

@@ -230,7 +230,7 @@ they are ready to merge upstream.
 
 ```bash
 brew install joshyorko/tools/fizzy-popper-self-hosted
-fizzy-popper --version
+fizzy-popper --help
 fizzy-popper status
 ```
 
@@ -249,10 +249,11 @@ dagger -m ./dagger/fizzy-popper-self-hosted-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
-- build `joshyorko/fizzy-popper@self-hosted`
-- package a Homebrew-ready tarball with vendored runtime dependencies
+- build `joshyorko/fizzy-popper@self-hosted` inside the tap pipeline
+- run the upstream package gates (`npm test`, `npm run typecheck`, `npm run build`, `npm pack`)
+- wrap the locally built package into a Homebrew-ready tarball with vendored runtime dependencies
 - install the formula through Linuxbrew in-container
-- run `brew test` and `fizzy-popper --version`
+- run `brew test` and `fizzy-popper --help`
 
 ### Voxtype (Formula)
 
