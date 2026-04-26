@@ -44,6 +44,7 @@ export type AutoUpdateStrategy =
       prefix?: string
       ref: string
       shaLength?: number
+      includeCommitDate?: boolean
     }
   | {
       kind: "rpm_redirect"

@@ -1,7 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 
-import { AUTO_UPDATE_SLOTS, PACKAGE_REGISTRY, releaseMetadataForPackage } from "../src/library.ts"
+import { AUTO_UPDATE_SLOTS, PACKAGE_REGISTRY, formatGitHeadVersion, releaseMetadataForPackage } from "../src/library.ts"
 
 const REQUIRED_RELEASE_FIELDS = [
   "package",
@@ -110,4 +111,42 @@ test("every auto-updated package declares a version resolution strategy", () => 
     assert.ok(entry, `missing registry entry for ${packageId}`)
     assert.ok(entry.autoUpdate, `missing auto-update strategy for ${packageId}`)
   }
+})
+
+test("timestamped git-head versions sort by commit time before sha", () => {
+  const older = formatGitHeadVersion({
+    committedAt: "2026-04-25T20:00:00Z",
+    includeCommitDate: true,
+    prefix: "selfhosted.",
+    sha: "f641c5c86889abcdef",
+    shaLength: 12,
+  })
+  const newer = formatGitHeadVersion({
+    committedAt: "2026-04-26T20:00:00Z",
+    includeCommitDate: true,
+    prefix: "selfhosted.",
+    sha: "d08b71dff98dabcdef",
+    shaLength: 12,
+  })
+
+  assert.equal(older, "selfhosted.20260425200000.f641c5c86889")
+  assert.equal(newer, "selfhosted.20260426200000.d08b71dff98d")
+  assert.equal(newer > older, true)
+})
+
+test("fizzy-popper self-hosted opts into timestamped git-head versions", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "fizzy-popper-self-hosted")
+
+  assert.ok(entry)
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+
+  if (entry.autoUpdate.kind === "git_head_sha") {
+    assert.equal(entry.autoUpdate.includeCommitDate, true)
+  }
+})
+
+test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () => {
+  const formula = readFileSync(new URL("../../../Formula/fizzy-popper-self-hosted.rb", import.meta.url), "utf8")
+
+  assert.match(formula, /^\s*version_scheme 1$/m)
 })
