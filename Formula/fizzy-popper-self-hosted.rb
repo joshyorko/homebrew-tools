@@ -1,5 +1,5 @@
 class FizzyPopperSelfHosted < Formula
-  desc "Fizzy-popper built from joshyorko/fizzy-popper self-hosted branch."
+  desc "Fizzy Popper built from joshyorko/fizzy-popper self-hosted branch."
   homepage "https://github.com/joshyorko/fizzy-popper/tree/self-hosted"
   url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-popper-self-hosted-selfhosted.a55b9fe2f9e7/fizzy-popper-self-hosted-selfhosted.a55b9fe2f9e7.tar.gz"
   version "selfhosted.a55b9fe2f9e7"

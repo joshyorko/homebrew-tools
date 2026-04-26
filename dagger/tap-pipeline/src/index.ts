@@ -556,7 +556,10 @@ export class TapPipeline {
     })
   }
 
-  private fizzyPopperReleaseMetadata(build: FizzyPopperSelfHostedBuild, sha256: string): Record<string, unknown> {
+  private fizzyPopperSelfHostedReleaseMetadata(
+    build: FizzyPopperSelfHostedBuild,
+    sha256: string,
+  ): Record<string, unknown> {
     return releaseMetadataForPackage("fizzy-popper-self-hosted", {
       version: build.version,
       releaseTag: `fizzy-popper-self-hosted-${build.version}`,
@@ -743,7 +746,7 @@ export class TapPipeline {
     }
   }
 
-  private async buildFizzyPopperArtifact(
+  private async buildFizzyPopperSelfHostedArtifact(
     tap: Directory,
     ref: string,
     version?: string,
@@ -1651,7 +1654,7 @@ export class TapPipeline {
           .stdout()
       }
       case "fizzy-popper-self-hosted": {
-        const build = await this.buildFizzyPopperArtifact(tap, "self-hosted")
+        const build = await this.buildFizzyPopperSelfHostedArtifact(tap, "self-hosted")
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -1914,11 +1917,11 @@ export class TapPipeline {
         return json(this.fizzyReleaseMetadata(build, sha256))
       }
       case "fizzy-popper-self-hosted": {
-        const build = await this.buildFizzyPopperArtifact(tap, "self-hosted")
+        const build = await this.buildFizzyPopperSelfHostedArtifact(tap, "self-hosted")
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        return json(this.fizzyPopperReleaseMetadata(build, sha256))
+        return json(this.fizzyPopperSelfHostedReleaseMetadata(build, sha256))
       }
       case "t3-code-linux": {
         const build = await this.buildT3CodeArtifact()
@@ -2044,11 +2047,11 @@ export class TapPipeline {
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "fizzy-popper-self-hosted": {
-        const build = await this.buildFizzyPopperArtifact(tap, "self-hosted")
+        const build = await this.buildFizzyPopperSelfHostedArtifact(tap, "self-hosted")
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        const release = this.fizzyPopperReleaseMetadata(build, sha256)
+        const release = this.fizzyPopperSelfHostedReleaseMetadata(build, sha256)
         const formulaContents = await tap.file("Formula/fizzy-popper-self-hosted.rb").contents()
         const updatedFormula = formulaContents
           .replace(/url ".*"/, `url "${String(release.download_url)}"`)

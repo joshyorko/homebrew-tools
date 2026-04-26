@@ -31,7 +31,7 @@ function readJson(path) {
 
 function normalizeBinEntry(binEntry) {
   if (typeof binEntry !== "string" || binEntry.length === 0) {
-    throw new Error('Expected package.json to define a string bin entry for "fizzy-popper"')
+    throw new Error('Expected package.json to define a string bin entry for "fizzy-popper-self-hosted"')
   }
 
   return binEntry.startsWith("./") ? binEntry.slice(2) : binEntry
