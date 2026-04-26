@@ -92,6 +92,7 @@ test("auto-update slots cover the expected package set", () => {
       "devpod-linux",
       "eitype",
       "fizzy-cli-master",
+      "fizzy-popper-self-hosted",
       "rcc",
       "t3-code-linux",
       "t3code-cli-main",

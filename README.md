@@ -216,6 +216,45 @@ That smoke test exercises the real delivery path:
 - install the formula through Linuxbrew in-container
 - run `brew test` and `fizzy --version`
 
+### Fizzy Popper (Self-Hosted Formula)
+
+Fizzy Popper packaged for Linux Homebrew from Josh Yorko's `joshyorko/fizzy-popper`
+`self-hosted` branch. This keeps the self-hosted/Codex fixes on a distinct tap path until
+they are ready to merge upstream.
+
+> [!NOTE]
+> Use the full tap path to make the fork/branch source explicit:
+> ```bash
+> brew install joshyorko/tools/fizzy-popper-self-hosted
+> ```
+
+```bash
+brew install joshyorko/tools/fizzy-popper-self-hosted
+fizzy-popper --help
+fizzy-popper status
+```
+
+Update flow:
+- the `fizzy-daily` auto-update slot now also tracks `joshyorko/fizzy-popper@self-hosted`
+- to publish or refresh the immutable release asset on demand, run the Tap Manual `release`
+  workflow with `package_id=fizzy-popper-self-hosted`
+- if you want to freeze to a specific fork snapshot, pin `upstream.ref` for
+  `fizzy-popper-self-hosted` in `dagger/tap-pipeline/src/library.ts` to a commit SHA and run
+  that same manual release workflow
+
+The tap also includes a reusable Dagger smoke test for this packaging path:
+
+```bash
+dagger -m ./dagger/fizzy-popper-self-hosted-smoke call smoke-test --tap=.
+```
+
+That smoke test exercises the real delivery path:
+- build `joshyorko/fizzy-popper@self-hosted` inside the tap pipeline
+- run the upstream package gates (`npm test`, `npm run typecheck`, `npm run build`, `npm pack`)
+- wrap the locally built package into a Homebrew-ready tarball with vendored runtime dependencies
+- install the formula through Linuxbrew in-container
+- run `brew test` and `fizzy-popper --help`
+
 ### Voxtype (Formula)
 
 Voxtype packaged for Linux Homebrew as a pinned release artifact built from upstream source.

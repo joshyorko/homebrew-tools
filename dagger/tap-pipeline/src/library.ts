@@ -38,6 +38,23 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "fizzy-popper-self-hosted",
+    kind: "source_build_node_formula",
+    homebrewPath: "Formula/fizzy-popper-self-hosted.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "self-hosted",
+      prefix: "selfhosted.",
+      shaLength: 12,
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/joshyorko/fizzy-popper",
+      ref: "self-hosted",
+    },
+  },
+  {
     id: "vscode-insiders-linux",
     kind: "rpm_repack_cask",
     homebrewPath: "Casks/vscode-insiders-linux.rb",
@@ -157,6 +174,14 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   [
     "fizzy-cli-master",
     ["Formula/fizzy-cli-master.rb", "scripts/package-fizzy-cli-master.mjs", "dagger/fizzy-cli-master-smoke/"],
+  ],
+  [
+    "fizzy-popper-self-hosted",
+    [
+      "Formula/fizzy-popper-self-hosted.rb",
+      "scripts/package-fizzy-popper-self-hosted.mjs",
+      "dagger/fizzy-popper-self-hosted-smoke/",
+    ],
   ],
   [
     "vscode-insiders-linux",
