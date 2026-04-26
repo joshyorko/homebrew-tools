@@ -3,6 +3,7 @@ class FizzyPopperSelfHosted < Formula
   homepage "https://github.com/joshyorko/fizzy-popper/tree/self-hosted"
   url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-popper-self-hosted-selfhosted.d08b71dff98d/fizzy-popper-self-hosted-selfhosted.d08b71dff98d.tar.gz"
   version "selfhosted.d08b71dff98d"
+  version_scheme 1
   sha256 "8d9ba611b7d5eba1c6ee22804e0d2a58387464e8f2d200a72be6891ab2b7cfc0"
   license "MIT"
 

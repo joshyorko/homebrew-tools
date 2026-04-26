@@ -2,6 +2,38 @@ import { readFileSync } from "node:fs"
 
 import type { AutoUpdateSlot, AutoUpdateSlotId, PackageRegistryEntry, ReleaseMetadata } from "./types.js"
 
+type GitHeadVersionInput = {
+  committedAt?: string
+  includeCommitDate?: boolean
+  prefix?: string
+  sha: string
+  shaLength?: number
+}
+
+function compactUtcTimestamp(value: string): string {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid commit date: ${value}`)
+  }
+
+  return date.toISOString().replace(/\D/g, "").slice(0, 14)
+}
+
+export function formatGitHeadVersion(input: GitHeadVersionInput): string {
+  const shortSha = input.sha.slice(0, input.shaLength ?? 12)
+
+  if (!input.includeCommitDate) {
+    return `${input.prefix ?? ""}${shortSha}`
+  }
+
+  if (!input.committedAt) {
+    throw new Error("A commit date is required for timestamped git-head versions")
+  }
+
+  return `${input.prefix ?? ""}${compactUtcTimestamp(input.committedAt)}.${shortSha}`
+}
+
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
     id: "t3code-cli-main",
@@ -47,6 +79,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
       ref: "self-hosted",
       prefix: "selfhosted.",
       shaLength: 12,
+      includeCommitDate: true,
     },
     upstream: {
       kind: "git",

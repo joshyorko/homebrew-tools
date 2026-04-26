@@ -5,6 +5,7 @@ import {
   packageSummaries,
   parseAutoUpdateSlotId,
   packagesForAutoUpdateSlot as slotPackages,
+  formatGitHeadVersion,
   releaseMetadataForPackage,
 } from "./library.js"
 import { rewriteCaskUrl } from "./cask-render.js"
@@ -154,6 +155,18 @@ type FizzyPopperSelfHostedBuild = {
   commit: string
   container: Container
   version: string
+}
+
+type GitCommitApiResponse = {
+  sha: string
+  commit?: {
+    author?: {
+      date?: string
+    }
+    committer?: {
+      date?: string
+    }
+  }
 }
 
 type VscodeBuild = {
@@ -751,9 +764,23 @@ export class TapPipeline {
     ref: string,
     version?: string,
   ): Promise<FizzyPopperSelfHostedBuild> {
-    const upstreamRef = dag.git("https://github.com/joshyorko/fizzy-popper").ref(ref)
+    const entry = this.packageEntry("fizzy-popper-self-hosted")
+
+    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+      throw new Error("Expected fizzy-popper-self-hosted to use a git-head auto-update strategy")
+    }
+
+    const resolvedGitHead = version && version.length > 0
+      ? undefined
+      : await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)
+    const upstreamRef = dag.git(entry.upstream.repo).ref(resolvedGitHead?.commit ?? ref)
     const commit = await upstreamRef.commit()
-    const resolvedVersion = version && version.length > 0 ? version : `selfhosted.${commit.slice(0, 12)}`
+    const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
+
+    if (!resolvedVersion) {
+      throw new Error("Failed to resolve fizzy-popper-self-hosted version")
+    }
+
     const assetName = `fizzy-popper-self-hosted-${resolvedVersion}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
 
@@ -997,6 +1024,30 @@ export class TapPipeline {
     return JSON.parse(output)
   }
 
+  private async resolveGitHeadVersion(
+    repo: string,
+    ref: string,
+    options: {
+      includeCommitDate?: boolean
+      prefix?: string
+      shaLength?: number
+    },
+  ): Promise<{ commit: string, version: string }> {
+    const commit = await this.fetchJson(`${githubApiRepoUrl(repo)}/commits/${ref}`) as GitCommitApiResponse
+    const committedAt = commit.commit?.committer?.date ?? commit.commit?.author?.date
+
+    return {
+      commit: commit.sha,
+      version: formatGitHeadVersion({
+        committedAt,
+        includeCommitDate: options.includeCommitDate,
+        prefix: options.prefix,
+        sha: commit.sha,
+        shaLength: options.shaLength,
+      }),
+    }
+  }
+
   private async resolveVscodeMetadata(sourceUrl?: string): Promise<{
     resolvedUrl: string
     packageVersion: string
@@ -1066,11 +1117,7 @@ export class TapPipeline {
         }
 
         const ref = entry.autoUpdate.ref
-        const commit = await this.fetchJson(`${githubApiRepoUrl(entry.upstream.repo)}/commits/${ref}`) as {
-          sha: string
-        }
-        const shaLength = entry.autoUpdate.shaLength ?? 12
-        return `${entry.autoUpdate.prefix ?? ""}${commit.sha.slice(0, shaLength)}`
+        return (await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)).version
       }
       case "rpm_redirect": {
         const sourceUrl = entry.autoUpdate.sourceUrl
