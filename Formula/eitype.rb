@@ -1,9 +1,9 @@
 class Eitype < Formula
   desc "Wayland text injection CLI using the EI protocol"
   homepage "https://github.com/Adam-D-Lewis/eitype"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/eitype-0.2.0/eitype-0.2.0-homebrew-x86_64-linux.tar.gz"
-  version "0.2.0"
-  sha256 "aa47b1cff1a831d5b54240e6cb4e1127a0ea5418a8f7a7b75a1bbc1c5a4e5005"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/eitype-0.2.1/eitype-0.2.1-homebrew-x86_64-linux.tar.gz"
+  version "0.2.1"
+  sha256 "10007b2ce047035ec8076882738bb99005885b001ebd0380738152c62145e11a"
   license "Apache-2.0"
 
   livecheck do
