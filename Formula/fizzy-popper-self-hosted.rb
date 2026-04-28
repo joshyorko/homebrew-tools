@@ -1,10 +1,10 @@
 class FizzyPopperSelfHosted < Formula
   desc "Fizzy Popper snapshot from joshyorko/fizzy-popper self-hosted branch"
   homepage "https://github.com/joshyorko/fizzy-popper/tree/self-hosted"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-popper-self-hosted-selfhosted.20260427234405.ae20f72969e8/fizzy-popper-self-hosted-selfhosted.20260427234405.ae20f72969e8.tar.gz"
-  version "selfhosted.20260427234405.ae20f72969e8"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-popper-self-hosted-selfhosted.20260428184932.50f699c74b94/fizzy-popper-self-hosted-selfhosted.20260428184932.50f699c74b94.tar.gz"
+  version "selfhosted.20260428184932.50f699c74b94"
   version_scheme 1
-  sha256 "874fa01f56f131a3e05567533178fc2c7aafb333ed61766306f4e86e57f4dd93"
+  sha256 "d87485cdb1cd0b52c8b9492efd376f2ecd19a6736721f11ae2c21244d4247526"
   license "MIT"
 
   livecheck do
