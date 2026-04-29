@@ -90,6 +90,7 @@ jobs:
         call: >-
           auto-update-status
           --slot-id="${{ steps.slot.outputs.slot_id }}"
+          --github-token=env://GH_TOKEN
 
     - name: Build matrix from slot output
       id: packages
@@ -143,6 +144,7 @@ jobs:
           -o "$RUNNER_TEMP/bundle"
           release-bundle
           --package-id="${{ matrix.package_id }}"
+          --github-token=env://GH_TOKEN
 
     - name: Upload release bundle artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

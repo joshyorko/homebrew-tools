@@ -122,6 +122,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     supportsPrCi: true,
     autoUpdate: {
       kind: "github_release_latest_tag",
+      stripPrefix: "v",
     },
     upstream: {
       kind: "git",

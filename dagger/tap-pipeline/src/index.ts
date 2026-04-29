@@ -1,4 +1,4 @@
-import { dag, CacheSharingMode, Container, Directory, File, argument, object, func } from "@dagger.io/dagger"
+import { dag, CacheSharingMode, Container, Directory, File, Secret, argument, object, func } from "@dagger.io/dagger"
 import {
   changedCiPackagesFromPaths,
   listAutoUpdateSlots as slotSummaries,
@@ -250,6 +250,7 @@ type AutoUpdatePackageStatus = {
 export class TapPipeline {
   source: Directory
   gitDir: Directory
+  private githubToken?: Secret
 
   constructor(
     @argument({ defaultPath: "../.." }) source: Directory,
@@ -293,7 +294,9 @@ export class TapPipeline {
   }
 
   @func()
-  async autoUpdateStatus(slotId: string): Promise<string> {
+  async autoUpdateStatus(slotId: string, githubToken?: Secret): Promise<string> {
+    this.setGithubToken(githubToken)
+
     const entries = slotPackages(parseAutoUpdateSlotId(slotId))
     const statuses = await Promise.all(entries.map(async (entry): Promise<AutoUpdatePackageStatus> => {
       const currentVersion = await this.currentPackagedVersion(entry.id)
@@ -315,9 +318,15 @@ export class TapPipeline {
   }
 
   @func()
-  async packagesNeedingAutoUpdate(slotId: string): Promise<string> {
-    const entries = JSON.parse(await this.autoUpdateStatus(slotId)) as AutoUpdatePackageStatus[]
+  async packagesNeedingAutoUpdate(slotId: string, githubToken?: Secret): Promise<string> {
+    const entries = JSON.parse(await this.autoUpdateStatus(slotId, githubToken)) as AutoUpdatePackageStatus[]
     return json(entries.filter((entry) => entry.needs_update).map((entry) => entry.id))
+  }
+
+  private setGithubToken(githubToken?: Secret): void {
+    if (githubToken) {
+      this.githubToken = githubToken
+    }
   }
 
   private packageEntry(packageId: string) {
@@ -458,14 +467,20 @@ export class TapPipeline {
       .withEnvVariable("PATH", "/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
-  private githubApiContainer(): Container {
-    let container = dag.container().from(NODE_IMAGE)
+  private withGithubAuth(container: Container): Container {
+    if (this.githubToken) {
+      return container.withSecretVariable("GH_TOKEN", this.githubToken)
+    }
 
     if (GITHUB_AUTH_TOKEN) {
-      container = container.withEnvVariable("GH_TOKEN", GITHUB_AUTH_TOKEN)
+      return container.withEnvVariable("GH_TOKEN", GITHUB_AUTH_TOKEN)
     }
 
     return container
+  }
+
+  private githubApiContainer(): Container {
+    return this.withGithubAuth(dag.container().from(NODE_IMAGE))
   }
 
   private rccReleaseMetadata(build: RccBuild): Record<string, unknown> {
@@ -1133,9 +1148,7 @@ export class TapPipeline {
   }
 
   private downloadAsset(container: Container, url: string, path: string): Container {
-    const authenticatedContainer = GITHUB_AUTH_TOKEN
-      ? container.withEnvVariable("GH_TOKEN", GITHUB_AUTH_TOKEN)
-      : container
+    const authenticatedContainer = this.withGithubAuth(container)
 
     return authenticatedContainer.withExec([
       "node",
@@ -1485,7 +1498,9 @@ export class TapPipeline {
   }
 
   @func()
-  async ciCheck(packageId: string): Promise<string> {
+  async ciCheck(packageId: string, githubToken?: Secret): Promise<string> {
+    this.setGithubToken(githubToken)
+
     const tap = this.source
 
     switch (packageId) {
@@ -1920,7 +1935,9 @@ export class TapPipeline {
   }
 
   @func()
-  async releaseMetadata(packageId: string): Promise<string> {
+  async releaseMetadata(packageId: string, githubToken?: Secret): Promise<string> {
+    this.setGithubToken(githubToken)
+
     const tap = this.source
 
     switch (packageId) {
@@ -1988,8 +2005,10 @@ export class TapPipeline {
   }
 
   @func()
-  async releaseBundle(packageId: string): Promise<Directory> {
-    const ciLog = await this.ciCheck(packageId)
+  async releaseBundle(packageId: string, githubToken?: Secret): Promise<Directory> {
+    this.setGithubToken(githubToken)
+
+    const ciLog = await this.ciCheck(packageId, githubToken)
     const tap = this.source
 
     switch (packageId) {

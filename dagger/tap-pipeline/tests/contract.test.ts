@@ -150,3 +150,14 @@ test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () =>
 
   assert.match(formula, /^\s*version_scheme 1$/m)
 })
+
+test("eitype normalizes v-prefixed upstream release tags", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "eitype")
+
+  assert.ok(entry)
+  assert.equal(entry.autoUpdate.kind, "github_release_latest_tag")
+
+  if (entry.autoUpdate.kind === "github_release_latest_tag") {
+    assert.equal(entry.autoUpdate.stripPrefix, "v")
+  }
+})
