@@ -1,9 +1,9 @@
 class FizzyCliMaster < Formula
   desc "Fizzy CLI built from basecamp/fizzy-cli master"
   homepage "https://github.com/basecamp/fizzy-cli"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-cli-master-master.bff7af284c1b/fizzy-cli-master-master.bff7af284c1b-homebrew-x86_64-linux.tar.gz"
-  version "master.bff7af284c1b"
-  sha256 "ed1196bc7d17e4d43e1b0308c188e082700bd3d363dfd70a7f0b1990f98757a5"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-cli-master-master.1a6001b62afd/fizzy-cli-master-master.1a6001b62afd-homebrew-x86_64-linux.tar.gz"
+  version "master.1a6001b62afd"
+  sha256 "7eb4c1f04ec72cd4e38951233e79d6f36d957249c71d651a8e548d84b33dbb1f"
   license "MIT"
 
   livecheck do
