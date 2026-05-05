@@ -94,6 +94,7 @@ test("auto-update slots cover the expected package set", () => {
       "eitype",
       "fizzy-cli-master",
       "fizzy-popper-self-hosted",
+      "fizzy-symphony",
       "rcc",
       "t3-code-linux",
       "t3code-cli-main",
@@ -136,6 +137,17 @@ test("timestamped git-head versions sort by commit time before sha", () => {
 
 test("fizzy-popper self-hosted opts into timestamped git-head versions", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "fizzy-popper-self-hosted")
+
+  assert.ok(entry)
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+
+  if (entry.autoUpdate.kind === "git_head_sha") {
+    assert.equal(entry.autoUpdate.includeCommitDate, true)
+  }
+})
+
+test("fizzy-symphony opts into timestamped git-head versions", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "fizzy-symphony")
 
   assert.ok(entry)
   assert.equal(entry.autoUpdate.kind, "git_head_sha")
