@@ -31,7 +31,7 @@
   },
   {
     "id": "fizzy-daily",
-    "description": "Daily refresh for Fizzy CLI upstream master and the fizzy-popper self-hosted fork.",
-    "packageIds": ["fizzy-cli-master", "fizzy-popper-self-hosted"]
+    "description": "Daily refresh for Fizzy CLI upstream master, fizzy-popper self-hosted, and fizzy-symphony main.",
+    "packageIds": ["fizzy-cli-master", "fizzy-popper-self-hosted", "fizzy-symphony"]
   }
 ]

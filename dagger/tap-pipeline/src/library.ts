@@ -88,6 +88,24 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "fizzy-symphony",
+    kind: "source_build_node_formula",
+    homebrewPath: "Formula/fizzy-symphony.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "main",
+      prefix: "main.",
+      shaLength: 12,
+      includeCommitDate: true,
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/joshyorko/fizzy-symphony",
+      ref: "main",
+    },
+  },
+  {
     id: "vscode-insiders-linux",
     kind: "rpm_repack_cask",
     homebrewPath: "Casks/vscode-insiders-linux.rb",
@@ -215,6 +233,14 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "Formula/fizzy-popper-self-hosted.rb",
       "scripts/package-fizzy-popper-self-hosted.mjs",
       "dagger/fizzy-popper-self-hosted-smoke/",
+    ],
+  ],
+  [
+    "fizzy-symphony",
+    [
+      "Formula/fizzy-symphony.rb",
+      "scripts/package-fizzy-symphony.mjs",
+      "dagger/fizzy-symphony-smoke/",
     ],
   ],
   [
