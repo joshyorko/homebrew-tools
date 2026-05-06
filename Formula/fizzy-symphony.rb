@@ -32,7 +32,13 @@ class FizzySymphony < Formula
   end
 
   test do
-    output = shell_output("#{bin}/fizzy-symphony")
+    output = shell_output("#{bin}/fizzy-symphony --help")
     assert_match "fizzy-symphony start", output
+
+    config = testpath/"config.yml"
+    output = shell_output("#{bin}/fizzy-symphony setup --template-only --config #{config}")
+    assert_match "wrote annotated config", output
+    assert_path_exists config
+    assert_match "fizzy-symphony config", config.read
   end
 end

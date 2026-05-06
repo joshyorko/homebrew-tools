@@ -157,6 +157,14 @@ test("fizzy-symphony opts into timestamped git-head versions", () => {
   }
 })
 
+test("fizzy-symphony formula test stays credentialless", () => {
+  const formula = readFileSync(new URL("../../../Formula/fizzy-symphony.rb", import.meta.url), "utf8")
+
+  assert.doesNotMatch(formula, /shell_output\("#{bin}\/fizzy-symphony"\)/)
+  assert.match(formula, /shell_output\("#{bin}\/fizzy-symphony --help"\)/)
+  assert.match(formula, /setup --template-only/)
+})
+
 test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () => {
   const formula = readFileSync(new URL("../../../Formula/fizzy-popper-self-hosted.rb", import.meta.url), "utf8")
 

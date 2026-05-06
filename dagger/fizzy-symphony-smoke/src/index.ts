@@ -110,7 +110,7 @@ export class FizzySymphonySmoke {
           "echo '--- package contents ---'",
           `tar -tzf /artifacts/${build.assetName} | sed -n '1,20p'`,
           "echo '--- fizzy-symphony usage ---'",
-          "fizzy-symphony",
+          "fizzy-symphony --help",
         ].join("\n"),
       ])
       .stdout()

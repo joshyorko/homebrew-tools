@@ -1879,7 +1879,7 @@ export class TapPipeline {
               ...tapStagingCommands("fizzy-symphony"),
               "brew install test/tap/fizzy-symphony",
               "brew test test/tap/fizzy-symphony",
-              "fizzy-symphony",
+              "fizzy-symphony --help",
             ].join("\n"),
           ])
           .stdout()
