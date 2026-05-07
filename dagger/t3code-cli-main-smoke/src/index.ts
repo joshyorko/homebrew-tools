@@ -37,7 +37,7 @@ export class T3CodeCliMainSmoke {
   }> {
     const upstreamRef = dag.git(UPSTREAM_REPO).ref(ref)
     const commit = await upstreamRef.commit()
-    const resolvedVersion = version && version.length > 0 ? version : `smoke.${commit.slice(0, 12)}`
+    const resolvedVersion = version && version.length > 0 ? version : `main.${commit.slice(0, 12)}`
     const assetName = `t3code-cli-main-${resolvedVersion}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
 
@@ -45,18 +45,6 @@ export class T3CodeCliMainSmoke {
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
       .withWorkdir("/upstream")
-      .withExec([
-        "node",
-        "-e",
-        [
-          "const fs = require('node:fs');",
-          "const path = 'apps/server/package.json';",
-          "const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));",
-          "pkg.version = process.argv[1];",
-          "fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\\n`);",
-        ].join(" "),
-        resolvedVersion,
-      ])
       .withExec(["bun", "install", "--frozen-lockfile"])
       .withExec(["bun", "run", "build", "--filter=@t3tools/web", "--filter=t3"])
       .withExec([
