@@ -157,6 +157,37 @@ test("fizzy-symphony opts into timestamped git-head versions", () => {
   }
 })
 
+test("t3code CLI main uses timestamped main snapshots instead of smoke labels", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "t3code-cli-main")
+
+  assert.ok(entry)
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+
+  if (entry.autoUpdate.kind === "git_head_sha") {
+    assert.equal(entry.autoUpdate.prefix, "main.")
+    assert.equal(entry.autoUpdate.includeCommitDate, true)
+  }
+})
+
+test("t3code CLI builders do not rewrite the upstream runtime package version", () => {
+  const builders = [
+    "../../../dagger/tap-pipeline/src/index.ts",
+    "../../../dagger/t3code-cli-main-smoke/src/index.ts",
+  ]
+
+  for (const builder of builders) {
+    const contents = readFileSync(new URL(builder, import.meta.url), "utf8")
+
+    assert.doesNotMatch(contents, /pkg\.version\s*=\s*process\.argv\[1\]/)
+  }
+})
+
+test("t3code CLI main formula bumps the Homebrew version scheme", () => {
+  const formula = readFileSync(new URL("../../../Formula/t3code-cli-main.rb", import.meta.url), "utf8")
+
+  assert.match(formula, /^\s*version_scheme 1$/m)
+})
+
 test("fizzy-symphony formula test stays credentialless", () => {
   const formula = readFileSync(new URL("../../../Formula/fizzy-symphony.rb", import.meta.url), "utf8")
 

@@ -5,6 +5,7 @@ class T3codeCliMain < Formula
   version "smoke.a74ed8ed32c2"
   sha256 "bd28c9f0f5ed73d6c469e4cd8fa5fe6cf7458d409bbdd2d3245a201f511358a6"
   license "MIT"
+  version_scheme 1
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."

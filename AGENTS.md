@@ -25,7 +25,7 @@ Use the Node packaging scripts only when iterating on artifacts directly:
 
 ```bash
 node scripts/package-vscode-insiders-linux.mjs --source-rpm /tmp/source.rpm --output /tmp/pkg.tar.gz
-node scripts/package-t3code-cli-main.mjs --upstream-dir /tmp/t3code --version smoke.test --output /tmp/pkg.tar.gz
+node scripts/package-t3code-cli-main.mjs --upstream-dir /tmp/t3code --version main.test --output /tmp/pkg.tar.gz
 ```
 
 ## Coding Style & Naming Conventions

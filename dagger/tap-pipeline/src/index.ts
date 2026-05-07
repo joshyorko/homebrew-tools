@@ -726,9 +726,23 @@ export class TapPipeline {
   }
 
   private async buildT3Artifact(tap: Directory, ref: string, version?: string): Promise<T3Build> {
-    const upstreamRef = dag.git("https://github.com/pingdotgg/t3code").ref(ref)
+    const entry = this.packageEntry("t3code-cli-main")
+
+    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+      throw new Error("Expected t3code-cli-main to use a git-head auto-update strategy")
+    }
+
+    const resolvedGitHead = version && version.length > 0
+      ? undefined
+      : await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)
+    const upstreamRef = dag.git(entry.upstream.repo).ref(resolvedGitHead?.commit ?? ref)
     const commit = await upstreamRef.commit()
-    const resolvedVersion = version && version.length > 0 ? version : `smoke.${commit.slice(0, 12)}`
+    const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
+
+    if (!resolvedVersion) {
+      throw new Error("Failed to resolve t3code-cli-main version")
+    }
+
     const assetName = `t3code-cli-main-${resolvedVersion}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
 
@@ -736,18 +750,6 @@ export class TapPipeline {
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
       .withWorkdir("/upstream")
-      .withExec([
-        "node",
-        "-e",
-        [
-          "const fs = require('node:fs');",
-          "const path = 'apps/server/package.json';",
-          "const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));",
-          "pkg.version = process.argv[1];",
-          "fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\\n`);",
-        ].join(" "),
-        resolvedVersion,
-      ])
       .withExec(["bun", "install", "--frozen-lockfile"])
       .withExec(["bun", "run", "build", "--filter=@t3tools/web", "--filter=t3"])
       .withExec([

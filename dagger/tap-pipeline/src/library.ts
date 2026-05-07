@@ -43,8 +43,9 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     autoUpdate: {
       kind: "git_head_sha",
       ref: "main",
-      prefix: "smoke.",
+      prefix: "main.",
       shaLength: 12,
+      includeCommitDate: true,
     },
     upstream: {
       kind: "git",
