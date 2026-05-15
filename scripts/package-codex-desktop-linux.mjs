@@ -2,7 +2,6 @@
 
 import { createHash } from "node:crypto"
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -284,11 +283,6 @@ function main() {
     writeFileSync(join(applicationsDir, "codex-desktop.desktop"), desktopEntry())
     writeFileSync(join(iconDir, "codex-desktop.svg"), iconSvg())
     writeExecutable(join(binDir, "codex-desktop"), launcherScript())
-
-    if (dmgPath) {
-      cpSync(dmgPath, join(metadataDir, "Codex.dmg.input"))
-      rmSync(join(metadataDir, "Codex.dmg.input"), { force: true })
-    }
 
     mkdirSync(dirname(outputPath), { recursive: true })
     execFileSync(

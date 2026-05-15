@@ -3,7 +3,7 @@ class CodexDesktop < Formula
   homepage "https://github.com/joshyorko/homebrew-tools"
   url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-research.20260514171029.43c8bd1b5d4a/codex-desktop-linux-research.20260514171029.43c8bd1b5d4a.tar.gz"
   version "research.20260514171029.43c8bd1b5d4a"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "74059141240bd2d2d345d01bc5dee6cc0b0f341f83b25973de2bb36712a99d96"
   license :cannot_represent
 
   livecheck do
