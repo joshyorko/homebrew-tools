@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
@@ -25,7 +25,7 @@ function createConvertedAppFixture(root: string): string {
 
   writeExecutable(
     join(appDir, "start.sh"),
-    "#!/usr/bin/env bash\nset -euo pipefail\necho \"fixture desktop launch:$*\"\n",
+    "#!/usr/bin/env bash\nset -euo pipefail\necho \"fixture desktop launch:$*\"\necho \"fixture codex path:$(command -v codex || true)\"\n",
   )
   writeExecutable(join(appDir, "electron"), "#!/usr/bin/env bash\necho electron fixture\n")
   writeExecutable(
@@ -133,6 +133,26 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
 
     const dataHome = join(tmp, "xdg-data")
     const cacheHome = join(tmp, "xdg-cache")
+    const caskPrefix = join(tmp, "homebrew")
+    const caskRoot = join(caskPrefix, "Caskroom/codex-desktop/dmg.test")
+    mkdirSync(join(caskPrefix, "bin"), { recursive: true })
+    mkdirSync(caskRoot, { recursive: true })
+    cpSync(join(extractDir, "bin"), join(caskRoot, "bin"), { recursive: true })
+    cpSync(join(extractDir, "share"), join(caskRoot, "share"), { recursive: true })
+    writeExecutable(join(caskPrefix, "bin/codex"), "#!/usr/bin/env bash\necho codex cli fixture\n")
+
+    const appGridLaunch = execFileSync(join(caskRoot, "bin/codex-desktop"), ["desktop", "--smoke"], {
+      encoding: "utf8",
+      env: {
+        HOME: tmp,
+        PATH: "/usr/bin:/bin",
+        XDG_CACHE_HOME: cacheHome,
+        XDG_DATA_HOME: dataHome,
+      },
+    })
+    assert.match(appGridLaunch, /fixture desktop launch:--smoke/)
+    assert.match(appGridLaunch, /fixture codex path:.*\/homebrew\/bin\/codex/)
+
     const desktopInstall = execFileSync(join(extractDir, "bin/codex-desktop"), ["install-desktop-entry"], {
       encoding: "utf8",
       env: {
@@ -168,6 +188,8 @@ test("codex desktop cask installs the launcher and desktop assets", () => {
 
   assert.match(cask, /cask "codex-desktop"/)
   assert.doesNotMatch(cask, /container type: :naked/)
+  assert.match(cask, /depends_on cask: "codex"/)
+  assert.match(cask, /depends_on formula: "desktop-file-utils"/)
   assert.match(cask, /binary "bin\/codex-desktop"/)
   assert.match(cask, /artifact "share\/applications\/codex-desktop\.desktop"/)
   assert.match(cask, /artifact "share\/icons\/hicolor\/512x512\/apps\/codex-desktop\.png"/)
@@ -188,6 +210,7 @@ test("codex desktop auto-update mirrors upstream DMG polling", () => {
   assert.match(workflow, /release-bundle\s+--package-id="\$\{\{ matrix\.package_id \}\}"/)
   assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
+  assert.match(pipeline, /brew install --cask --ignore-dependencies test\/tap\/codex-desktop/)
   assert.match(pipeline, /patch-codex-desktop-conversion\.mjs/)
   assert.doesNotMatch(pipeline, /--icon[\s\S]*\/conversion\/assets\/codex\.png/)
   assert.doesNotMatch(pipeline, /ca-certificates cargo curl/)

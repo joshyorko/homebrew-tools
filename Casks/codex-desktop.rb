@@ -11,6 +11,9 @@ cask "codex-desktop" do
     skip "Built from the official upstream Codex.dmg input via Dagger."
   end
 
+  depends_on cask: "codex"
+  depends_on formula: "desktop-file-utils"
+
   binary "bin/codex-desktop", target: "codex-desktop"
   artifact "share/applications/codex-desktop.desktop",
            target: "#{Dir.home}/.local/share/applications/codex-desktop.desktop"
