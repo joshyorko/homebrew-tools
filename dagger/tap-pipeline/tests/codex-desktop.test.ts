@@ -41,6 +41,7 @@ function createConvertedAppFixture(root: string): string {
   mkdirSync(join(appDir, "resources/plugins/openai-bundled/plugins/chrome/scripts"), { recursive: true })
   mkdirSync(join(appDir, ".codex-linux"), { recursive: true })
   mkdirSync(join(appDir, "content/webview/assets"), { recursive: true })
+  mkdirSync(join(appDir, "content/webview/apps"), { recursive: true })
 
   writeExecutable(
     join(appDir, "start.sh"),
@@ -51,6 +52,16 @@ function createConvertedAppFixture(root: string): string {
       "echo \"fixture codex path:$(command -v codex || true)\"",
       "echo \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"",
       "echo \"fixture editor:${EDITOR:-}\"",
+      "pid_is_stale_webview_server() {",
+      "    local pid=\"$1\"",
+      "    local cwd",
+      "    local deleted_webview_dir",
+      "",
+      "    pid_has_webview_server_cmdline \"$pid\" || return 1",
+      "    cwd=\"$(readlink -f \"/proc/$pid/cwd\" 2>/dev/null || true)\"",
+      "    deleted_webview_dir=\"$(canonical_path \"$WEBVIEW_DIR\") (deleted)\"",
+      "    [ \"$cwd\" = \"$deleted_webview_dir\" ]",
+      "}",
       "",
     ].join("\n"),
   )
@@ -91,6 +102,9 @@ function createConvertedAppFixture(root: string): string {
   writeFileSync(join(appDir, "version"), "41.3.0\n")
   writeFileSync(join(appDir, ".codex-linux/codex-desktop.png"), "fallback-linux-icon")
   writeFileSync(join(appDir, "content/webview/assets/app-fixture_hash.png"), "official-app-icon")
+  writeFileSync(join(appDir, "content/webview/apps/vscode.png"), "vscode-icon")
+  writeFileSync(join(appDir, "content/webview/apps/vscode-insiders.png"), "vscode-insiders-icon")
+  writeFileSync(join(appDir, "content/webview/apps/file-explorer.png"), "file-explorer-icon")
   writeFileSync(
     join(appDir, "content/webview/assets/app-main-fixture.css"),
     [
@@ -178,6 +192,14 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.linux_app_shell_sidebar_surface_present, true)
     assert.equal(metadata.linux_icon_visibility_patched, true)
     assert.equal(metadata.linux_icon_visibility_present, true)
+    assert.equal(metadata.linux_webview_app_icons_copied, true)
+    assert.deepEqual(metadata.linux_webview_app_icons_files, [
+      "content/webview/assets/apps/file-explorer.png",
+      "content/webview/assets/apps/vscode-insiders.png",
+      "content/webview/assets/apps/vscode.png",
+    ])
+    assert.equal(metadata.linux_webview_server_stale_detection_patched, true)
+    assert.equal(metadata.linux_webview_server_stale_detection_file, "start.sh")
     assert.deepEqual(metadata.linux_protocol_schemes, ["codex", "codex-browser-sidebar"])
 
     const exportedMetadata = JSON.parse(readFileSync(metadataOutput, "utf8"))
@@ -195,6 +217,27 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
       readFileSync(join(extractDir, "share/icons/hicolor/256x256/apps/codex-desktop.png"), "utf8"),
       "official-app-icon",
     )
+    assert.equal(
+      readFileSync(join(extractDir, "share/codex-desktop/app/content/webview/assets/apps/vscode.png"), "utf8"),
+      "vscode-icon",
+    )
+    assert.equal(
+      readFileSync(
+        join(extractDir, "share/codex-desktop/app/content/webview/assets/apps/vscode-insiders.png"),
+        "utf8",
+      ),
+      "vscode-insiders-icon",
+    )
+    assert.equal(
+      readFileSync(
+        join(extractDir, "share/codex-desktop/app/content/webview/assets/apps/file-explorer.png"),
+        "utf8",
+      ),
+      "file-explorer-icon",
+    )
+    const launcher = readFileSync(join(extractDir, "share/codex-desktop/app/start.sh"), "utf8")
+    assert.match(launcher, /current_webview_dir="\$\(canonical_path "\$WEBVIEW_DIR"\)"/)
+    assert.match(launcher, /\[ -z "\$cwd" \] \|\| \[ "\$cwd" != "\$current_webview_dir" \]/)
 
     const report = JSON.parse(readFileSync(join(extractDir, "share/codex-desktop/renderer-report.json"), "utf8"))
     assert.equal(report.loopback_only_default, true)

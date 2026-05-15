@@ -589,6 +589,88 @@ function patchLinuxIconVisibility(appDir) {
   }
 }
 
+function copyLinuxWebviewAppIcons(appDir) {
+  const sourceDir = join(appDir, "content/webview/apps")
+  const targetDir = join(appDir, "content/webview/assets/apps")
+
+  if (!existsSync(sourceDir)) {
+    return {
+      copied: false,
+      source: relative(appDir, sourceDir),
+      target: relative(appDir, targetDir),
+      files: [],
+    }
+  }
+
+  const files = readdirSync(sourceDir)
+    .filter((name) => /\.(?:png|svg|webp|jpg|jpeg)$/i.test(name))
+    .sort()
+
+  if (files.length === 0) {
+    return {
+      copied: false,
+      source: relative(appDir, sourceDir),
+      target: relative(appDir, targetDir),
+      files: [],
+    }
+  }
+
+  mkdirSync(targetDir, { recursive: true })
+  for (const file of files) {
+    cpSync(join(sourceDir, file), join(targetDir, file), { dereference: false })
+  }
+
+  return {
+    copied: true,
+    source: relative(appDir, sourceDir),
+    target: relative(appDir, targetDir),
+    files: files.map((file) => relative(appDir, join(targetDir, file))),
+  }
+}
+
+function patchLinuxWebviewServerStaleDetection(appDir) {
+  const launcherPath = join(appDir, "start.sh")
+  if (!existsSync(launcherPath)) {
+    return { patched: false, file: null }
+  }
+
+  const before = readFileSync(launcherPath, "utf8")
+  const search = `pid_is_stale_webview_server() {
+    local pid="$1"
+    local cwd
+    local deleted_webview_dir
+
+    pid_has_webview_server_cmdline "$pid" || return 1
+    cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+    deleted_webview_dir="$(canonical_path "$WEBVIEW_DIR") (deleted)"
+    [ "$cwd" = "$deleted_webview_dir" ]
+}`
+  const replacement = `pid_is_stale_webview_server() {
+    local pid="$1"
+    local cwd
+    local current_webview_dir
+
+    pid_has_webview_server_cmdline "$pid" || return 1
+    cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+    current_webview_dir="$(canonical_path "$WEBVIEW_DIR")"
+
+    # A Homebrew cask prune/reinstall can leave a user-owned webview server
+    # serving an older bundle on the same fixed port. Treat any Codex webview
+    # server that is not serving this bundle as stale when no live app owns it.
+    [ -z "$cwd" ] || [ "$cwd" != "$current_webview_dir" ]
+}`
+
+  if (!before.includes(search)) {
+    return {
+      patched: before.includes("current_webview_dir=\"$(canonical_path \"$WEBVIEW_DIR\")\""),
+      file: relative(appDir, launcherPath),
+    }
+  }
+
+  writeFileSync(launcherPath, before.replace(search, replacement))
+  return { patched: true, file: relative(appDir, launcherPath) }
+}
+
 function findAsset(appDir, pattern) {
   const assetsDir = join(appDir, "content/webview/assets")
   if (!existsSync(assetsDir)) {
@@ -1503,6 +1585,8 @@ function main() {
   const linuxRendererCopyPatch = patchLinuxRendererCopy(appDir)
   const linuxSidebarSurfacePatch = patchLinuxSidebarSurfaces(appDir)
   const linuxIconVisibilityPatch = patchLinuxIconVisibility(appDir)
+  const linuxWebviewAppIconsCopy = copyLinuxWebviewAppIcons(appDir)
+  const linuxWebviewServerStaleDetectionPatch = patchLinuxWebviewServerStaleDetection(appDir)
 
   if (codexDmg && !existsSync(codexDmg)) {
     throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
@@ -1554,6 +1638,12 @@ function main() {
     linux_icon_visibility_present: linuxIconVisibilityPatch.present,
     linux_icon_visibility_file: linuxIconVisibilityPatch.file,
     linux_icon_visibility_rule: linuxIconVisibilityPatch.rule,
+    linux_webview_app_icons_copied: linuxWebviewAppIconsCopy.copied,
+    linux_webview_app_icons_source: linuxWebviewAppIconsCopy.source,
+    linux_webview_app_icons_target: linuxWebviewAppIconsCopy.target,
+    linux_webview_app_icons_files: linuxWebviewAppIconsCopy.files,
+    linux_webview_server_stale_detection_patched: linuxWebviewServerStaleDetectionPatch.patched,
+    linux_webview_server_stale_detection_file: linuxWebviewServerStaleDetectionPatch.file,
     linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
     browser_mode_status: "research",
