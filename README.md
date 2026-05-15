@@ -70,6 +70,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
+| `brew install joshyorko/tools/codex-desktop` | Install Codex Desktop Linux runtime skeleton |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
@@ -173,6 +174,40 @@ That smoke test is the real end-to-end path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
+
+### Codex Desktop (Linux Runtime Skeleton)
+
+Codex Desktop Linux support starts as a conservative Dagger-native package skeleton for a personal
+conversion flow. The public formula installs the launcher, metadata, `doctor`, user-local desktop
+entry helper, and browser-mode research report, but it does **not** redistribute the proprietary
+Codex Desktop app payload.
+
+```bash
+brew install joshyorko/tools/codex-desktop
+codex-desktop --help
+codex-desktop doctor
+codex-desktop install-desktop-entry
+codex-desktop web --inspect
+```
+
+The Dagger package id is `codex-desktop-linux`, pinned to the field-research commit
+`43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a` from
+[`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux). Use the
+Codex-specific Dagger targets with an explicit official `Codex.dmg` input for private inspection
+and release bundle experiments:
+
+```bash
+dagger -m ./dagger/tap-pipeline call codex-desktop-renderer-report --codex-dmg=/path/to/Codex.dmg
+dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle codex-desktop-release-bundle --codex-dmg=/path/to/Codex.dmg
+```
+
+Manual GNOME/Bluefin validation checklist:
+- run `codex-desktop doctor` and install any missing Codex CLI/Electron/browser prerequisites
+- run `codex-desktop install-desktop-entry`
+- confirm `~/.local/share/applications/codex-desktop.desktop` exists and appears in the app grid
+- after a private DMG conversion artifact includes an app payload, run `codex-desktop desktop`
+- keep browser/app-server experiments loopback-only and use `codex-desktop web --inspect` for the
+  current renderer research report
 
 ### Fizzy CLI (Master Formula)
 

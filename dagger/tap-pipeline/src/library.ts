@@ -36,6 +36,24 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
+    id: "codex-desktop-linux",
+    kind: "codex_desktop_linux_formula",
+    homebrewPath: "Formula/codex-desktop.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "main",
+      prefix: "research.",
+      shaLength: 12,
+      includeCommitDate: true,
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/ilysenko/codex-desktop-linux",
+      ref: "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a",
+    },
+  },
+  {
     id: "t3code-cli-main",
     kind: "source_build_node_formula",
     homebrewPath: "Formula/t3code-cli-main.rb",
@@ -220,6 +238,10 @@ function loadAutoUpdateSlots(): AutoUpdateSlot[] {
 export const AUTO_UPDATE_SLOTS: AutoUpdateSlot[] = loadAutoUpdateSlots()
 
 const CHANGED_PATHS: Array<[string, string[]]> = [
+  [
+    "codex-desktop-linux",
+    ["Formula/codex-desktop.rb", "scripts/package-codex-desktop-linux.mjs"],
+  ],
   [
     "t3code-cli-main",
     ["Formula/t3code-cli-main.rb", "scripts/package-t3code-cli-main.mjs", "dagger/t3code-cli-main-smoke/"],
