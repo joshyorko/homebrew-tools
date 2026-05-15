@@ -23,6 +23,9 @@ const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
 ]
+const LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR =
+  "[data-codex-window-type=electron][data-codex-os=linux] .window-fx-sidebar-surface"
+const LINUX_SETTINGS_SIDEBAR_SURFACE_CSS = `${LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR}{background:var(--color-token-bg-primary)}`
 
 function linuxProtocolMimeTypes() {
   return `${LINUX_PROTOCOL_SCHEMES.map((scheme) => `x-scheme-handler/${scheme}`).join(";")};`
@@ -404,6 +407,31 @@ function listTextFiles(root) {
   return files
 }
 
+function listCssFiles(root) {
+  if (!existsSync(root)) {
+    return []
+  }
+
+  const files = []
+
+  function walk(current) {
+    const stat = lstatSync(current)
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(current).sort()) {
+        walk(join(current, entry))
+      }
+      return
+    }
+
+    if (stat.isFile() && /\.css$/.test(current)) {
+      files.push(current)
+    }
+  }
+
+  walk(root)
+  return files
+}
+
 function patchLinuxRendererCopy(appDir) {
   const assetsDir = join(appDir, "content/webview/assets")
   const files = []
@@ -435,6 +463,45 @@ function patchLinuxRendererCopy(appDir) {
     patched: replacementCount > 0,
     files,
     replacements: replacementCount,
+  }
+}
+
+function patchLinuxSettingsSidebarSurface(appDir) {
+  const assetsDir = join(appDir, "content/webview/assets")
+  const cssFiles = listCssFiles(assetsDir)
+
+  for (const path of cssFiles) {
+    const contents = readFileSync(path, "utf8")
+    if (contents.includes(LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR)) {
+      return {
+        patched: false,
+        present: true,
+        files: [relative(appDir, path)],
+      }
+    }
+  }
+
+  const target = cssFiles.find((path) => {
+    const contents = readFileSync(path, "utf8")
+    return contents.includes(".app-shell-left-panel") || contents.includes(".main-surface")
+  }) ?? cssFiles[0]
+
+  if (!target) {
+    return {
+      patched: false,
+      present: false,
+      files: [],
+    }
+  }
+
+  const before = readFileSync(target, "utf8")
+  const separator = before.endsWith("\n") ? "" : "\n"
+  writeFileSync(target, `${before}${separator}${LINUX_SETTINGS_SIDEBAR_SURFACE_CSS}\n`)
+
+  return {
+    patched: true,
+    present: true,
+    files: [relative(appDir, target)],
   }
 }
 
@@ -1282,7 +1349,7 @@ StartupNotify=true
 `
 }
 
-function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch) {
+function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSettingsSidebarSurfacePatch) {
   return {
     package: "codex-desktop-linux",
     browser_mode_status: "research",
@@ -1294,6 +1361,9 @@ function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch) {
     linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
     linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
     linux_renderer_copy_files: linuxRendererCopyPatch.files,
+    linux_settings_sidebar_surface_patched: linuxSettingsSidebarSurfacePatch.patched,
+    linux_settings_sidebar_surface_present: linuxSettingsSidebarSurfacePatch.present,
+    linux_settings_sidebar_surface_files: linuxSettingsSidebarSurfacePatch.files,
     next_steps: [
       "Serve the extracted webview assets from 127.0.0.1.",
       "Inventory Electron/preload globals expected by the renderer.",
@@ -1318,6 +1388,7 @@ function main() {
   assertConvertedApp(appDir)
   const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
   const linuxRendererCopyPatch = patchLinuxRendererCopy(appDir)
+  const linuxSettingsSidebarSurfacePatch = patchLinuxSettingsSidebarSurface(appDir)
 
   if (codexDmg && !existsSync(codexDmg)) {
     throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
@@ -1352,6 +1423,9 @@ function main() {
     linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
     linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
     linux_renderer_copy_files: linuxRendererCopyPatch.files,
+    linux_settings_sidebar_surface_patched: linuxSettingsSidebarSurfacePatch.patched,
+    linux_settings_sidebar_surface_present: linuxSettingsSidebarSurfacePatch.present,
+    linux_settings_sidebar_surface_files: linuxSettingsSidebarSurfacePatch.files,
     linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
     browser_mode_status: "research",
@@ -1381,7 +1455,11 @@ function main() {
     writeFileSync(join(metadataDir, "release.json"), `${JSON.stringify(metadata, null, 2)}\n`)
     writeFileSync(
       join(metadataDir, "renderer-report.json"),
-      `${JSON.stringify(rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch), null, 2)}\n`,
+      `${JSON.stringify(
+        rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSettingsSidebarSurfacePatch),
+        null,
+        2,
+      )}\n`,
     )
 
     if (rebuildReportPath && existsSync(rebuildReportPath)) {
