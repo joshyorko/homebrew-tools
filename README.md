@@ -191,12 +191,15 @@ codex-desktop doctor
 codex-desktop web --inspect
 ```
 
-The Dagger package id is `codex-desktop-linux`, pinned to the self-hosted conversion commit
-`3a419707886b680db15f2694299fa406a93b1878` from
-`joshyorko/codex-desktop-linux`. The tap auto-update workflow checks the official DMG every two
-hours. The build enables upstream's Linux Computer Use UI opt-in before converting the DMG, then
-records `linux_computer_use_ui_enabled` in `release.json`. The cask installs the launcher, desktop
-entry, URL handlers, and app icons automatically.
+The Dagger package id is `codex-desktop-linux`. The default conversion source is
+`joshyorko/codex-desktop-linux` at `3a419707886b680db15f2694299fa406a93b1878`, and dispatch
+builds use the validated conversion commit sent by that repo. The Codex Desktop repo checks the
+official DMG, validates the Linux conversion, and dispatches this tap to build the Homebrew artifact
+after that validation passes. The generated version includes both the DMG fingerprint and the
+conversion commit, so self-hosted Linux fixes can rebuild against the same official DMG. The build
+enables upstream's Linux Computer Use UI opt-in before converting the DMG, then records
+`linux_computer_use_ui_enabled` in `release.json`. The cask installs the launcher, desktop entry,
+URL handlers, and app icons automatically.
 Use the standard release-bundle target for the upstream DMG path, or the Codex-specific target when
 testing a local DMG:
 

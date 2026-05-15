@@ -1,7 +1,7 @@
 [
   {
     "id": "codex-desktop-2h",
-    "description": "Two-hour Codex Desktop refresh against the official upstream Codex.dmg.",
+    "description": "Codex Desktop refresh after the conversion repo validates the official upstream Codex.dmg.",
     "packageIds": ["codex-desktop-linux"]
   },
   {

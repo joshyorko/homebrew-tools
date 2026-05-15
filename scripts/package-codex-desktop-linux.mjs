@@ -17,8 +17,10 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
 
-const DEFAULT_CONVERSION_REPO = "https://github.com/joshyorko/codex-desktop-linux"
-const DEFAULT_CONVERSION_COMMIT = "3a419707886b680db15f2694299fa406a93b1878"
+const DEFAULT_CONVERSION_REPO =
+  process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
+const DEFAULT_CONVERSION_COMMIT =
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "3a419707886b680db15f2694299fa406a93b1878"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
