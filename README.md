@@ -192,7 +192,7 @@ codex-desktop web --inspect
 ```
 
 The Dagger package id is `codex-desktop-linux`. The default conversion source is
-`joshyorko/codex-desktop-linux` at `3a419707886b680db15f2694299fa406a93b1878`, and dispatch
+`joshyorko/codex-desktop-linux` at `33f60d16f927de63a28e990361d9f41ba9060807`, and dispatch
 builds use the validated conversion commit sent by that repo. The Codex Desktop repo checks the
 official DMG, validates the Linux conversion, and dispatches this tap to build the Homebrew artifact
 after that validation passes. The generated version includes both the DMG fingerprint and the
