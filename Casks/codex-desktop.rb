@@ -1,6 +1,6 @@
 cask "codex-desktop" do
   version "dmg.20260514200933.de0f41408b3a"
-  sha256 "b82f27093fdda6edae679fc57f48637ac6b63483a47e31882aee6ca2c8a3f788"
+  sha256 "fa3c4ec2ff81a61460144c7b964566c4a8d0a1dba6ffbe0b0e2028275011937c"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-dmg.20260514200933.de0f41408b3a/codex-desktop-linux-dmg.20260514200933.de0f41408b3a.tar.gz"
   name "Codex Desktop"
