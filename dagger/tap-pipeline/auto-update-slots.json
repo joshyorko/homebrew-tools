@@ -1,5 +1,10 @@
 [
   {
+    "id": "codex-desktop-2h",
+    "description": "Two-hour Codex Desktop refresh against the official upstream Codex.dmg.",
+    "packageIds": ["codex-desktop-linux"]
+  },
+  {
     "id": "rcc-daily",
     "description": "Daily RCC refresh.",
     "packageIds": ["rcc"]

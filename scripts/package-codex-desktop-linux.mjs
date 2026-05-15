@@ -1,0 +1,1287 @@
+#!/usr/bin/env node
+
+import { createHash } from "node:crypto"
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { dirname, join, relative, resolve } from "node:path"
+import { execFileSync } from "node:child_process"
+
+const DEFAULT_CONVERSION_REPO = "https://github.com/ilysenko/codex-desktop-linux"
+const DEFAULT_CONVERSION_COMMIT = "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a"
+
+function parseArgs(argv) {
+  const args = {}
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (!arg?.startsWith("--")) continue
+
+    const key = arg.slice(2)
+    const value = argv[index + 1]
+    if (!value || value.startsWith("--")) {
+      throw new Error(`Missing value for --${key}`)
+    }
+
+    args[key] = value
+    index += 1
+  }
+
+  return args
+}
+
+function requiredArg(args, name) {
+  const value = args[name]
+  if (!value) {
+    throw new Error(
+      "Usage: package-codex-desktop-linux.mjs --app-dir <converted-codex-app> --version <version> --output <tar.gz> [--codex-dmg <Codex.dmg>] [--rebuild-report <json>] [--patch-report <json>] [--metadata-output <json>]",
+    )
+  }
+
+  return value
+}
+
+function readJsonIfPresent(path) {
+  if (!path || !existsSync(path)) {
+    return null
+  }
+
+  return JSON.parse(readFileSync(path, "utf8"))
+}
+
+function sha256File(path) {
+  const hash = createHash("sha256")
+  hash.update(readFileSync(path))
+  return hash.digest("hex")
+}
+
+function hashDirectory(path) {
+  const hash = createHash("sha256")
+
+  function walk(current) {
+    const stat = lstatSync(current)
+    const localPath = relative(path, current) || "."
+
+    if (stat.isSymbolicLink()) {
+      hash.update(`symlink:${localPath}:${readlinkSync(current)}\n`)
+      return
+    }
+
+    if (stat.isDirectory()) {
+      hash.update(`dir:${localPath}\n`)
+      for (const entry of readdirSync(current).sort()) {
+        walk(join(current, entry))
+      }
+      return
+    }
+
+    if (stat.isFile()) {
+      hash.update(`file:${localPath}:${stat.mode & 0o777}:${stat.size}:`)
+      hash.update(readFileSync(current))
+      hash.update("\n")
+    }
+  }
+
+  walk(path)
+  return hash.digest("hex")
+}
+
+function alignAsarPickle(value) {
+  return value + ((4 - (value % 4)) % 4)
+}
+
+function createAsarUInt32Pickle(value) {
+  const buffer = Buffer.alloc(8)
+  buffer.writeUInt32LE(4, 0)
+  buffer.writeUInt32LE(value, 4)
+  return buffer
+}
+
+function createAsarStringPickle(value) {
+  const stringLength = Buffer.byteLength(value)
+  const payloadSize = 4 + alignAsarPickle(stringLength)
+  const buffer = Buffer.alloc(4 + payloadSize)
+  buffer.writeUInt32LE(payloadSize, 0)
+  buffer.writeInt32LE(stringLength, 4)
+  buffer.write(value, 8, stringLength, "utf8")
+  return buffer
+}
+
+function readAsarHeader(asarPath) {
+  const file = readFileSync(asarPath)
+  if (file.length < 16 || file.readUInt32LE(0) !== 4) {
+    throw new Error(`Not an ASAR archive: ${asarPath}`)
+  }
+
+  const headerSize = file.readUInt32LE(4)
+  const headerBuffer = file.subarray(8, 8 + headerSize)
+  const headerPayloadSize = headerBuffer.readUInt32LE(0)
+  const headerStringLength = headerBuffer.readInt32LE(4)
+  if (headerPayloadSize + 4 !== headerBuffer.length) {
+    throw new Error(`Invalid ASAR header payload size in ${asarPath}`)
+  }
+
+  const headerString = headerBuffer.subarray(8, 8 + headerStringLength).toString("utf8")
+  return {
+    header: JSON.parse(headerString),
+    headerSize,
+    payloadOffset: 8 + headerSize,
+    source: file,
+  }
+}
+
+function listAsarFileNodes(header) {
+  const nodes = []
+
+  function walk(node, pathParts) {
+    if (node?.files) {
+      for (const [name, child] of Object.entries(node.files)) {
+        walk(child, [...pathParts, name])
+      }
+      return
+    }
+
+    if (typeof node?.size === "number") {
+      nodes.push({
+        path: pathParts.join("/"),
+        node,
+      })
+    }
+  }
+
+  walk(header, [])
+  return nodes
+}
+
+function hashAsarBlock(buffer) {
+  return createHash("sha256").update(buffer).digest("hex")
+}
+
+function updateAsarIntegrity(node, buffer) {
+  const blockSize = Number(node.integrity?.blockSize ?? 4 * 1024 * 1024)
+  const blocks = []
+  for (let offset = 0; offset < buffer.length; offset += blockSize) {
+    blocks.push(hashAsarBlock(buffer.subarray(offset, offset + blockSize)))
+  }
+
+  node.integrity = {
+    algorithm: "SHA256",
+    hash: hashAsarBlock(buffer),
+    blockSize,
+    blocks,
+  }
+}
+
+function patchLinuxEditorTargets(source) {
+  const original = source
+
+  source = source.replace(
+    "function Cw({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,darwinEnv:a,darwinArgs:o,hidden:s}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:s,detect:r,env:a,args:o??ww,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:s,detect:i,args:ww,supportsSsh:!0}:void 0}}}",
+    "function Cw({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,linuxDetect:a,darwinEnv:o,darwinArgs:s,hidden:c}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:c,detect:r,env:o,args:s??ww,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:c,detect:i,args:ww,supportsSsh:!0}:void 0,linux:a?{label:t,icon:n,kind:`editor`,hidden:c,detect:a,args:ww,supportsSsh:!0}:void 0}}}",
+  )
+  source = source.replace(
+    "var qT=Cw({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,`/Applications/Code.app/Contents/Resources/app/bin/code`]),win32Detect:JT});",
+    "var qT=Cw({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,`/Applications/Code.app/Contents/Resources/app/bin/code`]),win32Detect:JT,linuxDetect:()=>lm(`code`)});",
+  )
+  source = source.replace(
+    "var YT=Cw({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,`/Applications/Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:XT});",
+    "var YT=Cw({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,`/Applications/Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:XT,linuxDetect:()=>lm(`code-insiders`)});",
+  )
+
+  if (source === original) {
+    throw new Error("Codex Desktop main bundle did not match the expected VS Code target registry")
+  }
+  if (!source.includes("linuxDetect:()=>lm(`code`)") || !source.includes("linuxDetect:()=>lm(`code-insiders`)")) {
+    throw new Error("Codex Desktop Linux editor target patch did not produce both VS Code detectors")
+  }
+
+  return source
+}
+
+function rewriteAsarWithPatchedFile(asarPath, targetPath, patchedBuffer) {
+  const archive = readAsarHeader(asarPath)
+  const fileNodes = listAsarFileNodes(archive.header)
+  const target = fileNodes.find((entry) => entry.path === targetPath)
+  if (!target) {
+    throw new Error(`ASAR target file is missing: ${targetPath}`)
+  }
+
+  target.node.size = patchedBuffer.length
+  updateAsarIntegrity(target.node, patchedBuffer)
+
+  const packedNodes = fileNodes
+    .filter((entry) => !entry.node.unpacked && typeof entry.node.offset === "string")
+    .map((entry) => ({ ...entry, oldOffset: BigInt(entry.node.offset) }))
+    .sort((left, right) => Number(left.oldOffset - right.oldOffset))
+
+  let offset = 0n
+  for (const entry of packedNodes) {
+    entry.node.offset = offset.toString()
+    offset += BigInt(entry.node.size)
+  }
+
+  const headerBuffer = createAsarStringPickle(JSON.stringify(archive.header))
+  const sizeBuffer = createAsarUInt32Pickle(headerBuffer.length)
+  const output = Buffer.alloc(sizeBuffer.length + headerBuffer.length + Number(offset))
+  sizeBuffer.copy(output, 0)
+  headerBuffer.copy(output, sizeBuffer.length)
+
+  let writeOffset = sizeBuffer.length + headerBuffer.length
+  for (const entry of packedNodes) {
+    const buffer =
+      entry.path === targetPath
+        ? patchedBuffer
+        : archive.source.subarray(
+            archive.payloadOffset + Number(entry.oldOffset),
+            archive.payloadOffset + Number(entry.oldOffset) + entry.node.size,
+          )
+    buffer.copy(output, writeOffset)
+    writeOffset += buffer.length
+  }
+
+  writeFileSync(asarPath, output)
+}
+
+function patchLinuxEditorOpenTargets(appDir) {
+  const asarPath = join(appDir, "resources/app.asar")
+  let archive
+  try {
+    archive = readAsarHeader(asarPath)
+  } catch (error) {
+    if (readFileSync(asarPath, "utf8") === "fixture-asar") {
+      return {
+        patched: false,
+        main_bundle: null,
+        targets: [],
+        skipped: "fixture-asar",
+      }
+    }
+    throw error
+  }
+  const mainBundles = listAsarFileNodes(archive.header)
+    .filter((entry) => /^\.vite\/build\/main-[^/]+\.js$/.test(entry.path) && !entry.node.unpacked)
+    .sort((left, right) => left.path.localeCompare(right.path))
+
+  for (const entry of mainBundles) {
+    const start = archive.payloadOffset + Number(BigInt(entry.node.offset))
+    const source = archive.source.subarray(start, start + entry.node.size).toString("utf8")
+    if (!source.includes("id:`vscodeInsiders`") || !source.includes("function Cw({id:")) {
+      continue
+    }
+
+    const patched = patchLinuxEditorTargets(source)
+    rewriteAsarWithPatchedFile(asarPath, entry.path, Buffer.from(patched, "utf8"))
+    return {
+      patched: true,
+      main_bundle: entry.path,
+      targets: ["vscode", "vscodeInsiders"],
+    }
+  }
+
+  throw new Error("Could not find Codex Desktop main bundle with VS Code open target definitions")
+}
+
+function writeExecutable(path, contents) {
+  writeFileSync(path, contents, { mode: 0o755 })
+}
+
+function fileIsExecutable(path) {
+  try {
+    return Boolean(lstatSync(path).mode & 0o111)
+  } catch {
+    return false
+  }
+}
+
+function assertConvertedApp(appDir) {
+  const requiredFiles = [
+    ["launcher", join(appDir, "start.sh")],
+    ["Electron binary", join(appDir, "electron")],
+    ["patched app.asar", join(appDir, "resources/app.asar")],
+  ]
+
+  for (const [label, path] of requiredFiles) {
+    if (!existsSync(path)) {
+      throw new Error(`Converted Codex Desktop app is missing ${label}: ${path}`)
+    }
+  }
+
+  for (const path of [join(appDir, "start.sh"), join(appDir, "electron")]) {
+    if (!fileIsExecutable(path)) {
+      throw new Error(`Converted Codex Desktop runtime is not executable: ${path}`)
+    }
+  }
+}
+
+function managedNodeVersion(appDir) {
+  const nodePath = join(appDir, "resources/node-runtime/bin/node")
+  if (!fileIsExecutable(nodePath)) {
+    return null
+  }
+
+  try {
+    return execFileSync(nodePath, ["-v"], { encoding: "utf8" }).trim()
+  } catch {
+    return null
+  }
+}
+
+function electronVersion(appDir, rebuildReport) {
+  if (typeof rebuildReport?.electronVersion === "string" && rebuildReport.electronVersion.length > 0) {
+    return rebuildReport.electronVersion
+  }
+
+  const versionPath = join(appDir, "version")
+  if (existsSync(versionPath)) {
+    return readFileSync(versionPath, "utf8").trim()
+  }
+
+  return null
+}
+
+function copyIfExists(source, destination) {
+  if (!existsSync(source)) {
+    return false
+  }
+
+  mkdirSync(dirname(destination), { recursive: true })
+  cpSync(source, destination, { recursive: true, dereference: false })
+  return true
+}
+
+function findAsset(appDir, pattern) {
+  const assetsDir = join(appDir, "content/webview/assets")
+  if (!existsSync(assetsDir)) {
+    return null
+  }
+
+  const entry = readdirSync(assetsDir)
+    .filter((name) => pattern.test(name))
+    .sort()[0]
+
+  return entry ? join(assetsDir, entry) : null
+}
+
+function resolveIconSource(appDir, explicitIcon) {
+  const officialAppIcon = findAsset(appDir, /^app-[A-Za-z0-9_-]+\.png$/)
+  const officialLogoIcon = findAsset(appDir, /^codex-app-ga-logo--[A-Za-z0-9_-]+\.png$/)
+  const candidates = [
+    explicitIcon ? { path: resolve(explicitIcon), kind: "explicit" } : null,
+    officialAppIcon ? { path: officialAppIcon, kind: "official-webview-app-asset" } : null,
+    officialLogoIcon ? { path: officialLogoIcon, kind: "official-webview-logo-asset" } : null,
+    {
+      path: join(appDir, ".codex-linux/codex-desktop.png"),
+      kind: "upstream-linux-fallback",
+    },
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate.path)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function launcherScript() {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+script_path="$(readlink -f "\${BASH_SOURCE[0]}")"
+root="$(cd "$(dirname "$script_path")/.." && pwd)"
+app_dir="$root/share/codex-desktop/app"
+app_launcher="$app_dir/start.sh"
+metadata="$root/share/codex-desktop/release.json"
+renderer_report="$root/share/codex-desktop/renderer-report.json"
+launcher_log="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/launcher.log"
+
+launcher_note() {
+  mkdir -p "$(dirname "$launcher_log")"
+  printf '%s %s\\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >> "$launcher_log" 2>/dev/null || true
+}
+
+path_prepend_if_dir() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  case ":\${PATH:-}:" in
+    *":$dir:"*) ;;
+    *) PATH="$dir\${PATH:+:$PATH}" ;;
+  esac
+}
+
+prepare_runtime_path() {
+  local brew_prefix=""
+
+  case "$script_path" in
+    */Caskroom/*) brew_prefix="\${script_path%%/Caskroom/*}" ;;
+  esac
+
+  PATH="\${PATH:-/usr/local/bin:/usr/bin:/bin}"
+  path_prepend_if_dir "$brew_prefix/bin"
+  path_prepend_if_dir "$brew_prefix/sbin"
+  path_prepend_if_dir "$HOME/.local/bin"
+  path_prepend_if_dir "$HOME/bin"
+  path_prepend_if_dir "$HOME/.cargo/bin"
+  path_prepend_if_dir "$HOME/.deno/bin"
+  path_prepend_if_dir "$HOME/.bun/bin"
+  path_prepend_if_dir "$HOME/go/bin"
+  path_prepend_if_dir "$HOME/.opencode/bin"
+  path_prepend_if_dir "$HOME/.local/share/mise/shims"
+  export PATH
+}
+
+flatpak_app_installed() {
+  local app_id="$1"
+  has_command flatpak || return 1
+  flatpak info "$app_id" >/dev/null 2>&1
+}
+
+flatpak_host_spawn_permission_enabled() {
+  local app_id="$1"
+  has_command flatpak || return 1
+  flatpak info --show-permissions "$app_id" 2>/dev/null | grep -Eq '^org\\.freedesktop\\.Flatpak=talk$'
+}
+
+ensure_flatpak_host_spawn_permission() {
+  local app_id="$1"
+  flatpak_app_installed "$app_id" || return 0
+  flatpak_host_spawn_permission_enabled "$app_id" && return 0
+
+  if flatpak override --user --talk-name=org.freedesktop.Flatpak "$app_id" >/dev/null 2>&1; then
+    launcher_note "enabled Flatpak host-spawn permission for $app_id; fully restart the browser if it was already running"
+    return 0
+  fi
+
+  launcher_note "failed to enable Flatpak host-spawn permission for $app_id"
+  return 1
+}
+
+write_flatpak_browser_shim() {
+  local shim_dir="$1"
+  local command_name="$2"
+  local app_id="$3"
+  local shim="$shim_dir/$command_name"
+
+  mkdir -p "$shim_dir"
+  cat > "$shim" <<SHIM
+#!/usr/bin/env sh
+exec flatpak run $app_id "\\$@"
+SHIM
+  chmod 755 "$shim"
+}
+
+chrome_plugin_arch() {
+  case "$(uname -m)" in
+    x86_64) echo "x64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) return 1 ;;
+  esac
+}
+
+chrome_plugin_host_path() {
+  local arch
+  arch="$(chrome_plugin_arch)" || return 1
+
+  local candidate
+  for candidate in \
+    "$app_dir/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/$arch/extension-host" \
+    "$HOME/.codex/plugins/cache/openai-bundled/chrome/latest/extension-host/linux/$arch/extension-host"
+  do
+    if [ -x "$candidate" ]; then
+      readlink -f "$candidate" 2>/dev/null || printf '%s\\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g'
+}
+
+chrome_plugin_metadata() {
+  local field="$1"
+  local fallback="$2"
+  local extension_json="$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/extension-id.json"
+  local install_manifest="$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/installManifest.mjs"
+  local value=""
+
+  if [ -f "$extension_json" ]; then
+    value="$(sed -nE "s/.*\\\"$field\\\"[[:space:]]*:[[:space:]]*\\\"([^\\\"]+)\\\".*/\\1/p" "$extension_json" | head -n 1 || true)"
+  fi
+  if [ -z "$value" ] && [ -f "$install_manifest" ]; then
+    value="$(sed -nE "s/.*$field[[:space:]]*:[[:space:]]*\\\"([^\\\"]+)\\\".*/\\1/p" "$install_manifest" | head -n 1 || true)"
+  fi
+
+  printf '%s\\n' "\${value:-$fallback}"
+}
+
+write_flatpak_native_host_manifest() {
+  local app_id="$1"
+  local browser_config_dir="$2"
+  local host_path="$3"
+  local extension_id="$4"
+  local host_name="$5"
+  local native_dir="$HOME/.var/app/$app_id/config/$browser_config_dir/NativeMessagingHosts"
+  local wrapper_dir="$HOME/.var/app/$app_id/config/codex-desktop"
+  local wrapper="$wrapper_dir/$host_name"
+  local manifest="$native_dir/$host_name.json"
+
+  mkdir -p "$native_dir" "$wrapper_dir"
+  cat > "$wrapper" <<WRAPPER
+#!/usr/bin/env sh
+exec /usr/bin/flatpak-spawn --host "$host_path" "\\$@"
+WRAPPER
+  chmod 755 "$wrapper"
+
+  printf '{"name":"%s","description":"Codex chrome native messaging host","type":"stdio","path":"%s","allowed_origins":["chrome-extension://%s/"]}' \
+    "$(json_escape "$host_name")" \
+    "$(json_escape "$wrapper")" \
+    "$(json_escape "$extension_id")" > "$manifest"
+}
+
+prepare_flatpak_browser_integration() {
+  local shim_dir="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/flatpak-bin"
+  local google_chrome_profile="$HOME/.var/app/com.google.Chrome/config/google-chrome"
+  local chromium_profile="$HOME/.var/app/org.chromium.Chromium/config/chromium"
+  local brave_profile="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"
+  local host_path=""
+  local extension_id=""
+  local host_name=""
+
+  if ! has_command google-chrome && ! has_command chrome && flatpak_app_installed com.google.Chrome; then
+    write_flatpak_browser_shim "$shim_dir" google-chrome com.google.Chrome
+    write_flatpak_browser_shim "$shim_dir" chrome com.google.Chrome
+    path_prepend_if_dir "$shim_dir"
+  fi
+
+  if ! has_command chromium && ! has_command chromium-browser && flatpak_app_installed org.chromium.Chromium; then
+    write_flatpak_browser_shim "$shim_dir" chromium org.chromium.Chromium
+    write_flatpak_browser_shim "$shim_dir" chromium-browser org.chromium.Chromium
+    path_prepend_if_dir "$shim_dir"
+  fi
+
+  if ! has_command brave-browser && ! has_command brave && flatpak_app_installed com.brave.Browser; then
+    write_flatpak_browser_shim "$shim_dir" brave-browser com.brave.Browser
+    write_flatpak_browser_shim "$shim_dir" brave com.brave.Browser
+    path_prepend_if_dir "$shim_dir"
+  fi
+
+  if [ -z "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
+    if flatpak_app_installed com.google.Chrome; then
+      mkdir -p "$google_chrome_profile/NativeMessagingHosts"
+      export CODEX_CHROME_USER_DATA_DIR="$google_chrome_profile"
+    elif flatpak_app_installed com.brave.Browser; then
+      mkdir -p "$brave_profile/NativeMessagingHosts"
+      export CODEX_CHROME_USER_DATA_DIR="$brave_profile"
+    elif flatpak_app_installed org.chromium.Chromium; then
+      mkdir -p "$chromium_profile/NativeMessagingHosts"
+      export CODEX_CHROME_USER_DATA_DIR="$chromium_profile"
+    fi
+  fi
+
+  host_path="$(chrome_plugin_host_path || true)"
+  [ -n "$host_path" ] || return 0
+  extension_id="$(chrome_plugin_metadata extensionId hehggadaopoacecdllhhajmbjkdcmajg)"
+  host_name="$(chrome_plugin_metadata extensionHostName com.openai.codexextension)"
+
+  if flatpak_app_installed com.google.Chrome; then
+    mkdir -p "$google_chrome_profile/NativeMessagingHosts"
+    ensure_flatpak_host_spawn_permission com.google.Chrome || true
+    write_flatpak_native_host_manifest com.google.Chrome google-chrome "$host_path" "$extension_id" "$host_name" || true
+  fi
+  if flatpak_app_installed org.chromium.Chromium; then
+    mkdir -p "$chromium_profile/NativeMessagingHosts"
+    ensure_flatpak_host_spawn_permission org.chromium.Chromium || true
+    write_flatpak_native_host_manifest org.chromium.Chromium chromium "$host_path" "$extension_id" "$host_name" || true
+  fi
+  if flatpak_app_installed com.brave.Browser; then
+    mkdir -p "$brave_profile/NativeMessagingHosts"
+    ensure_flatpak_host_spawn_permission com.brave.Browser || true
+    write_flatpak_native_host_manifest com.brave.Browser BraveSoftware/Brave-Browser "$host_path" "$extension_id" "$host_name" || true
+  fi
+
+  export PATH
+}
+
+first_available_editor() {
+  local editor_command
+  for editor_command in code-insiders code cursor codium; do
+    if has_command "$editor_command"; then
+      command -v "$editor_command"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+prepare_editor_integration() {
+  local editor_path=""
+  editor_path="$(first_available_editor || true)"
+  [ -n "$editor_path" ] || return 0
+
+  if [ -z "\${VISUAL:-}" ]; then
+    export VISUAL="$editor_path"
+  fi
+  if [ -z "\${EDITOR:-}" ]; then
+    export EDITOR="$editor_path"
+  fi
+  if [ -z "\${GIT_EDITOR:-}" ]; then
+    export GIT_EDITOR="\${EDITOR:-$editor_path}"
+  fi
+}
+
+os_release_text() {
+  local os_release_file="\${CODEX_DESKTOP_OS_RELEASE_FILE:-/etc/os-release}"
+  [ -r "$os_release_file" ] || return 1
+  cat "$os_release_file" 2>/dev/null || true
+}
+
+is_bluefin_like() {
+  local text
+  text="$(os_release_text || true)"
+  case "$text" in
+    *Bluefin*|*bluefin*|*Universal*Blue*|*universal-blue*|*ublue*|*ublue-os*|*VARIANT_ID=bluefin*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+has_explicit_electron_rendering_arg() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --x11|--wayland|--safe-mode|--disable-gpu|--enable-gpu|--ozone-platform|--ozone-platform=*|--ozone-platform-hint|--ozone-platform-hint=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+desired_desktop_rendering_mode() {
+  if has_explicit_electron_rendering_arg "$@"; then
+    echo "explicit"
+    return 0
+  fi
+
+  case "\${CODEX_DESKTOP_LINUX_OZONE:-auto}" in
+    x11|X11)
+      echo "x11"
+      ;;
+    wayland|WAYLAND)
+      echo "wayland"
+      ;;
+    auto|"")
+      if is_bluefin_like; then
+        echo "x11"
+      else
+        echo "auto"
+      fi
+      ;;
+    default|off|none)
+      echo "auto"
+      ;;
+    *)
+      echo "Invalid CODEX_DESKTOP_LINUX_OZONE='\${CODEX_DESKTOP_LINUX_OZONE:-}'; using auto" >&2
+      if is_bluefin_like; then
+        echo "x11"
+      else
+        echo "auto"
+      fi
+      ;;
+  esac
+}
+
+usage() {
+  cat <<'USAGE'
+Usage: codex-desktop [command] [args]
+
+Commands:
+  desktop                 Launch Codex Desktop
+  logs [--follow|--path]  Show the Codex Desktop launcher log
+  doctor                  Check Bluefin/Linux runtime readiness
+  --help, -h, help        Show this help
+
+Running codex-desktop with no command launches desktop mode.
+USAGE
+}
+
+has_command() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+check_path() {
+  local label="$1"
+  local path="$2"
+  local missing=0
+
+  if [ -e "$path" ]; then
+    echo "ok: $label: $path"
+  else
+    echo "missing: $label: $path"
+    missing=1
+  fi
+
+  return "$missing"
+}
+
+warn_path() {
+  local label="$1"
+  local path="$2"
+
+  if [ -e "$path" ]; then
+    echo "ok: $label: $path"
+  else
+    echo "warning: optional $label missing: $path"
+  fi
+}
+
+chrome_extension_detector_path() {
+  local candidate
+  for candidate in \
+    "$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/check-extension-installed.js" \
+    "$HOME/.codex/plugins/cache/openai-bundled/chrome/latest/scripts/check-extension-installed.js"
+  do
+    if [ -f "$candidate" ]; then
+      printf '%s\\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+chrome_extension_doctor() {
+  local node_path="$app_dir/resources/node-runtime/bin/node"
+  local detector_path=""
+  local extension_output=""
+  local extension_status=0
+
+  detector_path="$(chrome_extension_detector_path || true)"
+  if [ -z "$detector_path" ]; then
+    echo "warning: Chrome extension detector script is not bundled"
+    return 0
+  fi
+  if [ ! -x "$node_path" ]; then
+    echo "missing: managed Node runtime for Chrome extension detector"
+    return 1
+  fi
+
+  echo "ok: Chrome extension detector: $detector_path"
+  if [ -n "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
+    echo "ok: CODEX_CHROME_USER_DATA_DIR: $CODEX_CHROME_USER_DATA_DIR"
+  fi
+
+  set +e
+  extension_output="$(CODEX_CHROME_USER_DATA_DIR="\${CODEX_CHROME_USER_DATA_DIR:-}" "$node_path" "$detector_path" --json 2>&1)"
+  extension_status=$?
+  set -e
+
+  if printf '%s\\n' "$extension_output" | grep -q '"installed"[[:space:]]*:[[:space:]]*true' &&
+      printf '%s\\n' "$extension_output" | grep -q '"registered"[[:space:]]*:[[:space:]]*true' &&
+      printf '%s\\n' "$extension_output" | grep -q '"enabled"[[:space:]]*:[[:space:]]*true'; then
+    echo "ok: Codex Chrome extension detected and enabled"
+    return 0
+  fi
+
+  if printf '%s\\n' "$extension_output" | grep -q '"installed"[[:space:]]*:[[:space:]]*true'; then
+    echo "warning: Codex Chrome extension is installed but not enabled/registered"
+    printf '%s\\n' "$extension_output" | sed -n '1,12p'
+    return 0
+  fi
+
+  echo "missing: Codex Chrome extension was not detected by the bundled detector"
+  if [ -n "$extension_output" ]; then
+    printf '%s\\n' "$extension_output" | sed -n '1,12p'
+  else
+    echo "Chrome extension detector exited with status $extension_status and no output"
+  fi
+  return 1
+}
+
+editor_doctor() {
+  local found=0
+  local editor_command
+  local editor_path
+
+  echo "Linux editor integration"
+  for editor_command in code-insiders code cursor codium; do
+    editor_path="$(command -v "$editor_command" 2>/dev/null || true)"
+    if [ -n "$editor_path" ]; then
+      echo "ok: editor command $editor_command: $editor_path"
+      found=1
+    fi
+  done
+
+  if [ "$found" -eq 0 ]; then
+    echo "warning: no known desktop editor command found in PATH"
+  fi
+  if [ -n "\${EDITOR:-}" ]; then
+    echo "ok: EDITOR: $EDITOR"
+  fi
+  if [ -n "\${VISUAL:-}" ]; then
+    echo "ok: VISUAL: $VISUAL"
+  fi
+}
+
+computer_use_doctor() {
+  local backend="$app_dir/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux"
+  local cosmic_helper="$app_dir/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic"
+  local socket_path="\${YDOTOOL_SOCKET:-\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/.ydotool_socket}"
+
+  echo "Linux Computer Use readiness"
+  warn_path "Computer Use backend" "$backend"
+  warn_path "Computer Use COSMIC helper" "$cosmic_helper"
+
+  if [ -x "$backend" ]; then
+    echo "ok: Computer Use backend is bundled"
+  else
+    echo "warning: Computer Use backend is not executable; rebuild from the upstream DMG conversion before testing it"
+  fi
+
+  if has_command ydotool; then
+    echo "ok: ydotool: $(command -v ydotool)"
+  else
+    echo "warning: ydotool is not available; Computer Use input synthesis will not work"
+  fi
+
+  if [ -e /dev/uinput ]; then
+    if [ -r /dev/uinput ] && [ -w /dev/uinput ]; then
+      echo "ok: /dev/uinput is readable and writable"
+    else
+      echo "warning: /dev/uinput exists but is not readable/writable by this user"
+    fi
+  else
+    echo "warning: /dev/uinput is missing; ydotoold cannot synthesize input without it"
+  fi
+
+  if [ -S "$socket_path" ]; then
+    echo "ok: ydotool socket: $socket_path"
+  else
+    echo "warning: ydotool socket not found: $socket_path"
+  fi
+
+  if [ "\${CODEX_DESKTOP_RUN_COMPUTER_USE_DOCTOR:-0}" = "1" ] && [ -x "$backend" ]; then
+    "$backend" doctor || true
+  else
+    echo "info: run CODEX_DESKTOP_RUN_COMPUTER_USE_DOCTOR=1 codex-desktop doctor to invoke the backend doctor"
+  fi
+}
+
+doctor() {
+  local missing=0
+  local data_home="\${XDG_DATA_HOME:-$HOME/.local/share}"
+  echo "Codex Desktop Linux doctor"
+  echo "metadata: $metadata"
+  echo "launcher log: $launcher_log"
+
+  check_path "converted app launcher" "$app_launcher" || missing=1
+  check_path "Electron runtime" "$app_dir/electron" || missing=1
+  check_path "patched app.asar" "$app_dir/resources/app.asar" || missing=1
+  check_path "managed Node runtime" "$app_dir/resources/node-runtime/bin/node" || missing=1
+  check_path "desktop entry" "$data_home/applications/codex-desktop.desktop" || missing=1
+
+  if has_command codex; then
+    echo "ok: codex CLI: $(command -v codex)"
+  else
+    echo "missing: codex CLI. Install or expose @openai/codex before relying on desktop/app-server flows."
+    missing=1
+  fi
+
+  if has_command chromium || has_command chromium-browser || has_command google-chrome || has_command google-chrome-stable; then
+    echo "ok: Chromium/Chrome is available for browser research"
+  elif flatpak_app_installed com.google.Chrome; then
+    echo "ok: Google Chrome Flatpak is available for browser research"
+    if [ -n "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
+      echo "ok: Chrome Flatpak profile: $CODEX_CHROME_USER_DATA_DIR"
+    fi
+  else
+    echo "missing: Chromium/Chrome for browser research"
+  fi
+
+  if flatpak_app_installed com.google.Chrome; then
+    local chrome_shim="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/flatpak-bin/google-chrome"
+    local chrome_host_name
+    local chrome_manifest
+    local chrome_wrapper
+    local chrome_host_path
+    chrome_host_name="$(chrome_plugin_metadata extensionHostName com.openai.codexextension)"
+    chrome_manifest="$HOME/.var/app/com.google.Chrome/config/google-chrome/NativeMessagingHosts/$chrome_host_name.json"
+    chrome_wrapper="$HOME/.var/app/com.google.Chrome/config/codex-desktop/$chrome_host_name"
+    chrome_host_path="$(chrome_plugin_host_path || true)"
+    check_path "Google Chrome Flatpak command shim" "$chrome_shim" || missing=1
+    check_path "Google Chrome Flatpak native host wrapper" "$chrome_wrapper" || missing=1
+    check_path "Google Chrome Flatpak native messaging manifest" "$chrome_manifest" || missing=1
+    if flatpak_host_spawn_permission_enabled com.google.Chrome; then
+      echo "ok: Google Chrome Flatpak host-spawn permission"
+    else
+      echo "missing: Google Chrome Flatpak host-spawn permission. Run: flatpak override --user --talk-name=org.freedesktop.Flatpak com.google.Chrome; then fully restart Chrome."
+      missing=1
+    fi
+    if [ -n "$chrome_host_path" ] && [ -x "$chrome_host_path" ]; then
+      echo "ok: Google Chrome native host binary: $chrome_host_path"
+      if [ -f "$chrome_wrapper" ] && grep -F "$chrome_host_path" "$chrome_wrapper" >/dev/null 2>&1; then
+        echo "ok: Google Chrome Flatpak native host wrapper targets current package"
+      else
+        echo "missing: Google Chrome Flatpak native host wrapper targets current package"
+        missing=1
+      fi
+    else
+      echo "missing: Google Chrome native host binary"
+      missing=1
+    fi
+    chrome_extension_doctor || missing=1
+  fi
+
+  editor_doctor
+
+  if is_bluefin_like; then
+    case "\${CODEX_DESKTOP_LINUX_OZONE:-auto}" in
+      wayland|WAYLAND)
+        echo "ok: Bluefin rendering default overridden: Wayland"
+        ;;
+      x11|X11)
+        echo "ok: Bluefin rendering default overridden: X11/XWayland"
+        ;;
+      *)
+        echo "ok: Bluefin rendering default: X11/XWayland"
+        ;;
+    esac
+  fi
+
+  if [ -d "\${XDG_DATA_HOME:-$HOME/.local/share}/applications" ] ||
+      mkdir -p "\${XDG_DATA_HOME:-$HOME/.local/share}/applications"; then
+    echo "ok: user-local application directory is writable"
+  else
+    echo "missing: writable user-local application directory"
+    missing=1
+  fi
+
+  computer_use_doctor
+
+  return "$missing"
+}
+
+install_desktop_entry() {
+  local data_home="\${XDG_DATA_HOME:-$HOME/.local/share}"
+  local applications_dir="$data_home/applications"
+  local icon_dir="$data_home/icons/hicolor/512x512/apps"
+  local legacy_icon_dir="$data_home/icons/hicolor/256x256/apps"
+  local desktop_target="$applications_dir/codex-desktop.desktop"
+  local icon_target="$icon_dir/codex-desktop.png"
+  local legacy_icon_target="$legacy_icon_dir/codex-desktop.png"
+  local icon_source="$root/share/icons/hicolor/512x512/apps/codex-desktop.png"
+  local legacy_icon_source="$root/share/icons/hicolor/256x256/apps/codex-desktop.png"
+  local desktop_bin="\${CODEX_DESKTOP_BIN:-}"
+  local desktop_contents
+
+  if [ -z "$desktop_bin" ]; then
+    desktop_bin="$(command -v codex-desktop 2>/dev/null || true)"
+  fi
+  if [ -z "$desktop_bin" ]; then
+    desktop_bin="$(readlink -f "$script_path" 2>/dev/null || printf '%s\\n' "$script_path")"
+  fi
+
+  mkdir -p "$applications_dir" "$icon_dir" "$legacy_icon_dir"
+  if [ -f "$icon_source" ]; then
+    cp "$icon_source" "$icon_target"
+  elif [ -f "$legacy_icon_source" ]; then
+    cp "$legacy_icon_source" "$icon_target"
+  fi
+  if [ -f "$legacy_icon_source" ]; then
+    cp "$legacy_icon_source" "$legacy_icon_target"
+  fi
+
+  desktop_contents="$(cat "$root/share/applications/codex-desktop.desktop")"
+  desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed "s|^Exec=.*|Exec=$desktop_bin desktop %U|")"
+  if [ -f "$icon_target" ]; then
+    desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed "s|^Icon=.*|Icon=$icon_target|")"
+  fi
+  if printf '%s\\n' "$desktop_contents" | grep -q '^MimeType='; then
+    desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed 's|^MimeType=.*|MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;|')"
+  else
+    desktop_contents="$(printf '%s\\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' "$desktop_contents")"
+  fi
+  printf '%s\\n' "$desktop_contents" > "$desktop_target"
+  chmod 755 "$desktop_target"
+
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$applications_dir" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default codex-desktop.desktop x-scheme-handler/codex >/dev/null 2>&1 || true
+    xdg-mime default codex-desktop.desktop x-scheme-handler/codex-browser-sidebar >/dev/null 2>&1 || true
+  fi
+
+  echo "Installed user-local desktop entry: $desktop_target"
+}
+
+logs_mode() {
+  case "\${1:-}" in
+    --path|path)
+      echo "$launcher_log"
+      ;;
+    -f|--follow|follow)
+      mkdir -p "$(dirname "$launcher_log")"
+      touch "$launcher_log"
+      exec tail -n "\${CODEX_DESKTOP_LOG_LINES:-200}" -f "$launcher_log"
+      ;;
+    ""|tail)
+      if [ ! -f "$launcher_log" ]; then
+        echo "No launcher log yet: $launcher_log"
+        return 0
+      fi
+      exec tail -n "\${CODEX_DESKTOP_LOG_LINES:-200}" "$launcher_log"
+      ;;
+    *)
+      echo "Usage: codex-desktop logs [--follow|--path]" >&2
+      exit 64
+      ;;
+  esac
+}
+
+launch_desktop() {
+  if [ ! -x "$app_launcher" ]; then
+    echo "Converted Codex Desktop launcher is missing or not executable: $app_launcher" >&2
+    exit 70
+  fi
+
+  local -a args=("$@")
+  local rendering_mode
+  rendering_mode="$(desired_desktop_rendering_mode "\${args[@]}")"
+  case "$rendering_mode" in
+    safe)
+      args=(--safe-mode "\${args[@]}")
+      ;;
+    x11)
+      args=(--x11 "\${args[@]}")
+      ;;
+    wayland)
+      args=(--wayland "\${args[@]}")
+      ;;
+  esac
+
+  unset ELECTRON_RUN_AS_NODE
+  exec "$app_launcher" "\${args[@]}"
+}
+
+web_mode() {
+  if [ "\${1:-}" = "--inspect" ]; then
+    cat "$renderer_report"
+    return 0
+  fi
+
+  echo "Browser renderer mode is still research-only for this package. Run: codex-desktop web --inspect" >&2
+  exit 64
+}
+
+bridge_mode() {
+  cat <<'BRIDGE'
+The browser bridge is not started by the packaged desktop runtime yet.
+The intended boundary is loopback-only and should connect to codex app-server
+rather than reimplementing Codex client logic.
+BRIDGE
+}
+
+case "\${1:-desktop}" in
+  --help|-h|help)
+    usage
+    ;;
+  desktop)
+    shift
+    prepare_runtime_path
+    prepare_flatpak_browser_integration
+    prepare_editor_integration
+    launch_desktop "$@"
+    ;;
+  logs)
+    shift
+    logs_mode "$@"
+    ;;
+  web)
+    shift
+    web_mode "$@"
+    ;;
+  bridge)
+    bridge_mode
+    ;;
+  doctor)
+    prepare_runtime_path
+    prepare_flatpak_browser_integration
+    prepare_editor_integration
+    doctor
+    ;;
+  install-desktop-entry)
+    prepare_runtime_path
+    install_desktop_entry
+    ;;
+  *)
+    prepare_runtime_path
+    launch_desktop "$@"
+    ;;
+esac
+`
+}
+
+function desktopEntry() {
+  return `[Desktop Entry]
+Type=Application
+Name=Codex Desktop
+Comment=Run the converted Codex Desktop Electron app on Linux
+Exec=codex-desktop desktop %U
+Icon=codex-desktop
+Terminal=false
+Categories=Development;
+MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;
+StartupNotify=true
+`
+}
+
+function rendererReport(rebuildReport, patchReport) {
+  return {
+    package: "codex-desktop-linux",
+    browser_mode_status: "research",
+    serves_extracted_renderer: false,
+    loopback_only_default: true,
+    extracted_webview_present: Boolean(rebuildReport?.appDir),
+    main_bundle: patchReport?.mainBundle ?? null,
+    patch_count: Array.isArray(patchReport?.patches) ? patchReport.patches.length : null,
+    next_steps: [
+      "Serve the extracted webview assets from 127.0.0.1.",
+      "Inventory Electron/preload globals expected by the renderer.",
+      "Shim one native call path through a loopback bridge to codex app-server.",
+    ],
+  }
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2))
+  const appDir = resolve(requiredArg(args, "app-dir"))
+  const version = requiredArg(args, "version")
+  const outputPath = resolve(requiredArg(args, "output"))
+  const conversionRepo = args["conversion-repo"] ?? DEFAULT_CONVERSION_REPO
+  const conversionCommit = args["conversion-commit"] ?? DEFAULT_CONVERSION_COMMIT
+  const codexDmg = args["codex-dmg"] ? resolve(args["codex-dmg"]) : undefined
+  const iconSource = resolveIconSource(appDir, args.icon)
+  const rebuildReportPath = args["rebuild-report"] ? resolve(args["rebuild-report"]) : undefined
+  const patchReportPath = args["patch-report"] ? resolve(args["patch-report"]) : undefined
+  const metadataOutput = args["metadata-output"] ? resolve(args["metadata-output"]) : undefined
+
+  assertConvertedApp(appDir)
+  const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
+
+  if (codexDmg && !existsSync(codexDmg)) {
+    throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
+  }
+
+  const rebuildReport = readJsonIfPresent(rebuildReportPath)
+  const patchReport = readJsonIfPresent(patchReportPath)
+  const appTreeSha256 = hashDirectory(appDir)
+  const computerUseBackend = join(
+    appDir,
+    "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
+  )
+  const metadata = {
+    package: "codex-desktop-linux",
+    version,
+    upstream_conversion_repo: conversionRepo,
+    upstream_conversion_commit: conversionCommit,
+    codex_dmg_sha256: codexDmg ? sha256File(codexDmg) : null,
+    electron_version: electronVersion(appDir, rebuildReport),
+    electron_binary_sha256: sha256File(join(appDir, "electron")),
+    managed_node_version: managedNodeVersion(appDir),
+    managed_node_runtime_tree_sha256: existsSync(join(appDir, "resources/node-runtime"))
+      ? hashDirectory(join(appDir, "resources/node-runtime"))
+      : null,
+    app_payload_tree_sha256: appTreeSha256,
+    desktop_icon_source: iconSource ? iconSource.kind : null,
+    desktop_icon_sha256: iconSource ? sha256File(iconSource.path) : null,
+    computer_use_backend_included: fileIsExecutable(computerUseBackend),
+    linux_editor_open_targets_patched: linuxEditorOpenTargetsPatch.patched,
+    linux_editor_open_targets_main_bundle: linuxEditorOpenTargetsPatch.main_bundle,
+    linux_editor_open_targets: linuxEditorOpenTargetsPatch.targets,
+    updater_enabled: false,
+    browser_mode_status: "research",
+    artifact_role: "converted-dmg-linux-runtime",
+    rebuild_report_included: Boolean(rebuildReport),
+    patch_report_included: Boolean(patchReport),
+  }
+
+  const stageRoot = mkdtempSync(join(tmpdir(), "codex-desktop-linux-"))
+  const packageDir = join(stageRoot, "package")
+  const metadataDir = join(packageDir, "share/codex-desktop")
+
+  try {
+    mkdirSync(join(packageDir, "bin"), { recursive: true })
+    mkdirSync(metadataDir, { recursive: true })
+    mkdirSync(join(packageDir, "share/applications"), { recursive: true })
+    mkdirSync(join(packageDir, "share/icons/hicolor/512x512/apps"), { recursive: true })
+    mkdirSync(join(packageDir, "share/icons/hicolor/256x256/apps"), { recursive: true })
+
+    cpSync(appDir, join(metadataDir, "app"), { recursive: true, dereference: false })
+    writeExecutable(join(packageDir, "bin/codex-desktop"), launcherScript())
+    writeFileSync(join(packageDir, "share/applications/codex-desktop.desktop"), desktopEntry(), { mode: 0o755 })
+    if (iconSource) {
+      copyIfExists(iconSource.path, join(packageDir, "share/icons/hicolor/512x512/apps/codex-desktop.png"))
+      copyIfExists(iconSource.path, join(packageDir, "share/icons/hicolor/256x256/apps/codex-desktop.png"))
+    }
+    writeFileSync(join(metadataDir, "release.json"), `${JSON.stringify(metadata, null, 2)}\n`)
+    writeFileSync(
+      join(metadataDir, "renderer-report.json"),
+      `${JSON.stringify(rendererReport(rebuildReport, patchReport), null, 2)}\n`,
+    )
+
+    if (rebuildReportPath && existsSync(rebuildReportPath)) {
+      cpSync(rebuildReportPath, join(metadataDir, "rebuild-report.json"))
+    }
+    if (patchReportPath && existsSync(patchReportPath)) {
+      cpSync(patchReportPath, join(metadataDir, "patch-report.json"))
+    }
+    if (metadataOutput) {
+      mkdirSync(dirname(metadataOutput), { recursive: true })
+      writeFileSync(metadataOutput, `${JSON.stringify(metadata, null, 2)}\n`)
+    }
+
+    mkdirSync(dirname(outputPath), { recursive: true })
+    execFileSync(
+      "tar",
+      [
+        "--sort=name",
+        "--mtime=@0",
+        "--owner=0",
+        "--group=0",
+        "--numeric-owner",
+        "--use-compress-program=gzip -n",
+        "-cf",
+        outputPath,
+        "-C",
+        packageDir,
+        ".",
+      ],
+      { stdio: "inherit" },
+    )
+
+    console.log(outputPath)
+  } finally {
+    rmSync(stageRoot, { recursive: true, force: true })
+  }
+}
+
+main()

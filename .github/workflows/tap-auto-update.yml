@@ -2,6 +2,7 @@ name: Tap Auto Update
 
 on:
   schedule:
+  - cron: "13 */2 * * *"
   - cron: "0 6 * * *"
   - cron: "0 7 * * *"
   - cron: "0 8 * * *"
@@ -17,6 +18,7 @@ on:
         required: true
         type: choice
         options:
+        - codex-desktop-2h
         - rcc-daily
         - action-server-daily
         - desktop-6h
@@ -61,6 +63,7 @@ jobs:
           trigger_source="workflow_dispatch"
         else
           case "$EVENT_SCHEDULE" in
+            "13 */2 * * *") slot_id="codex-desktop-2h" ;;
             "0 6 * * *") slot_id="rcc-daily" ;;
             "0 7 * * *") slot_id="action-server-daily" ;;
             "0 8 * * *") slot_id="fizzy-daily" ;;

@@ -6,8 +6,10 @@ export type PackageKind =
   | "github_release_binary_cask"
   | "github_release_deb_cask"
   | "github_release_appimage_cask"
+  | "codex_desktop_linux_cask"
 
 export type AutoUpdateSlotId =
+  | "codex-desktop-2h"
   | "rcc-daily"
   | "action-server-daily"
   | "desktop-6h"
@@ -25,6 +27,10 @@ export type UpstreamSource =
   | {
       kind: "rpm"
       sourceUrl: string
+    }
+  | {
+      kind: "http_file"
+      url: string
     }
   | {
       kind: "github_release"
@@ -49,6 +55,11 @@ export type AutoUpdateStrategy =
   | {
       kind: "rpm_redirect"
       sourceUrl?: string
+    }
+  | {
+      kind: "http_header_fingerprint"
+      prefix?: string
+      shaLength?: number
     }
 
 export type PackageRegistryEntry = {
