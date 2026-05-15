@@ -96,6 +96,201 @@ function hashDirectory(path) {
   return hash.digest("hex")
 }
 
+function alignAsarPickle(value) {
+  return value + ((4 - (value % 4)) % 4)
+}
+
+function createAsarUInt32Pickle(value) {
+  const buffer = Buffer.alloc(8)
+  buffer.writeUInt32LE(4, 0)
+  buffer.writeUInt32LE(value, 4)
+  return buffer
+}
+
+function createAsarStringPickle(value) {
+  const stringLength = Buffer.byteLength(value)
+  const payloadSize = 4 + alignAsarPickle(stringLength)
+  const buffer = Buffer.alloc(4 + payloadSize)
+  buffer.writeUInt32LE(payloadSize, 0)
+  buffer.writeInt32LE(stringLength, 4)
+  buffer.write(value, 8, stringLength, "utf8")
+  return buffer
+}
+
+function readAsarHeader(asarPath) {
+  const file = readFileSync(asarPath)
+  if (file.length < 16 || file.readUInt32LE(0) !== 4) {
+    throw new Error(`Not an ASAR archive: ${asarPath}`)
+  }
+
+  const headerSize = file.readUInt32LE(4)
+  const headerBuffer = file.subarray(8, 8 + headerSize)
+  const headerPayloadSize = headerBuffer.readUInt32LE(0)
+  const headerStringLength = headerBuffer.readInt32LE(4)
+  if (headerPayloadSize + 4 !== headerBuffer.length) {
+    throw new Error(`Invalid ASAR header payload size in ${asarPath}`)
+  }
+
+  const headerString = headerBuffer.subarray(8, 8 + headerStringLength).toString("utf8")
+  return {
+    header: JSON.parse(headerString),
+    headerSize,
+    payloadOffset: 8 + headerSize,
+    source: file,
+  }
+}
+
+function listAsarFileNodes(header) {
+  const nodes = []
+
+  function walk(node, pathParts) {
+    if (node?.files) {
+      for (const [name, child] of Object.entries(node.files)) {
+        walk(child, [...pathParts, name])
+      }
+      return
+    }
+
+    if (typeof node?.size === "number") {
+      nodes.push({
+        path: pathParts.join("/"),
+        node,
+      })
+    }
+  }
+
+  walk(header, [])
+  return nodes
+}
+
+function hashAsarBlock(buffer) {
+  return createHash("sha256").update(buffer).digest("hex")
+}
+
+function updateAsarIntegrity(node, buffer) {
+  const blockSize = Number(node.integrity?.blockSize ?? 4 * 1024 * 1024)
+  const blocks = []
+  for (let offset = 0; offset < buffer.length; offset += blockSize) {
+    blocks.push(hashAsarBlock(buffer.subarray(offset, offset + blockSize)))
+  }
+
+  node.integrity = {
+    algorithm: "SHA256",
+    hash: hashAsarBlock(buffer),
+    blockSize,
+    blocks,
+  }
+}
+
+function patchLinuxEditorTargets(source) {
+  const original = source
+
+  source = source.replace(
+    "function Cw({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,darwinEnv:a,darwinArgs:o,hidden:s}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:s,detect:r,env:a,args:o??ww,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:s,detect:i,args:ww,supportsSsh:!0}:void 0}}}",
+    "function Cw({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,linuxDetect:a,darwinEnv:o,darwinArgs:s,hidden:c}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:c,detect:r,env:o,args:s??ww,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:c,detect:i,args:ww,supportsSsh:!0}:void 0,linux:a?{label:t,icon:n,kind:`editor`,hidden:c,detect:a,args:ww,supportsSsh:!0}:void 0}}}",
+  )
+  source = source.replace(
+    "var qT=Cw({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,`/Applications/Code.app/Contents/Resources/app/bin/code`]),win32Detect:JT});",
+    "var qT=Cw({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,`/Applications/Code.app/Contents/Resources/app/bin/code`]),win32Detect:JT,linuxDetect:()=>lm(`code`)});",
+  )
+  source = source.replace(
+    "var YT=Cw({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,`/Applications/Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:XT});",
+    "var YT=Cw({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,`/Applications/Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:XT,linuxDetect:()=>lm(`code-insiders`)});",
+  )
+
+  if (source === original) {
+    throw new Error("Codex Desktop main bundle did not match the expected VS Code target registry")
+  }
+  if (!source.includes("linuxDetect:()=>lm(`code`)") || !source.includes("linuxDetect:()=>lm(`code-insiders`)")) {
+    throw new Error("Codex Desktop Linux editor target patch did not produce both VS Code detectors")
+  }
+
+  return source
+}
+
+function rewriteAsarWithPatchedFile(asarPath, targetPath, patchedBuffer) {
+  const archive = readAsarHeader(asarPath)
+  const fileNodes = listAsarFileNodes(archive.header)
+  const target = fileNodes.find((entry) => entry.path === targetPath)
+  if (!target) {
+    throw new Error(`ASAR target file is missing: ${targetPath}`)
+  }
+
+  target.node.size = patchedBuffer.length
+  updateAsarIntegrity(target.node, patchedBuffer)
+
+  const packedNodes = fileNodes
+    .filter((entry) => !entry.node.unpacked && typeof entry.node.offset === "string")
+    .map((entry) => ({ ...entry, oldOffset: BigInt(entry.node.offset) }))
+    .sort((left, right) => Number(left.oldOffset - right.oldOffset))
+
+  let offset = 0n
+  for (const entry of packedNodes) {
+    entry.node.offset = offset.toString()
+    offset += BigInt(entry.node.size)
+  }
+
+  const headerBuffer = createAsarStringPickle(JSON.stringify(archive.header))
+  const sizeBuffer = createAsarUInt32Pickle(headerBuffer.length)
+  const output = Buffer.alloc(sizeBuffer.length + headerBuffer.length + Number(offset))
+  sizeBuffer.copy(output, 0)
+  headerBuffer.copy(output, sizeBuffer.length)
+
+  let writeOffset = sizeBuffer.length + headerBuffer.length
+  for (const entry of packedNodes) {
+    const buffer =
+      entry.path === targetPath
+        ? patchedBuffer
+        : archive.source.subarray(
+            archive.payloadOffset + Number(entry.oldOffset),
+            archive.payloadOffset + Number(entry.oldOffset) + entry.node.size,
+          )
+    buffer.copy(output, writeOffset)
+    writeOffset += buffer.length
+  }
+
+  writeFileSync(asarPath, output)
+}
+
+function patchLinuxEditorOpenTargets(appDir) {
+  const asarPath = join(appDir, "resources/app.asar")
+  let archive
+  try {
+    archive = readAsarHeader(asarPath)
+  } catch (error) {
+    if (readFileSync(asarPath, "utf8") === "fixture-asar") {
+      return {
+        patched: false,
+        main_bundle: null,
+        targets: [],
+        skipped: "fixture-asar",
+      }
+    }
+    throw error
+  }
+  const mainBundles = listAsarFileNodes(archive.header)
+    .filter((entry) => /^\.vite\/build\/main-[^/]+\.js$/.test(entry.path) && !entry.node.unpacked)
+    .sort((left, right) => left.path.localeCompare(right.path))
+
+  for (const entry of mainBundles) {
+    const start = archive.payloadOffset + Number(BigInt(entry.node.offset))
+    const source = archive.source.subarray(start, start + entry.node.size).toString("utf8")
+    if (!source.includes("id:`vscodeInsiders`") || !source.includes("function Cw({id:")) {
+      continue
+    }
+
+    const patched = patchLinuxEditorTargets(source)
+    rewriteAsarWithPatchedFile(asarPath, entry.path, Buffer.from(patched, "utf8"))
+    return {
+      patched: true,
+      main_bundle: entry.path,
+      targets: ["vscode", "vscodeInsiders"],
+    }
+  }
+
+  throw new Error("Could not find Codex Desktop main bundle with VS Code open target definitions")
+}
+
 function writeExecutable(path, contents) {
   writeFileSync(path, contents, { mode: 0o755 })
 }
@@ -211,6 +406,11 @@ metadata="$root/share/codex-desktop/release.json"
 renderer_report="$root/share/codex-desktop/renderer-report.json"
 launcher_log="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/launcher.log"
 
+launcher_note() {
+  mkdir -p "$(dirname "$launcher_log")"
+  printf '%s %s\\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >> "$launcher_log" 2>/dev/null || true
+}
+
 path_prepend_if_dir() {
   local dir="$1"
   [ -d "$dir" ] || return 0
@@ -245,6 +445,26 @@ flatpak_app_installed() {
   local app_id="$1"
   has_command flatpak || return 1
   flatpak info "$app_id" >/dev/null 2>&1
+}
+
+flatpak_host_spawn_permission_enabled() {
+  local app_id="$1"
+  has_command flatpak || return 1
+  flatpak info --show-permissions "$app_id" 2>/dev/null | grep -Eq '^org\\.freedesktop\\.Flatpak=talk$'
+}
+
+ensure_flatpak_host_spawn_permission() {
+  local app_id="$1"
+  flatpak_app_installed "$app_id" || return 0
+  flatpak_host_spawn_permission_enabled "$app_id" && return 0
+
+  if flatpak override --user --talk-name=org.freedesktop.Flatpak "$app_id" >/dev/null 2>&1; then
+    launcher_note "enabled Flatpak host-spawn permission for $app_id; fully restart the browser if it was already running"
+    return 0
+  fi
+
+  launcher_note "failed to enable Flatpak host-spawn permission for $app_id"
+  return 1
 }
 
 write_flatpak_browser_shim() {
@@ -379,18 +599,49 @@ prepare_flatpak_browser_integration() {
 
   if flatpak_app_installed com.google.Chrome; then
     mkdir -p "$google_chrome_profile/NativeMessagingHosts"
+    ensure_flatpak_host_spawn_permission com.google.Chrome || true
     write_flatpak_native_host_manifest com.google.Chrome google-chrome "$host_path" "$extension_id" "$host_name" || true
   fi
   if flatpak_app_installed org.chromium.Chromium; then
     mkdir -p "$chromium_profile/NativeMessagingHosts"
+    ensure_flatpak_host_spawn_permission org.chromium.Chromium || true
     write_flatpak_native_host_manifest org.chromium.Chromium chromium "$host_path" "$extension_id" "$host_name" || true
   fi
   if flatpak_app_installed com.brave.Browser; then
     mkdir -p "$brave_profile/NativeMessagingHosts"
+    ensure_flatpak_host_spawn_permission com.brave.Browser || true
     write_flatpak_native_host_manifest com.brave.Browser BraveSoftware/Brave-Browser "$host_path" "$extension_id" "$host_name" || true
   fi
 
   export PATH
+}
+
+first_available_editor() {
+  local editor_command
+  for editor_command in code-insiders code cursor codium; do
+    if has_command "$editor_command"; then
+      command -v "$editor_command"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+prepare_editor_integration() {
+  local editor_path=""
+  editor_path="$(first_available_editor || true)"
+  [ -n "$editor_path" ] || return 0
+
+  if [ -z "\${VISUAL:-}" ]; then
+    export VISUAL="$editor_path"
+  fi
+  if [ -z "\${EDITOR:-}" ]; then
+    export EDITOR="$editor_path"
+  fi
+  if [ -z "\${GIT_EDITOR:-}" ]; then
+    export GIT_EDITOR="\${EDITOR:-$editor_path}"
+  fi
 }
 
 os_release_text() {
@@ -502,6 +753,94 @@ warn_path() {
   fi
 }
 
+chrome_extension_detector_path() {
+  local candidate
+  for candidate in \
+    "$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/check-extension-installed.js" \
+    "$HOME/.codex/plugins/cache/openai-bundled/chrome/latest/scripts/check-extension-installed.js"
+  do
+    if [ -f "$candidate" ]; then
+      printf '%s\\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+chrome_extension_doctor() {
+  local node_path="$app_dir/resources/node-runtime/bin/node"
+  local detector_path=""
+  local extension_output=""
+  local extension_status=0
+
+  detector_path="$(chrome_extension_detector_path || true)"
+  if [ -z "$detector_path" ]; then
+    echo "warning: Chrome extension detector script is not bundled"
+    return 0
+  fi
+  if [ ! -x "$node_path" ]; then
+    echo "missing: managed Node runtime for Chrome extension detector"
+    return 1
+  fi
+
+  echo "ok: Chrome extension detector: $detector_path"
+  if [ -n "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
+    echo "ok: CODEX_CHROME_USER_DATA_DIR: $CODEX_CHROME_USER_DATA_DIR"
+  fi
+
+  set +e
+  extension_output="$(CODEX_CHROME_USER_DATA_DIR="\${CODEX_CHROME_USER_DATA_DIR:-}" "$node_path" "$detector_path" --json 2>&1)"
+  extension_status=$?
+  set -e
+
+  if printf '%s\\n' "$extension_output" | grep -q '"installed"[[:space:]]*:[[:space:]]*true' &&
+      printf '%s\\n' "$extension_output" | grep -q '"registered"[[:space:]]*:[[:space:]]*true' &&
+      printf '%s\\n' "$extension_output" | grep -q '"enabled"[[:space:]]*:[[:space:]]*true'; then
+    echo "ok: Codex Chrome extension detected and enabled"
+    return 0
+  fi
+
+  if printf '%s\\n' "$extension_output" | grep -q '"installed"[[:space:]]*:[[:space:]]*true'; then
+    echo "warning: Codex Chrome extension is installed but not enabled/registered"
+    printf '%s\\n' "$extension_output" | sed -n '1,12p'
+    return 0
+  fi
+
+  echo "missing: Codex Chrome extension was not detected by the bundled detector"
+  if [ -n "$extension_output" ]; then
+    printf '%s\\n' "$extension_output" | sed -n '1,12p'
+  else
+    echo "Chrome extension detector exited with status $extension_status and no output"
+  fi
+  return 1
+}
+
+editor_doctor() {
+  local found=0
+  local editor_command
+  local editor_path
+
+  echo "Linux editor integration"
+  for editor_command in code-insiders code cursor codium; do
+    editor_path="$(command -v "$editor_command" 2>/dev/null || true)"
+    if [ -n "$editor_path" ]; then
+      echo "ok: editor command $editor_command: $editor_path"
+      found=1
+    fi
+  done
+
+  if [ "$found" -eq 0 ]; then
+    echo "warning: no known desktop editor command found in PATH"
+  fi
+  if [ -n "\${EDITOR:-}" ]; then
+    echo "ok: EDITOR: $EDITOR"
+  fi
+  if [ -n "\${VISUAL:-}" ]; then
+    echo "ok: VISUAL: $VISUAL"
+  fi
+}
+
 computer_use_doctor() {
   local backend="$app_dir/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux"
   local cosmic_helper="$app_dir/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic"
@@ -590,13 +929,28 @@ doctor() {
     check_path "Google Chrome Flatpak command shim" "$chrome_shim" || missing=1
     check_path "Google Chrome Flatpak native host wrapper" "$chrome_wrapper" || missing=1
     check_path "Google Chrome Flatpak native messaging manifest" "$chrome_manifest" || missing=1
+    if flatpak_host_spawn_permission_enabled com.google.Chrome; then
+      echo "ok: Google Chrome Flatpak host-spawn permission"
+    else
+      echo "missing: Google Chrome Flatpak host-spawn permission. Run: flatpak override --user --talk-name=org.freedesktop.Flatpak com.google.Chrome; then fully restart Chrome."
+      missing=1
+    fi
     if [ -n "$chrome_host_path" ] && [ -x "$chrome_host_path" ]; then
       echo "ok: Google Chrome native host binary: $chrome_host_path"
+      if [ -f "$chrome_wrapper" ] && grep -F "$chrome_host_path" "$chrome_wrapper" >/dev/null 2>&1; then
+        echo "ok: Google Chrome Flatpak native host wrapper targets current package"
+      else
+        echo "missing: Google Chrome Flatpak native host wrapper targets current package"
+        missing=1
+      fi
     else
       echo "missing: Google Chrome native host binary"
       missing=1
     fi
+    chrome_extension_doctor || missing=1
   fi
+
+  editor_doctor
 
   if is_bluefin_like; then
     case "\${CODEX_DESKTOP_LINUX_OZONE:-auto}" in
@@ -754,6 +1108,7 @@ case "\${1:-desktop}" in
     shift
     prepare_runtime_path
     prepare_flatpak_browser_integration
+    prepare_editor_integration
     launch_desktop "$@"
     ;;
   logs)
@@ -770,6 +1125,7 @@ case "\${1:-desktop}" in
   doctor)
     prepare_runtime_path
     prepare_flatpak_browser_integration
+    prepare_editor_integration
     doctor
     ;;
   install-desktop-entry)
@@ -829,6 +1185,7 @@ function main() {
   const metadataOutput = args["metadata-output"] ? resolve(args["metadata-output"]) : undefined
 
   assertConvertedApp(appDir)
+  const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
 
   if (codexDmg && !existsSync(codexDmg)) {
     throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
@@ -857,6 +1214,9 @@ function main() {
     desktop_icon_source: iconSource ? iconSource.kind : null,
     desktop_icon_sha256: iconSource ? sha256File(iconSource.path) : null,
     computer_use_backend_included: fileIsExecutable(computerUseBackend),
+    linux_editor_open_targets_patched: linuxEditorOpenTargetsPatch.patched,
+    linux_editor_open_targets_main_bundle: linuxEditorOpenTargetsPatch.main_bundle,
+    linux_editor_open_targets: linuxEditorOpenTargetsPatch.targets,
     updater_enabled: false,
     browser_mode_status: "research",
     artifact_role: "converted-dmg-linux-runtime",

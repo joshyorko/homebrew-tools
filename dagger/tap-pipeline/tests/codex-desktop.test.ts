@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 
 const repoRoot = new URL("../../..", import.meta.url)
 const scriptPath = new URL("../../../scripts/package-codex-desktop-linux.mjs", import.meta.url)
@@ -35,13 +35,22 @@ function createConvertedAppFixture(root: string): string {
       "echo \"fixture desktop launch:$*\"",
       "echo \"fixture codex path:$(command -v codex || true)\"",
       "echo \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"",
+      "echo \"fixture editor:${EDITOR:-}\"",
       "",
     ].join("\n"),
   )
   writeExecutable(join(appDir, "electron"), "#!/usr/bin/env bash\necho electron fixture\n")
   writeExecutable(
     join(appDir, "resources/node-runtime/bin/node"),
-    "#!/usr/bin/env bash\nif [ \"${1:-}\" = -v ]; then echo v22.22.2; else echo node fixture; fi\n",
+    [
+      "#!/usr/bin/env bash",
+      "case \"${1:-}\" in",
+      "  -v) echo v22.22.2 ;;",
+      "  *check-extension-installed.js) echo '{\"installed\":true,\"registered\":true,\"enabled\":true}' ;;",
+      "  *) echo node fixture ;;",
+      "esac",
+      "",
+    ].join("\n"),
   )
   writeExecutable(
     join(appDir, "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux"),
@@ -58,6 +67,10 @@ function createConvertedAppFixture(root: string): string {
   writeFileSync(
     join(appDir, "resources/plugins/openai-bundled/plugins/chrome/scripts/extension-id.json"),
     `${JSON.stringify({ extensionId: "hehggadaopoacecdllhhajmbjkdcmajg", extensionHostName: "com.openai.codexextension" })}\n`,
+  )
+  writeFileSync(
+    join(appDir, "resources/plugins/openai-bundled/plugins/chrome/scripts/check-extension-installed.js"),
+    "#!/usr/bin/env node\n",
   )
   writeFileSync(join(appDir, "resources/app.asar"), "fixture-asar")
   writeFileSync(join(appDir, "version"), "41.3.0\n")
@@ -145,6 +158,16 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.match(help, /Usage: codex-desktop/)
     assert.match(help, /desktop/)
 
+    const webInspect = JSON.parse(
+      execFileSync(join(extractDir, "bin/codex-desktop"), ["web", "--inspect"], { encoding: "utf8" }),
+    )
+    assert.equal(webInspect.browser_mode_status, "research")
+    assert.equal(webInspect.serves_extracted_renderer, false)
+
+    const webLaunch = spawnSync(join(extractDir, "bin/codex-desktop"), ["web"], { encoding: "utf8" })
+    assert.equal(webLaunch.status, 64)
+    assert.match(webLaunch.stderr, /research-only/)
+
     const dataHome = join(tmp, "xdg-data")
     const cacheHome = join(tmp, "xdg-cache")
     const caskPrefix = join(tmp, "homebrew")
@@ -171,18 +194,46 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     cpSync(join(extractDir, "bin"), join(caskRoot, "bin"), { recursive: true })
     cpSync(join(extractDir, "share"), join(caskRoot, "share"), { recursive: true })
     writeExecutable(join(caskPrefix, "bin/codex"), "#!/usr/bin/env bash\necho codex cli fixture\n")
+    writeExecutable(join(caskPrefix, "bin/code-insiders"), "#!/usr/bin/env bash\necho code insiders fixture\n")
     writeExecutable(
       join(flatpakBin, "flatpak"),
       [
         "#!/usr/bin/env bash",
+        "printf '%s\\n' \"$*\" >> \"$HOME/flatpak.log\"",
         "case \"${1:-}:${2:-}\" in",
         "  info:com.google.Chrome) exit 0 ;;",
+        "  info:--show-permissions)",
+        "    [ \"${3:-}\" = com.google.Chrome ] || exit 1",
+        "    printf '[Context]\\nfilesystems=home;\\n\\n[Session Bus Policy]\\n'",
+        "    [ -f \"$HOME/flatpak-host-spawn-enabled\" ] && printf 'org.freedesktop.Flatpak=talk\\n'",
+        "    exit 0",
+        "    ;;",
+        "  override:--user)",
+        "    case \"$*\" in",
+        "      *'--talk-name=org.freedesktop.Flatpak com.google.Chrome'*) touch \"$HOME/flatpak-host-spawn-enabled\"; exit 0 ;;",
+        "    esac",
+        "    exit 1",
+        "    ;;",
         "  run:com.google.Chrome) shift 2; echo flatpak chrome launch:\"$@\" ;;",
         "  *) exit 1 ;;",
         "esac",
       ].join("\n"),
     )
-    writeFileSync(join(flatpakChromeProfile, "Default/Preferences"), "{}\n")
+    mkdirSync(join(flatpakChromeProfile, "Default/Extensions/hehggadaopoacecdllhhajmbjkdcmajg/1.1.4_0"), {
+      recursive: true,
+    })
+    writeFileSync(
+      join(flatpakChromeProfile, "Default/Preferences"),
+      `${JSON.stringify({
+        extensions: {
+          settings: {
+            hehggadaopoacecdllhhajmbjkdcmajg: {
+              state: 1,
+            },
+          },
+        },
+      })}\n`,
+    )
     writeFileSync(osReleasePath, "NAME=Bluefin\nVARIANT_ID=bluefin\nID_LIKE=\"ublue fedora\"\n")
 
     const bluefinWaylandEnv = {
@@ -203,11 +254,16 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.match(appGridLaunch, /fixture desktop launch:--x11 --smoke/)
     assert.match(appGridLaunch, /fixture codex path:.*\/homebrew\/bin\/codex/)
     assert.match(appGridLaunch, new RegExp(`fixture chrome user data:${flatpakChromeProfile}`))
+    assert.match(appGridLaunch, /fixture editor:.*\/homebrew\/bin\/code-insiders/)
 
     const flatpakShim = readFileSync(join(cacheHome, "codex-desktop/flatpak-bin/google-chrome"), "utf8")
     assert.match(flatpakShim, /flatpak run com\.google\.Chrome/)
     const flatpakChromeShim = readFileSync(join(cacheHome, "codex-desktop/flatpak-bin/chrome"), "utf8")
     assert.match(flatpakChromeShim, /flatpak run com\.google\.Chrome/)
+    assert.match(
+      readFileSync(join(tmp, "flatpak.log"), "utf8"),
+      /override --user --talk-name=org\.freedesktop\.Flatpak com\.google\.Chrome/,
+    )
 
     const nativeHostWrapperPath = join(
       tmp,
@@ -216,6 +272,10 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     const nativeHostWrapper = readFileSync(nativeHostWrapperPath, "utf8")
     assert.match(nativeHostWrapper, /flatpak-spawn --host/)
     assert.match(nativeHostWrapper, /extension-host/)
+    assert.match(
+      nativeHostWrapper,
+      new RegExp(`${caskRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/share/codex-desktop/app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64/extension-host`),
+    )
 
     const flatpakManifest = JSON.parse(
       readFileSync(
@@ -274,6 +334,16 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(statSync(join(dataHome, "applications/codex-desktop.desktop")).mode & 0o111, 0o111)
     assert.ok(existsSync(join(dataHome, "icons/hicolor/512x512/apps/codex-desktop.png")))
     assert.ok(existsSync(join(dataHome, "icons/hicolor/256x256/apps/codex-desktop.png")))
+
+    const doctor = execFileSync(join(caskRoot, "bin/codex-desktop"), ["doctor"], {
+      encoding: "utf8",
+      env: bluefinWaylandEnv,
+    })
+    assert.match(doctor, /ok: Codex Chrome extension detected and enabled/)
+    assert.match(doctor, /ok: Google Chrome Flatpak host-spawn permission/)
+    assert.match(doctor, /ok: Google Chrome Flatpak native host wrapper targets current package/)
+    assert.match(doctor, /ok: editor command code-insiders: .*\/homebrew\/bin\/code-insiders/)
+    assert.match(doctor, /ok: EDITOR: .*\/homebrew\/bin\/code-insiders/)
 
     const logPath = execFileSync(join(extractDir, "bin/codex-desktop"), ["logs", "--path"], {
       encoding: "utf8",
