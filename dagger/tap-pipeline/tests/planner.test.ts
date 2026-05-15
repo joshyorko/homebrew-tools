@@ -45,7 +45,7 @@ test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
 
 test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
-    "codex-desktop-linux": "Formula/codex-desktop.rb",
+    "codex-desktop-linux": "Casks/codex-desktop.rb",
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     "fizzy-cli-master": "Formula/fizzy-cli-master.rb",
     "fizzy-popper-self-hosted": "Formula/fizzy-popper-self-hosted.rb",

@@ -164,6 +164,41 @@ function copyIfExists(source, destination) {
   return true
 }
 
+function findAsset(appDir, pattern) {
+  const assetsDir = join(appDir, "content/webview/assets")
+  if (!existsSync(assetsDir)) {
+    return null
+  }
+
+  const entry = readdirSync(assetsDir)
+    .filter((name) => pattern.test(name))
+    .sort()[0]
+
+  return entry ? join(assetsDir, entry) : null
+}
+
+function resolveIconSource(appDir, explicitIcon) {
+  const officialAppIcon = findAsset(appDir, /^app-[A-Za-z0-9_-]+\.png$/)
+  const officialLogoIcon = findAsset(appDir, /^codex-app-ga-logo--[A-Za-z0-9_-]+\.png$/)
+  const candidates = [
+    explicitIcon ? { path: resolve(explicitIcon), kind: "explicit" } : null,
+    officialAppIcon ? { path: officialAppIcon, kind: "official-webview-app-asset" } : null,
+    officialLogoIcon ? { path: officialLogoIcon, kind: "official-webview-logo-asset" } : null,
+    {
+      path: join(appDir, ".codex-linux/codex-desktop.png"),
+      kind: "upstream-linux-fallback",
+    },
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate.path)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
 function launcherScript() {
   return `#!/usr/bin/env bash
 set -euo pipefail
@@ -209,6 +244,61 @@ check_path() {
   return "$missing"
 }
 
+warn_path() {
+  local label="$1"
+  local path="$2"
+
+  if [ -e "$path" ]; then
+    echo "ok: $label: $path"
+  else
+    echo "warning: optional $label missing: $path"
+  fi
+}
+
+computer_use_doctor() {
+  local backend="$app_dir/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux"
+  local cosmic_helper="$app_dir/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic"
+  local socket_path="\${YDOTOOL_SOCKET:-\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/.ydotool_socket}"
+
+  echo "Linux Computer Use readiness"
+  warn_path "Computer Use backend" "$backend"
+  warn_path "Computer Use COSMIC helper" "$cosmic_helper"
+
+  if [ -x "$backend" ]; then
+    echo "ok: Computer Use backend is bundled"
+  else
+    echo "warning: Computer Use backend is not executable; rebuild from the upstream DMG conversion before testing it"
+  fi
+
+  if has_command ydotool; then
+    echo "ok: ydotool: $(command -v ydotool)"
+  else
+    echo "warning: ydotool is not available; Computer Use input synthesis will not work"
+  fi
+
+  if [ -e /dev/uinput ]; then
+    if [ -r /dev/uinput ] && [ -w /dev/uinput ]; then
+      echo "ok: /dev/uinput is readable and writable"
+    else
+      echo "warning: /dev/uinput exists but is not readable/writable by this user"
+    fi
+  else
+    echo "warning: /dev/uinput is missing; ydotoold cannot synthesize input without it"
+  fi
+
+  if [ -S "$socket_path" ]; then
+    echo "ok: ydotool socket: $socket_path"
+  else
+    echo "warning: ydotool socket not found: $socket_path"
+  fi
+
+  if [ "\${CODEX_DESKTOP_RUN_COMPUTER_USE_DOCTOR:-0}" = "1" ] && [ -x "$backend" ]; then
+    "$backend" doctor || true
+  else
+    echo "info: run CODEX_DESKTOP_RUN_COMPUTER_USE_DOCTOR=1 codex-desktop doctor to invoke the backend doctor"
+  fi
+}
+
 doctor() {
   local missing=0
   local data_home="\${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -243,15 +333,21 @@ doctor() {
     missing=1
   fi
 
+  computer_use_doctor
+
   return "$missing"
 }
 
 install_desktop_entry() {
   local data_home="\${XDG_DATA_HOME:-$HOME/.local/share}"
   local applications_dir="$data_home/applications"
-  local icon_dir="$data_home/icons/hicolor/256x256/apps"
+  local icon_dir="$data_home/icons/hicolor/512x512/apps"
+  local legacy_icon_dir="$data_home/icons/hicolor/256x256/apps"
   local desktop_target="$applications_dir/codex-desktop.desktop"
   local icon_target="$icon_dir/codex-desktop.png"
+  local legacy_icon_target="$legacy_icon_dir/codex-desktop.png"
+  local icon_source="$root/share/icons/hicolor/512x512/apps/codex-desktop.png"
+  local legacy_icon_source="$root/share/icons/hicolor/256x256/apps/codex-desktop.png"
   local desktop_bin="\${CODEX_DESKTOP_BIN:-}"
   local desktop_contents
 
@@ -262,9 +358,14 @@ install_desktop_entry() {
     desktop_bin="$(readlink -f "$script_path" 2>/dev/null || printf '%s\\n' "$script_path")"
   fi
 
-  mkdir -p "$applications_dir" "$icon_dir"
-  if [ -f "$root/share/icons/hicolor/256x256/apps/codex-desktop.png" ]; then
-    cp "$root/share/icons/hicolor/256x256/apps/codex-desktop.png" "$icon_target"
+  mkdir -p "$applications_dir" "$icon_dir" "$legacy_icon_dir"
+  if [ -f "$icon_source" ]; then
+    cp "$icon_source" "$icon_target"
+  elif [ -f "$legacy_icon_source" ]; then
+    cp "$legacy_icon_source" "$icon_target"
+  fi
+  if [ -f "$legacy_icon_source" ]; then
+    cp "$legacy_icon_source" "$legacy_icon_target"
   fi
 
   desktop_contents="$(cat "$root/share/applications/codex-desktop.desktop")"
@@ -413,7 +514,7 @@ function main() {
   const conversionRepo = args["conversion-repo"] ?? DEFAULT_CONVERSION_REPO
   const conversionCommit = args["conversion-commit"] ?? DEFAULT_CONVERSION_COMMIT
   const codexDmg = args["codex-dmg"] ? resolve(args["codex-dmg"]) : undefined
-  const iconPath = args.icon ? resolve(args.icon) : join(appDir, ".codex-linux/codex-desktop.png")
+  const iconSource = resolveIconSource(appDir, args.icon)
   const rebuildReportPath = args["rebuild-report"] ? resolve(args["rebuild-report"]) : undefined
   const patchReportPath = args["patch-report"] ? resolve(args["patch-report"]) : undefined
   const metadataOutput = args["metadata-output"] ? resolve(args["metadata-output"]) : undefined
@@ -427,6 +528,10 @@ function main() {
   const rebuildReport = readJsonIfPresent(rebuildReportPath)
   const patchReport = readJsonIfPresent(patchReportPath)
   const appTreeSha256 = hashDirectory(appDir)
+  const computerUseBackend = join(
+    appDir,
+    "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
+  )
   const metadata = {
     package: "codex-desktop-linux",
     version,
@@ -440,6 +545,9 @@ function main() {
       ? hashDirectory(join(appDir, "resources/node-runtime"))
       : null,
     app_payload_tree_sha256: appTreeSha256,
+    desktop_icon_source: iconSource ? iconSource.kind : null,
+    desktop_icon_sha256: iconSource ? sha256File(iconSource.path) : null,
+    computer_use_backend_included: fileIsExecutable(computerUseBackend),
     updater_enabled: false,
     browser_mode_status: "research",
     artifact_role: "converted-dmg-linux-runtime",
@@ -455,12 +563,16 @@ function main() {
     mkdirSync(join(packageDir, "bin"), { recursive: true })
     mkdirSync(metadataDir, { recursive: true })
     mkdirSync(join(packageDir, "share/applications"), { recursive: true })
+    mkdirSync(join(packageDir, "share/icons/hicolor/512x512/apps"), { recursive: true })
     mkdirSync(join(packageDir, "share/icons/hicolor/256x256/apps"), { recursive: true })
 
     cpSync(appDir, join(metadataDir, "app"), { recursive: true, dereference: false })
     writeExecutable(join(packageDir, "bin/codex-desktop"), launcherScript())
     writeFileSync(join(packageDir, "share/applications/codex-desktop.desktop"), desktopEntry())
-    copyIfExists(iconPath, join(packageDir, "share/icons/hicolor/256x256/apps/codex-desktop.png"))
+    if (iconSource) {
+      copyIfExists(iconSource.path, join(packageDir, "share/icons/hicolor/512x512/apps/codex-desktop.png"))
+      copyIfExists(iconSource.path, join(packageDir, "share/icons/hicolor/256x256/apps/codex-desktop.png"))
+    }
     writeFileSync(join(metadataDir, "release.json"), `${JSON.stringify(metadata, null, 2)}\n`)
     writeFileSync(
       join(metadataDir, "renderer-report.json"),

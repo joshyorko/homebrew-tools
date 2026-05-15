@@ -110,8 +110,8 @@ function tapStagingCommands(packageId: string): string[] {
       ]
     case "codex-desktop-linux":
       return [
-        "mkdir -p \"$tap_dir/Formula\"",
-        "cp /tap/Formula/codex-desktop.rb \"$tap_dir/Formula/\"",
+        "mkdir -p \"$tap_dir/Casks\"",
+        "cp /tap/Casks/codex-desktop.rb \"$tap_dir/Casks/\"",
       ]
     case "vscode-insiders-linux":
       return [
@@ -861,7 +861,7 @@ export class TapPipeline {
         downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/codex-desktop-linux-${build.version}/${build.assetName}`,
         releaseTitle: `Codex Desktop Linux ${build.version}`,
         releaseNotes: `Homebrew artifact built by converting the official upstream Codex.dmg from ${CODEX_DESKTOP_DMG_URL} into a Linux Electron runtime.`,
-        commitMessage: `Update codex-desktop formula to ${build.version}`,
+        commitMessage: `Update codex-desktop cask to ${build.version}`,
         upstream: {
           kind: "http_file",
           url: CODEX_DESKTOP_DMG_URL,
@@ -1176,16 +1176,21 @@ export class TapPipeline {
         "-lc",
         [
           "set -euo pipefail",
-          "mkdir -p /work/fixture-app/resources/node-runtime/bin /work/fixture-app/.codex-linux /work/reports",
+          "mkdir -p /work/fixture-app/resources/node-runtime/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin /work/fixture-app/.codex-linux /work/fixture-app/content/webview/assets /work/reports",
           "printf '#!/usr/bin/env bash\\nset -euo pipefail\\necho \"fixture desktop launch:$*\"\\n' > /work/fixture-app/start.sh",
           "chmod +x /work/fixture-app/start.sh",
           "printf '#!/usr/bin/env bash\\necho electron fixture\\n' > /work/fixture-app/electron",
           "chmod +x /work/fixture-app/electron",
           "printf '#!/usr/bin/env bash\\nif [ \"${1:-}\" = -v ]; then echo v22.22.2; else echo node fixture; fi\\n' > /work/fixture-app/resources/node-runtime/bin/node",
           "chmod +x /work/fixture-app/resources/node-runtime/bin/node",
+          "printf '#!/usr/bin/env bash\\necho computer use fixture\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
+          "chmod +x /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
+          "printf '#!/usr/bin/env bash\\necho cosmic fixture\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic",
+          "chmod +x /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic",
           "printf 'fixture-asar' > /work/fixture-app/resources/app.asar",
           "printf '41.3.0\\n' > /work/fixture-app/version",
           "printf 'fixture-png' > /work/fixture-app/.codex-linux/codex-desktop.png",
+          "printf 'official-app-icon' > /work/fixture-app/content/webview/assets/app-fixture_hash.png",
           "printf '{\"electronVersion\":\"41.3.0\",\"appDir\":\"/work/fixture-app\"}\\n' > /work/reports/rebuild-report.json",
           "printf '{\"mainBundle\":\"main.js\",\"patches\":[{\"id\":\"fixture\",\"status\":\"changed\"}]}\\n' > /work/reports/patch-report.json",
         ].join("\n"),
@@ -1270,8 +1275,6 @@ export class TapPipeline {
         conversionCommit,
         "--codex-dmg",
         "/inputs/Codex.dmg",
-        "--icon",
-        "/conversion/assets/codex.png",
         "--rebuild-report",
         "/work/reports/rebuild-report.json",
         "--patch-report",
@@ -2318,12 +2321,12 @@ export class TapPipeline {
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        const formulaContents = await tap.file("Formula/codex-desktop.rb").contents()
-        const updatedFormula = formulaContents
+        const caskContents = await tap.file("Casks/codex-desktop.rb").contents()
+        const updatedCask = caskContents
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const smokeTap = tap.withFile("Formula/codex-desktop.rb", dag.file("codex-desktop.rb", updatedFormula))
+        const smokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
 
         return dag
           .container()
@@ -2341,14 +2344,14 @@ export class TapPipeline {
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("codex-desktop-linux"),
-              "brew install test/tap/codex-desktop",
-              "brew test test/tap/codex-desktop",
+              "brew install --cask test/tap/codex-desktop",
               "test -x \"$(brew --prefix)/bin/codex-desktop\"",
               "codex-desktop --help",
               "codex-desktop desktop --smoke",
               "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
               "grep -q \"Exec=$(brew --prefix)/bin/codex-desktop desktop %U\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
               "grep -q 'x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/codex-desktop.png\"",
               "test -f \"$HOME/.local/share/icons/hicolor/256x256/apps/codex-desktop.png\"",
               "codex-desktop logs --path",
               "codex-desktop web --inspect",
@@ -2759,8 +2762,8 @@ export class TapPipeline {
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
         const release = this.codexDesktopReleaseMetadata(build, sha256)
-        const formulaContents = await tap.file("Formula/codex-desktop.rb").contents()
-        const updatedFormula = formulaContents
+        const caskContents = await tap.file("Casks/codex-desktop.rb").contents()
+        const updatedCask = caskContents
           .replace(/url ".*"/, `url "${String(release.download_url)}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
@@ -2768,7 +2771,7 @@ export class TapPipeline {
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedFormula))
+          .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmg)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
@@ -2847,15 +2850,15 @@ export class TapPipeline {
       codex_dmg_sha256: dmgReport.codex_dmg_sha256,
       codex_dmg_bytes: dmgReport.codex_dmg_bytes,
     }
-    const formulaContents = await this.source.file("Formula/codex-desktop.rb").contents()
-    const updatedFormula = formulaContents
+    const caskContents = await this.source.file("Casks/codex-desktop.rb").contents()
+    const updatedCask = caskContents
       .replace(/url ".*"/, `url "${String(release.download_url)}"`)
       .replace(/version ".*"/, `version "${build.version}"`)
       .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
 
     return dag.directory()
       .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-      .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedFormula))
+      .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
       .withFile("release.json", dag.file("release.json", json(release)))
       .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmg)))
       .withFile("ci.log", dag.file("ci.log", ciLog))

@@ -6,7 +6,7 @@ export type PackageKind =
   | "github_release_binary_cask"
   | "github_release_deb_cask"
   | "github_release_appimage_cask"
-  | "codex_desktop_linux_formula"
+  | "codex_desktop_linux_cask"
 
 export type AutoUpdateSlotId =
   | "codex-desktop-2h"

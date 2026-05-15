@@ -25,7 +25,7 @@ test("package registry covers every planned adapter kind", () => {
   assert.deepEqual(
     [...kinds].sort(),
     [
-      "codex_desktop_linux_formula",
+      "codex_desktop_linux_cask",
       "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",

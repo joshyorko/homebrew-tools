@@ -70,7 +70,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
-| `brew install joshyorko/tools/codex-desktop` | Install Codex Desktop Linux runtime |
+| `brew install --cask joshyorko/tools/codex-desktop` | Install Codex Desktop Linux runtime |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
@@ -184,19 +184,19 @@ app for Linux Electron, rebuild native modules, stage bundled resources, and pac
 `codex-app/` as a Homebrew artifact through the tap's Dagger pipeline.
 
 ```bash
-brew install joshyorko/tools/codex-desktop
+brew install --cask joshyorko/tools/codex-desktop
 codex-desktop --help
 codex-desktop desktop
 codex-desktop doctor
-codex-desktop install-desktop-entry
 codex-desktop web --inspect
 ```
 
 The Dagger package id is `codex-desktop-linux`, pinned to the field-research commit
 `43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a` from
 `ilysenko/codex-desktop-linux`. The tap auto-update workflow checks the official DMG every two
-hours. Use the standard release-bundle target for the upstream DMG path, or the Codex-specific target
-when testing a local DMG:
+hours. The cask installs the launcher, desktop entry, URL handlers, and app icons automatically.
+Use the standard release-bundle target for the upstream DMG path, or the Codex-specific target when
+testing a local DMG:
 
 ```bash
 dagger -m ./dagger/tap-pipeline call codex-desktop-renderer-report --codex-dmg=/path/to/Codex.dmg
@@ -206,15 +206,14 @@ dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle codex-desktop-release-
 
 That release bundle keeps the standard tap shape:
 - `artifacts/` contains the tarball Homebrew installs
-- `homebrew/` contains the rendered formula with the artifact URL and checksum
+- `homebrew/` contains the rendered cask with the artifact URL and checksum
 - `release.json` records the DMG hash, conversion commit, Electron version, managed Node runtime,
   and final artifact hash
 - `ci.log` records the Homebrew fixture smoke test
 
 Manual GNOME/Bluefin validation checklist:
-- run `codex-desktop doctor` and install any missing Codex CLI/browser prerequisites
-- run `codex-desktop install-desktop-entry`
-- confirm `~/.local/share/applications/codex-desktop.desktop` exists and appears in the app grid
+- run `codex-desktop doctor` to inspect Codex CLI, browser, and Linux Computer Use readiness
+- confirm the cask installed `~/.local/share/applications/codex-desktop.desktop` and app-grid icon files
 - run `codex-desktop desktop` and confirm the converted Electron app launches
 - keep browser/app-server experiments loopback-only and use `codex-desktop web --inspect` for the
   current renderer research report

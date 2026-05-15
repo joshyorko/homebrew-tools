@@ -37,8 +37,8 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
     id: "codex-desktop-linux",
-    kind: "codex_desktop_linux_formula",
-    homebrewPath: "Formula/codex-desktop.rb",
+    kind: "codex_desktop_linux_cask",
+    homebrewPath: "Casks/codex-desktop.rb",
     supportsPrCi: true,
     autoUpdate: {
       kind: "http_header_fingerprint",
@@ -237,7 +237,7 @@ export const AUTO_UPDATE_SLOTS: AutoUpdateSlot[] = loadAutoUpdateSlots()
 const CHANGED_PATHS: Array<[string, string[]]> = [
   [
     "codex-desktop-linux",
-    ["Formula/codex-desktop.rb", "scripts/package-codex-desktop-linux.mjs"],
+    ["Casks/codex-desktop.rb", "scripts/package-codex-desktop-linux.mjs"],
   ],
   [
     "t3code-cli-main",

@@ -19,8 +19,9 @@ function writeExecutable(path: string, contents: string): void {
 function createConvertedAppFixture(root: string): string {
   const appDir = join(root, "codex-app")
   mkdirSync(join(appDir, "resources/node-runtime/bin"), { recursive: true })
+  mkdirSync(join(appDir, "resources/plugins/openai-bundled/plugins/computer-use/bin"), { recursive: true })
   mkdirSync(join(appDir, ".codex-linux"), { recursive: true })
-  mkdirSync(join(appDir, "content/webview"), { recursive: true })
+  mkdirSync(join(appDir, "content/webview/assets"), { recursive: true })
 
   writeExecutable(
     join(appDir, "start.sh"),
@@ -31,9 +32,18 @@ function createConvertedAppFixture(root: string): string {
     join(appDir, "resources/node-runtime/bin/node"),
     "#!/usr/bin/env bash\nif [ \"${1:-}\" = -v ]; then echo v22.22.2; else echo node fixture; fi\n",
   )
+  writeExecutable(
+    join(appDir, "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux"),
+    "#!/usr/bin/env bash\necho computer use fixture\n",
+  )
+  writeExecutable(
+    join(appDir, "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic"),
+    "#!/usr/bin/env bash\necho cosmic fixture\n",
+  )
   writeFileSync(join(appDir, "resources/app.asar"), "fixture-asar")
   writeFileSync(join(appDir, "version"), "41.3.0\n")
-  writeFileSync(join(appDir, ".codex-linux/codex-desktop.png"), "fixture-png")
+  writeFileSync(join(appDir, ".codex-linux/codex-desktop.png"), "fallback-linux-icon")
+  writeFileSync(join(appDir, "content/webview/assets/app-fixture_hash.png"), "official-app-icon")
 
   return appDir
 }
@@ -91,10 +101,21 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.updater_enabled, false)
     assert.equal(metadata.electron_version, "41.3.0")
     assert.equal(metadata.managed_node_version, "v22.22.2")
+    assert.equal(metadata.desktop_icon_source, "official-webview-app-asset")
+    assert.equal(metadata.computer_use_backend_included, true)
     assert.match(metadata.codex_dmg_sha256, /^[a-f0-9]{64}$/)
 
     const exportedMetadata = JSON.parse(readFileSync(metadataOutput, "utf8"))
     assert.equal(exportedMetadata.app_payload_tree_sha256, metadata.app_payload_tree_sha256)
+
+    assert.equal(
+      readFileSync(join(extractDir, "share/icons/hicolor/512x512/apps/codex-desktop.png"), "utf8"),
+      "official-app-icon",
+    )
+    assert.equal(
+      readFileSync(join(extractDir, "share/icons/hicolor/256x256/apps/codex-desktop.png"), "utf8"),
+      "official-app-icon",
+    )
 
     const report = JSON.parse(readFileSync(join(extractDir, "share/codex-desktop/renderer-report.json"), "utf8"))
     assert.equal(report.loopback_only_default, true)
@@ -124,8 +145,9 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
 
     const desktopEntry = readFileSync(join(dataHome, "applications/codex-desktop.desktop"), "utf8")
     assert.match(desktopEntry, /^Exec=\/home\/linuxbrew\/\.linuxbrew\/bin\/codex-desktop desktop %U$/m)
-    assert.match(desktopEntry, /^Icon=.*\/icons\/hicolor\/256x256\/apps\/codex-desktop\.png$/m)
+    assert.match(desktopEntry, /^Icon=.*\/icons\/hicolor\/512x512\/apps\/codex-desktop\.png$/m)
     assert.match(desktopEntry, /^MimeType=x-scheme-handler\/codex;x-scheme-handler\/codex-browser-sidebar;$/m)
+    assert.ok(existsSync(join(dataHome, "icons/hicolor/512x512/apps/codex-desktop.png")))
     assert.ok(existsSync(join(dataHome, "icons/hicolor/256x256/apps/codex-desktop.png")))
 
     const logPath = execFileSync(join(extractDir, "bin/codex-desktop"), ["logs", "--path"], {
@@ -141,15 +163,20 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
   }
 })
 
-test("codex desktop formula documents the DMG conversion runtime", () => {
-  const formula = readFileSync(new URL("../../../Formula/codex-desktop.rb", import.meta.url), "utf8")
+test("codex desktop cask installs the launcher and desktop assets", () => {
+  const cask = readFileSync(new URL("../../../Casks/codex-desktop.rb", import.meta.url), "utf8")
 
-  assert.match(formula, /class CodexDesktop < Formula/)
-  assert.match(formula, /converts an explicit/)
-  assert.match(formula, /def post_install/)
-  assert.match(formula, /CODEX_DESKTOP_BIN.*HOMEBREW_PREFIX/)
-  assert.match(formula, /codex-desktop doctor/)
-  assert.doesNotMatch(formula, /codex-desktop install-desktop-entry/)
+  assert.match(cask, /cask "codex-desktop"/)
+  assert.doesNotMatch(cask, /container type: :naked/)
+  assert.match(cask, /binary "bin\/codex-desktop"/)
+  assert.match(cask, /artifact "share\/applications\/codex-desktop\.desktop"/)
+  assert.match(cask, /artifact "share\/icons\/hicolor\/512x512\/apps\/codex-desktop\.png"/)
+  assert.match(cask, /HOMEBREW_PREFIX/)
+  assert.match(cask, /x-scheme-handler\/codex/)
+  assert.match(cask, /codex-desktop logs/)
+  assert.match(cask, /codex-desktop doctor/)
+  assert.doesNotMatch(cask, /post_install/)
+  assert.doesNotMatch(cask, /install-desktop-entry/)
 })
 
 test("codex desktop auto-update mirrors upstream DMG polling", () => {
@@ -162,6 +189,7 @@ test("codex desktop auto-update mirrors upstream DMG polling", () => {
   assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /patch-codex-desktop-conversion\.mjs/)
+  assert.doesNotMatch(pipeline, /--icon[\s\S]*\/conversion\/assets\/codex\.png/)
   assert.doesNotMatch(pipeline, /ca-certificates cargo curl/)
   assert.doesNotMatch(pipeline, /p7zip-full rustc sudo/)
   assert.match(pipeline, /root\/\.local\/bin:\$PATH/)
