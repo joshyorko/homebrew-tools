@@ -211,6 +211,36 @@ metadata="$root/share/codex-desktop/release.json"
 renderer_report="$root/share/codex-desktop/renderer-report.json"
 launcher_log="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/launcher.log"
 
+path_prepend_if_dir() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  case ":\${PATH:-}:" in
+    *":$dir:"*) ;;
+    *) PATH="$dir\${PATH:+:$PATH}" ;;
+  esac
+}
+
+prepare_runtime_path() {
+  local brew_prefix=""
+
+  case "$script_path" in
+    */Caskroom/*) brew_prefix="\${script_path%%/Caskroom/*}" ;;
+  esac
+
+  PATH="\${PATH:-/usr/local/bin:/usr/bin:/bin}"
+  path_prepend_if_dir "$brew_prefix/bin"
+  path_prepend_if_dir "$brew_prefix/sbin"
+  path_prepend_if_dir "$HOME/.local/bin"
+  path_prepend_if_dir "$HOME/bin"
+  path_prepend_if_dir "$HOME/.cargo/bin"
+  path_prepend_if_dir "$HOME/.deno/bin"
+  path_prepend_if_dir "$HOME/.bun/bin"
+  path_prepend_if_dir "$HOME/go/bin"
+  path_prepend_if_dir "$HOME/.opencode/bin"
+  path_prepend_if_dir "$HOME/.local/share/mise/shims"
+  export PATH
+}
+
 usage() {
   cat <<'USAGE'
 Usage: codex-desktop [command] [args]
@@ -449,6 +479,7 @@ case "\${1:-desktop}" in
     ;;
   desktop)
     shift
+    prepare_runtime_path
     launch_desktop "$@"
     ;;
   logs)
@@ -463,12 +494,15 @@ case "\${1:-desktop}" in
     bridge_mode
     ;;
   doctor)
+    prepare_runtime_path
     doctor
     ;;
   install-desktop-entry)
+    prepare_runtime_path
     install_desktop_entry
     ;;
   *)
+    prepare_runtime_path
     launch_desktop "$@"
     ;;
 esac
