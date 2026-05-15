@@ -174,17 +174,16 @@ app_dir="$root/share/codex-desktop/app"
 app_launcher="$app_dir/start.sh"
 metadata="$root/share/codex-desktop/release.json"
 renderer_report="$root/share/codex-desktop/renderer-report.json"
+launcher_log="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/launcher.log"
 
 usage() {
   cat <<'USAGE'
 Usage: codex-desktop [command] [args]
 
 Commands:
-  desktop                 Launch the converted Linux Electron Codex Desktop app
-  web --inspect           Print browser-renderer research status for this build
-  bridge                  Print loopback bridge status
+  desktop                 Launch Codex Desktop
+  logs [--follow|--path]  Show the Codex Desktop launcher log
   doctor                  Check Bluefin/Linux runtime readiness
-  install-desktop-entry   Install user-local XDG desktop entry and icon
   --help, -h, help        Show this help
 
 Running codex-desktop with no command launches desktop mode.
@@ -212,13 +211,16 @@ check_path() {
 
 doctor() {
   local missing=0
+  local data_home="\${XDG_DATA_HOME:-$HOME/.local/share}"
   echo "Codex Desktop Linux doctor"
   echo "metadata: $metadata"
+  echo "launcher log: $launcher_log"
 
   check_path "converted app launcher" "$app_launcher" || missing=1
   check_path "Electron runtime" "$app_dir/electron" || missing=1
   check_path "patched app.asar" "$app_dir/resources/app.asar" || missing=1
   check_path "managed Node runtime" "$app_dir/resources/node-runtime/bin/node" || missing=1
+  check_path "desktop entry" "$data_home/applications/codex-desktop.desktop" || missing=1
 
   if has_command codex; then
     echo "ok: codex CLI: $(command -v codex)"
@@ -246,12 +248,70 @@ doctor() {
 
 install_desktop_entry() {
   local data_home="\${XDG_DATA_HOME:-$HOME/.local/share}"
-  mkdir -p "$data_home/applications" "$data_home/icons/hicolor/256x256/apps"
-  cp "$root/share/applications/codex-desktop.desktop" "$data_home/applications/codex-desktop.desktop"
-  if [ -f "$root/share/icons/hicolor/256x256/apps/codex-desktop.png" ]; then
-    cp "$root/share/icons/hicolor/256x256/apps/codex-desktop.png" "$data_home/icons/hicolor/256x256/apps/codex-desktop.png"
+  local applications_dir="$data_home/applications"
+  local icon_dir="$data_home/icons/hicolor/256x256/apps"
+  local desktop_target="$applications_dir/codex-desktop.desktop"
+  local icon_target="$icon_dir/codex-desktop.png"
+  local desktop_bin="\${CODEX_DESKTOP_BIN:-}"
+  local desktop_contents
+
+  if [ -z "$desktop_bin" ]; then
+    desktop_bin="$(command -v codex-desktop 2>/dev/null || true)"
   fi
-  echo "Installed user-local desktop entry: $data_home/applications/codex-desktop.desktop"
+  if [ -z "$desktop_bin" ]; then
+    desktop_bin="$(readlink -f "$script_path" 2>/dev/null || printf '%s\\n' "$script_path")"
+  fi
+
+  mkdir -p "$applications_dir" "$icon_dir"
+  if [ -f "$root/share/icons/hicolor/256x256/apps/codex-desktop.png" ]; then
+    cp "$root/share/icons/hicolor/256x256/apps/codex-desktop.png" "$icon_target"
+  fi
+
+  desktop_contents="$(cat "$root/share/applications/codex-desktop.desktop")"
+  desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed "s|^Exec=.*|Exec=$desktop_bin desktop %U|")"
+  if [ -f "$icon_target" ]; then
+    desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed "s|^Icon=.*|Icon=$icon_target|")"
+  fi
+  if printf '%s\\n' "$desktop_contents" | grep -q '^MimeType='; then
+    desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed 's|^MimeType=.*|MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;|')"
+  else
+    desktop_contents="$(printf '%s\\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' "$desktop_contents")"
+  fi
+  printf '%s\\n' "$desktop_contents" > "$desktop_target"
+
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$applications_dir" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default codex-desktop.desktop x-scheme-handler/codex >/dev/null 2>&1 || true
+    xdg-mime default codex-desktop.desktop x-scheme-handler/codex-browser-sidebar >/dev/null 2>&1 || true
+  fi
+
+  echo "Installed user-local desktop entry: $desktop_target"
+}
+
+logs_mode() {
+  case "\${1:-}" in
+    --path|path)
+      echo "$launcher_log"
+      ;;
+    -f|--follow|follow)
+      mkdir -p "$(dirname "$launcher_log")"
+      touch "$launcher_log"
+      exec tail -n "\${CODEX_DESKTOP_LOG_LINES:-200}" -f "$launcher_log"
+      ;;
+    ""|tail)
+      if [ ! -f "$launcher_log" ]; then
+        echo "No launcher log yet: $launcher_log"
+        return 0
+      fi
+      exec tail -n "\${CODEX_DESKTOP_LOG_LINES:-200}" "$launcher_log"
+      ;;
+    *)
+      echo "Usage: codex-desktop logs [--follow|--path]" >&2
+      exit 64
+      ;;
+  esac
 }
 
 launch_desktop() {
@@ -260,6 +320,7 @@ launch_desktop() {
     exit 70
   fi
 
+  unset ELECTRON_RUN_AS_NODE
   exec "$app_launcher" "$@"
 }
 
@@ -288,6 +349,10 @@ case "\${1:-desktop}" in
   desktop)
     shift
     launch_desktop "$@"
+    ;;
+  logs)
+    shift
+    logs_mode "$@"
     ;;
   web)
     shift
@@ -318,6 +383,7 @@ Exec=codex-desktop desktop %U
 Icon=codex-desktop
 Terminal=false
 Categories=Development;
+MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;
 StartupNotify=true
 `
 }

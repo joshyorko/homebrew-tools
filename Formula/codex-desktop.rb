@@ -16,20 +16,29 @@ class CodexDesktop < Formula
     bin.install_symlink libexec/"bin/codex-desktop"
   end
 
+  def post_install
+    system(
+      { "CODEX_DESKTOP_BIN" => "#{HOMEBREW_PREFIX}/bin/codex-desktop" },
+      "#{bin}/codex-desktop",
+      "install-desktop-entry"
+    )
+  end
+
   def caveats
     <<~EOS
       This formula is rendered from a Dagger build that converts an explicit
       official Codex.dmg into a Linux Electron runtime.
 
-      Useful commands:
-        codex-desktop --help
-        codex-desktop desktop
-        codex-desktop doctor
-        codex-desktop install-desktop-entry
-        codex-desktop web --inspect
+      Launch from your app grid as Codex Desktop, or run:
+        codex-desktop
 
-      Build the runtime artifact through the tap's Dagger pipeline with an
-      explicit official Codex.dmg input.
+      Logs and diagnostics:
+        codex-desktop logs
+        codex-desktop logs --follow
+        codex-desktop doctor
+
+      Desktop launcher installed for immutable/atomic desktops:
+        #{Dir.home}/.local/share/applications/codex-desktop.desktop
     EOS
   end
 

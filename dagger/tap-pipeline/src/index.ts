@@ -2346,6 +2346,11 @@ export class TapPipeline {
               "test -x \"$(brew --prefix)/bin/codex-desktop\"",
               "codex-desktop --help",
               "codex-desktop desktop --smoke",
+              "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+              "grep -q \"Exec=$(brew --prefix)/bin/codex-desktop desktop %U\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+              "grep -q 'x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/256x256/apps/codex-desktop.png\"",
+              "codex-desktop logs --path",
               "codex-desktop web --inspect",
             ].join("\n"),
           ])

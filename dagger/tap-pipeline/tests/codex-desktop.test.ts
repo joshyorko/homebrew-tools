@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
@@ -109,6 +109,33 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
       encoding: "utf8",
     })
     assert.match(launch, /fixture desktop launch:--smoke/)
+
+    const dataHome = join(tmp, "xdg-data")
+    const cacheHome = join(tmp, "xdg-cache")
+    const desktopInstall = execFileSync(join(extractDir, "bin/codex-desktop"), ["install-desktop-entry"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CODEX_DESKTOP_BIN: "/home/linuxbrew/.linuxbrew/bin/codex-desktop",
+        XDG_DATA_HOME: dataHome,
+      },
+    })
+    assert.match(desktopInstall, /Installed user-local desktop entry/)
+
+    const desktopEntry = readFileSync(join(dataHome, "applications/codex-desktop.desktop"), "utf8")
+    assert.match(desktopEntry, /^Exec=\/home\/linuxbrew\/\.linuxbrew\/bin\/codex-desktop desktop %U$/m)
+    assert.match(desktopEntry, /^Icon=.*\/icons\/hicolor\/256x256\/apps\/codex-desktop\.png$/m)
+    assert.match(desktopEntry, /^MimeType=x-scheme-handler\/codex;x-scheme-handler\/codex-browser-sidebar;$/m)
+    assert.ok(existsSync(join(dataHome, "icons/hicolor/256x256/apps/codex-desktop.png")))
+
+    const logPath = execFileSync(join(extractDir, "bin/codex-desktop"), ["logs", "--path"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        XDG_CACHE_HOME: cacheHome,
+      },
+    }).trim()
+    assert.equal(logPath, join(cacheHome, "codex-desktop/launcher.log"))
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
@@ -119,7 +146,10 @@ test("codex desktop formula documents the DMG conversion runtime", () => {
 
   assert.match(formula, /class CodexDesktop < Formula/)
   assert.match(formula, /converts an explicit/)
+  assert.match(formula, /def post_install/)
+  assert.match(formula, /CODEX_DESKTOP_BIN.*HOMEBREW_PREFIX/)
   assert.match(formula, /codex-desktop doctor/)
+  assert.doesNotMatch(formula, /codex-desktop install-desktop-entry/)
 })
 
 test("codex desktop auto-update mirrors upstream DMG polling", () => {
