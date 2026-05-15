@@ -1,8 +1,8 @@
 cask "codex-desktop" do
-  version "research.20260514171029.43c8bd1b5d4a"
-  sha256 "74059141240bd2d2d345d01bc5dee6cc0b0f341f83b25973de2bb36712a99d96"
+  version "dmg.20260514200933.de0f41408b3a"
+  sha256 "47dfd0a866bde6e5b7d77ee37185b55cb00e1e826bc88518005e3137196fde42"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-research.20260514171029.43c8bd1b5d4a/codex-desktop-linux-research.20260514171029.43c8bd1b5d4a.tar.gz"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-dmg.20260514200933.de0f41408b3a/codex-desktop-linux-dmg.20260514200933.de0f41408b3a.tar.gz"
   name "Codex Desktop"
   desc "Linux runtime for a DMG-converted Codex Desktop app"
   homepage "https://github.com/joshyorko/homebrew-tools"
