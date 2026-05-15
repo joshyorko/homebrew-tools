@@ -20,7 +20,7 @@ const RUST_IMAGE = "rust:1-bookworm"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO = "https://github.com/joshyorko/codex-desktop-linux"
-const CODEX_DESKTOP_CONVERSION_COMMIT = "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a"
+const CODEX_DESKTOP_CONVERSION_COMMIT = "3a419707886b680db15f2694299fa406a93b1878"
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 

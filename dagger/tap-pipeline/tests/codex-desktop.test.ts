@@ -142,7 +142,7 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
         "--version",
         "dmg.test",
         "--conversion-commit",
-        "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a",
+        "3a419707886b680db15f2694299fa406a93b1878",
         "--codex-dmg",
         dmgPath,
         "--rebuild-report",
