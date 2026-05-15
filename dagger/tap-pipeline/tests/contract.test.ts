@@ -91,6 +91,7 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
+      "codex-desktop-linux",
       "devpod-linux",
       "eitype",
       "fizzy-cli-master",
@@ -167,6 +168,19 @@ test("t3code CLI main uses timestamped main snapshots instead of smoke labels", 
   if (entry.autoUpdate.kind === "git_head_sha") {
     assert.equal(entry.autoUpdate.prefix, "main.")
     assert.equal(entry.autoUpdate.includeCommitDate, true)
+  }
+})
+
+test("codex desktop auto-update tracks the official upstream DMG", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
+
+  assert.ok(entry)
+  assert.equal(entry.autoUpdate.kind, "http_header_fingerprint")
+
+  if (entry.upstream.kind === "http_file") {
+    assert.equal(entry.upstream.url, "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg")
+  } else {
+    assert.fail("codex desktop should use the official Codex.dmg URL as its upstream source")
   }
 })
 

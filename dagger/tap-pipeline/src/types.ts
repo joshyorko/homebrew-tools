@@ -9,6 +9,7 @@ export type PackageKind =
   | "codex_desktop_linux_formula"
 
 export type AutoUpdateSlotId =
+  | "codex-desktop-2h"
   | "rcc-daily"
   | "action-server-daily"
   | "desktop-6h"
@@ -26,6 +27,10 @@ export type UpstreamSource =
   | {
       kind: "rpm"
       sourceUrl: string
+    }
+  | {
+      kind: "http_file"
+      url: string
     }
   | {
       kind: "github_release"
@@ -50,6 +55,11 @@ export type AutoUpdateStrategy =
   | {
       kind: "rpm_redirect"
       sourceUrl?: string
+    }
+  | {
+      kind: "http_header_fingerprint"
+      prefix?: string
+      shaLength?: number
     }
 
 export type PackageRegistryEntry = {

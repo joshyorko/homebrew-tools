@@ -41,16 +41,13 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     homebrewPath: "Formula/codex-desktop.rb",
     supportsPrCi: true,
     autoUpdate: {
-      kind: "git_head_sha",
-      ref: "main",
-      prefix: "research.",
+      kind: "http_header_fingerprint",
+      prefix: "dmg.",
       shaLength: 12,
-      includeCommitDate: true,
     },
     upstream: {
-      kind: "git",
-      repo: "https://github.com/ilysenko/codex-desktop-linux",
-      ref: "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a",
+      kind: "http_file",
+      url: "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg",
     },
   },
   {

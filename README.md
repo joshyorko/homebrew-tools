@@ -178,10 +178,10 @@ That smoke test is the real end-to-end path:
 ### Codex Desktop (Linux DMG Conversion Runtime)
 
 Codex Desktop Linux support follows the same core idea as
-[`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux): convert an
-explicit official `Codex.dmg`, patch the extracted app for Linux Electron, rebuild native modules,
-stage bundled resources, and package the resulting `codex-app/` as a Homebrew artifact through the
-tap's Dagger pipeline.
+[`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux): poll the official
+`https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`, convert that DMG, patch the extracted
+app for Linux Electron, rebuild native modules, stage bundled resources, and package the resulting
+`codex-app/` as a Homebrew artifact through the tap's Dagger pipeline.
 
 ```bash
 brew install joshyorko/tools/codex-desktop
@@ -194,11 +194,13 @@ codex-desktop web --inspect
 
 The Dagger package id is `codex-desktop-linux`, pinned to the field-research commit
 `43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a` from
-`ilysenko/codex-desktop-linux`. Use the Codex-specific Dagger targets with an explicit official
-`Codex.dmg` input for inspection and release bundle experiments:
+`ilysenko/codex-desktop-linux`. The tap auto-update workflow checks the official DMG every two
+hours. Use the standard release-bundle target for the upstream DMG path, or the Codex-specific target
+when testing a local DMG:
 
 ```bash
 dagger -m ./dagger/tap-pipeline call codex-desktop-renderer-report --codex-dmg=/path/to/Codex.dmg
+dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle release-bundle --package-id=codex-desktop-linux
 dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle codex-desktop-release-bundle --codex-dmg=/path/to/Codex.dmg
 ```
 

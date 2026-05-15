@@ -7,6 +7,10 @@ import { execFileSync } from "node:child_process"
 
 const repoRoot = new URL("../../..", import.meta.url)
 const scriptPath = new URL("../../../scripts/package-codex-desktop-linux.mjs", import.meta.url)
+const conversionPatchScriptPath = new URL(
+  "../../../scripts/patch-codex-desktop-conversion.mjs",
+  import.meta.url,
+)
 
 function writeExecutable(path: string, contents: string): void {
   writeFileSync(path, contents, { mode: 0o755 })
@@ -116,4 +120,72 @@ test("codex desktop formula documents the DMG conversion runtime", () => {
   assert.match(formula, /class CodexDesktop < Formula/)
   assert.match(formula, /converts an explicit/)
   assert.match(formula, /codex-desktop doctor/)
+})
+
+test("codex desktop auto-update mirrors upstream DMG polling", () => {
+  const workflow = readFileSync(new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url), "utf8")
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+
+  assert.match(workflow, /codex-desktop-2h/)
+  assert.match(workflow, /13 \*\/2 \* \* \*/)
+  assert.match(workflow, /release-bundle\s+--package-id="\$\{\{ matrix\.package_id \}\}"/)
+  assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
+  assert.match(pipeline, /scripts\/install-deps\.sh/)
+  assert.match(pipeline, /patch-codex-desktop-conversion\.mjs/)
+  assert.doesNotMatch(pipeline, /ca-certificates cargo curl/)
+  assert.doesNotMatch(pipeline, /p7zip-full rustc sudo/)
+  assert.match(pipeline, /root\/\.local\/bin:\$PATH/)
+})
+
+test("codex desktop conversion patch handles Electron 42 native modules", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "codex-desktop-patch-test-"))
+  const conversionDir = join(tmp, "conversion")
+  const moduleDir = join(tmp, "better-sqlite3")
+
+  try {
+    mkdirSync(join(conversionDir, "scripts/lib"), { recursive: true })
+    mkdirSync(join(moduleDir, "src/util"), { recursive: true })
+
+    writeFileSync(
+      join(conversionDir, "scripts/lib/native-modules.sh"),
+      [
+        "#!/bin/bash",
+        "build_native_modules() {",
+        '    npm install "better-sqlite3@$bs3_build_ver" "node-pty@$npty_ver" --ignore-scripts 2>&1 >&2',
+        "}",
+      ].join("\n"),
+    )
+    writeFileSync(
+      join(moduleDir, "src/better_sqlite3.cpp"),
+      "\tv8::Local<v8::External> data = v8::External::New(isolate, addon);\n",
+    )
+    writeFileSync(
+      join(moduleDir, "src/util/macros.cpp"),
+      "#define OnlyAddon static_cast<Addon*>(info.Data().As<v8::External>()->Value())\n",
+    )
+    writeFileSync(
+      join(moduleDir, "src/util/helpers.cpp"),
+      ["\t\tfunc,", "\t\t0,", "\t\tdata"].join("\n"),
+    )
+
+    execFileSync(process.execPath, [conversionPatchScriptPath.pathname, "--conversion-dir", conversionDir], {
+      cwd: repoRoot.pathname,
+    })
+    execFileSync(process.execPath, [conversionPatchScriptPath.pathname, "--better-sqlite3-dir", moduleDir], {
+      cwd: repoRoot.pathname,
+    })
+
+    const nativeModules = readFileSync(join(conversionDir, "scripts/lib/native-modules.sh"), "utf8")
+    assert.match(nativeModules, /patch-codex-desktop-conversion\.mjs" --better-sqlite3-dir/)
+
+    const betterSqlite = readFileSync(join(moduleDir, "src/better_sqlite3.cpp"), "utf8")
+    const macros = readFileSync(join(moduleDir, "src/util/macros.cpp"), "utf8")
+    const helpers = readFileSync(join(moduleDir, "src/util/helpers.cpp"), "utf8")
+
+    assert.match(betterSqlite, /External::New\(isolate, addon, v8::kExternalPointerTypeTagDefault\)/)
+    assert.match(macros, /Value\(v8::kExternalPointerTypeTagDefault\)/)
+    assert.match(helpers, /nullptr/)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
