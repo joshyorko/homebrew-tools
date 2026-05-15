@@ -263,6 +263,8 @@ type CodexDesktopBuild = {
   assetName: string
   container: Container
   conversionCommit: string
+  metadata: Record<string, unknown>
+  metadataPath: string
   version: string
 }
 
@@ -373,7 +375,7 @@ export class TapPipeline {
           "bytes=$(wc -c < /inputs/Codex.dmg | tr -d ' ')",
           "kind=$(file -b /inputs/Codex.dmg)",
           "entries=$(7z l -ba /inputs/Codex.dmg 2>/dev/null | awk '{$1=$1; print}' | head -200 | jq -R -s 'split(\"\\n\")[:-1]')",
-          "jq -n --arg package codex-desktop-linux --arg repo \"" + CODEX_DESKTOP_CONVERSION_REPO + "\" --arg commit \"" + CODEX_DESKTOP_CONVERSION_COMMIT + "\" --arg sha \"$sha\" --arg bytes \"$bytes\" --arg kind \"$kind\" --argjson entries \"$entries\" '{package: $package, upstream_conversion_repo: $repo, upstream_conversion_commit: $commit, codex_dmg_sha256: $sha, codex_dmg_bytes: ($bytes | tonumber), codex_dmg_file_type: $kind, dmg_listing_sample: $entries, redistributes_openai_payload: false}'",
+          "jq -n --arg package codex-desktop-linux --arg repo \"" + CODEX_DESKTOP_CONVERSION_REPO + "\" --arg commit \"" + CODEX_DESKTOP_CONVERSION_COMMIT + "\" --arg sha \"$sha\" --arg bytes \"$bytes\" --arg kind \"$kind\" --argjson entries \"$entries\" '{package: $package, upstream_conversion_repo: $repo, upstream_conversion_commit: $commit, codex_dmg_sha256: $sha, codex_dmg_bytes: ($bytes | tonumber), codex_dmg_file_type: $kind, dmg_listing_sample: $entries}'",
         ].join("\n"),
       ])
       .stdout()
@@ -388,7 +390,6 @@ export class TapPipeline {
         browser_mode_status: "research",
         requires_codex_dmg_input: true,
         loopback_only_default: true,
-        redistributes_openai_payload: false,
       })
     }
 
@@ -400,7 +401,7 @@ export class TapPipeline {
       serves_extracted_renderer: false,
       required_next_steps: [
         "Extract app metadata and detect Electron version from the explicit DMG input.",
-        "Generate an opaque renderer/preload surface inventory without committing proprietary source.",
+        "Generate a renderer/preload surface inventory.",
         "Test a loopback-only browser shim against codex app-server.",
       ],
     })
@@ -502,6 +503,48 @@ export class TapPipeline {
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
       .withEnvVariable("PATH", "/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+  }
+
+  private codexDesktopBaseContainer(): Container {
+    return dag
+      .container()
+      .from(NODE_IMAGE)
+      .withMountedCache(
+        "/root/.npm",
+        dag.cacheVolume("tap-pipeline-codex-desktop-npm-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.cache/codex-desktop/electron",
+        dag.cacheVolume("tap-pipeline-codex-desktop-electron-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.cache/codex-desktop/node-runtime",
+        dag.cacheVolume("tap-pipeline-codex-desktop-node-runtime-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.cargo/registry",
+        dag.cacheVolume("tap-pipeline-codex-desktop-cargo-registry-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.cargo/git",
+        dag.cacheVolume("tap-pipeline-codex-desktop-cargo-git-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates cargo curl file g++ git jq make pkg-config python3 p7zip-full rustc tar unzip xz-utils",
+          "npm install -g node-gyp",
+          "rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
+      ])
   }
 
   private goBaseContainer(): Container {
@@ -746,7 +789,7 @@ export class TapPipeline {
         artifactSha256: sha256,
         downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/codex-desktop-linux-${build.version}/${build.assetName}`,
         releaseTitle: `Codex Desktop Linux ${build.version}`,
-        releaseNotes: "Metadata-only Linux runtime skeleton for personal Codex Desktop conversion workflows.",
+        releaseNotes: "Homebrew artifact built by converting an explicit official Codex.dmg into a Linux Electron runtime.",
         commitMessage: `Update codex-desktop formula to ${build.version}`,
         upstream: {
           kind: "git",
@@ -756,14 +799,7 @@ export class TapPipeline {
           commit: build.conversionCommit,
         },
       }),
-      upstream_conversion_repo: CODEX_DESKTOP_CONVERSION_REPO,
-      upstream_conversion_commit: build.conversionCommit,
-      codex_dmg_sha256: null,
-      electron_version: null,
-      managed_node_version: "24",
-      updater_enabled: false,
-      browser_mode_status: "research",
-      redistributes_openai_payload: false,
+      ...build.metadata,
     }
   }
 
@@ -1051,11 +1087,12 @@ export class TapPipeline {
     }
   }
 
-  private async buildCodexDesktopArtifact(tap: Directory, codexDmg?: File): Promise<CodexDesktopBuild> {
-    const version = CODEX_DESKTOP_VERSION
+  private async buildCodexDesktopFixtureArtifact(tap: Directory): Promise<CodexDesktopBuild> {
+    const version = "fixture.0"
     const assetName = `codex-desktop-linux-${version}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
-    const baseContainer = dag
+    const metadataPath = "/tmp/codex-desktop-linux-metadata.json"
+    const container = dag
       .container()
       .from(NODE_IMAGE)
       .withExec([
@@ -1064,28 +1101,117 @@ export class TapPipeline {
         "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates tar && rm -rf /var/lib/apt/lists/*",
       ])
       .withDirectory("/tap", tap)
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /work/fixture-app/resources/node-runtime/bin /work/fixture-app/.codex-linux /work/reports",
+          "printf '#!/usr/bin/env bash\\nset -euo pipefail\\necho \"fixture desktop launch:$*\"\\n' > /work/fixture-app/start.sh",
+          "chmod +x /work/fixture-app/start.sh",
+          "printf '#!/usr/bin/env bash\\necho electron fixture\\n' > /work/fixture-app/electron",
+          "chmod +x /work/fixture-app/electron",
+          "printf '#!/usr/bin/env bash\\nif [ \"${1:-}\" = -v ]; then echo v22.22.2; else echo node fixture; fi\\n' > /work/fixture-app/resources/node-runtime/bin/node",
+          "chmod +x /work/fixture-app/resources/node-runtime/bin/node",
+          "printf 'fixture-asar' > /work/fixture-app/resources/app.asar",
+          "printf '41.3.0\\n' > /work/fixture-app/version",
+          "printf 'fixture-png' > /work/fixture-app/.codex-linux/codex-desktop.png",
+          "printf '{\"electronVersion\":\"41.3.0\",\"appDir\":\"/work/fixture-app\"}\\n' > /work/reports/rebuild-report.json",
+          "printf '{\"mainBundle\":\"main.js\",\"patches\":[{\"id\":\"fixture\",\"status\":\"changed\"}]}\\n' > /work/reports/patch-report.json",
+        ].join("\n"),
+      ])
+      .withExec([
+        "node",
+        "/tap/scripts/package-codex-desktop-linux.mjs",
+        "--app-dir",
+        "/work/fixture-app",
+        "--version",
+        version,
+        "--conversion-commit",
+        CODEX_DESKTOP_CONVERSION_COMMIT,
+        "--rebuild-report",
+        "/work/reports/rebuild-report.json",
+        "--patch-report",
+        "/work/reports/patch-report.json",
+        "--metadata-output",
+        metadataPath,
+        "--output",
+        artifactPath,
+      ])
 
-    const inputContainer = codexDmg
-      ? baseContainer.withFile("/inputs/Codex.dmg", codexDmg)
-      : baseContainer
-    const inputArgs = codexDmg ? ["--codex-dmg", "/inputs/Codex.dmg"] : []
-    const container = inputContainer.withExec([
-      "node",
-      "/tap/scripts/package-codex-desktop-linux.mjs",
-      "--version",
-      version,
-      "--conversion-commit",
-      CODEX_DESKTOP_CONVERSION_COMMIT,
-      "--output",
-      artifactPath,
-      ...inputArgs,
-    ])
+    const metadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
 
     return {
       artifactPath,
       assetName,
       container,
       conversionCommit: CODEX_DESKTOP_CONVERSION_COMMIT,
+      metadata,
+      metadataPath,
+      version,
+    }
+  }
+
+  private async buildCodexDesktopArtifact(tap: Directory, codexDmg: File): Promise<CodexDesktopBuild> {
+    const version = CODEX_DESKTOP_VERSION
+    const assetName = `codex-desktop-linux-${version}.tar.gz`
+    const artifactPath = `/tmp/${assetName}`
+    const metadataPath = "/work/codex-desktop-linux-metadata.json"
+    const conversionRef = dag.git(CODEX_DESKTOP_CONVERSION_REPO).ref(CODEX_DESKTOP_CONVERSION_COMMIT)
+    const conversionCommit = await conversionRef.commit()
+    const container = this.codexDesktopBaseContainer()
+      .withDirectory("/tap", tap)
+      .withDirectory("/conversion", conversionRef.tree({ discardGitDir: true }))
+      .withFile("/inputs/Codex.dmg", codexDmg)
+      .withWorkdir("/conversion")
+      .withEnvVariable("CODEX_INSTALL_DIR", "/work/codex-app")
+      .withEnvVariable("CODEX_INSTALL_ALLOW_RUNNING", "1")
+      .withEnvVariable("CODEX_ELECTRON_CACHE_DIR", "/root/.cache/codex-desktop/electron")
+      .withEnvVariable("CODEX_MANAGED_NODE_CACHE_DIR", "/root/.cache/codex-desktop/node-runtime")
+      .withEnvVariable("CODEX_PATCH_REPORT_JSON", "/work/reports/patch-report.json")
+      .withEnvVariable("CODEX_REBUILD_REPORT_JSON", "/work/reports/rebuild-report.json")
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /work/reports",
+          "./install.sh --fresh /inputs/Codex.dmg",
+        ].join("\n"),
+      ])
+      .withExec([
+        "node",
+        "/tap/scripts/package-codex-desktop-linux.mjs",
+        "--app-dir",
+        "/work/codex-app",
+        "--version",
+        version,
+        "--conversion-repo",
+        CODEX_DESKTOP_CONVERSION_REPO,
+        "--conversion-commit",
+        conversionCommit,
+        "--codex-dmg",
+        "/inputs/Codex.dmg",
+        "--icon",
+        "/conversion/assets/codex.png",
+        "--rebuild-report",
+        "/work/reports/rebuild-report.json",
+        "--patch-report",
+        "/work/reports/patch-report.json",
+        "--metadata-output",
+        metadataPath,
+        "--output",
+        artifactPath,
+      ])
+    const metadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
+
+    return {
+      artifactPath,
+      assetName,
+      container,
+      conversionCommit,
+      metadata,
+      metadataPath,
       version,
     }
   }
@@ -2063,7 +2189,7 @@ export class TapPipeline {
           .stdout()
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifact(tap)
+        const build = await this.buildCodexDesktopFixtureArtifact(tap)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -2094,6 +2220,7 @@ export class TapPipeline {
               "brew test test/tap/codex-desktop",
               "test -x \"$(brew --prefix)/bin/codex-desktop\"",
               "codex-desktop --help",
+              "codex-desktop desktop --smoke",
               "codex-desktop web --inspect",
             ].join("\n"),
           ])
@@ -2309,11 +2436,7 @@ export class TapPipeline {
         return json(this.t3CodeReleaseMetadata(build))
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifact(tap)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        return json(this.codexDesktopReleaseMetadata(build, sha256))
+        throw new Error("codex-desktop-linux release metadata requires an explicit Codex.dmg input. Use codexDesktopReleaseBundle instead.")
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
@@ -2497,22 +2620,7 @@ export class TapPipeline {
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifact(tap)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const release = this.codexDesktopReleaseMetadata(build, sha256)
-        const formulaContents = await tap.file("Formula/codex-desktop.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-
-        return dag.directory()
-          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedFormula))
-          .withFile("release.json", dag.file("release.json", json(release)))
-          .withFile("ci.log", dag.file("ci.log", ciLog))
+        throw new Error("codex-desktop-linux release bundles require an explicit Codex.dmg input. Use codexDesktopReleaseBundle instead.")
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
