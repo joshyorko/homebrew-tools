@@ -25,6 +25,7 @@ const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "33f60d16f927de63a28e990361d9f41ba9060807"
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
+const CODEX_DESKTOP_LINUX_FEATURES = ["remote-mobile-control"]
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
@@ -1265,6 +1266,7 @@ export class TapPipeline {
       .withEnvVariable("CODEX_INSTALL_DIR", "/work/codex-app")
       .withEnvVariable("CODEX_INSTALL_ALLOW_RUNNING", "1")
       .withEnvVariable("CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1")
+      .withEnvVariable("CODEX_LINUX_FEATURES_CONFIG", "/work/linux-features.json")
       .withEnvVariable("CODEX_ELECTRON_CACHE_DIR", "/root/.cache/codex-desktop/electron")
       .withEnvVariable("CODEX_MANAGED_NODE_CACHE_DIR", "/root/.cache/codex-desktop/node-runtime")
       .withEnvVariable("CODEX_PATCH_REPORT_JSON", "/work/reports/patch-report.json")
@@ -1275,6 +1277,7 @@ export class TapPipeline {
         [
           "set -euo pipefail",
           "mkdir -p /work/reports",
+          `printf '%s\\n' '${JSON.stringify({ enabled: CODEX_DESKTOP_LINUX_FEATURES })}' > /work/linux-features.json`,
           "node /tap/scripts/patch-codex-desktop-conversion.mjs --conversion-dir /conversion",
           "bash scripts/install-deps.sh",
           "export PATH=\"/root/.local/bin:$PATH\"",
@@ -1309,6 +1312,7 @@ export class TapPipeline {
     const packageMetadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
     const metadata: Record<string, unknown> = {
       ...packageMetadata,
+      linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES,
     }
 
     if (dmgMetadata) {

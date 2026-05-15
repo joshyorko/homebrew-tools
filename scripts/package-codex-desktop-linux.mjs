@@ -671,6 +671,25 @@ function patchLinuxWebviewServerStaleDetection(appDir) {
   return { patched: true, file: relative(appDir, launcherPath) }
 }
 
+function linuxFeaturesEnabled() {
+  const configPath = process.env.CODEX_LINUX_FEATURES_CONFIG?.trim()
+  if (!configPath || !existsSync(configPath)) {
+    return []
+  }
+
+  try {
+    const config = JSON.parse(readFileSync(configPath, "utf8"))
+    if (!Array.isArray(config.enabled)) {
+      return []
+    }
+    return config.enabled
+      .filter((feature) => typeof feature === "string" && feature.length > 0)
+      .sort()
+  } catch {
+    return []
+  }
+}
+
 function findAsset(appDir, pattern) {
   const assetsDir = join(appDir, "content/webview/assets")
   if (!existsSync(assetsDir)) {
@@ -1644,6 +1663,7 @@ function main() {
     linux_webview_app_icons_files: linuxWebviewAppIconsCopy.files,
     linux_webview_server_stale_detection_patched: linuxWebviewServerStaleDetectionPatch.patched,
     linux_webview_server_stale_detection_file: linuxWebviewServerStaleDetectionPatch.file,
+    linux_features_enabled: linuxFeaturesEnabled(),
     linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
     browser_mode_status: "research",
