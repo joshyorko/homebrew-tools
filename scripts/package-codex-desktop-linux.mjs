@@ -241,6 +241,178 @@ prepare_runtime_path() {
   export PATH
 }
 
+flatpak_app_installed() {
+  local app_id="$1"
+  has_command flatpak || return 1
+  flatpak info "$app_id" >/dev/null 2>&1
+}
+
+write_flatpak_browser_shim() {
+  local shim_dir="$1"
+  local command_name="$2"
+  local app_id="$3"
+  local shim="$shim_dir/$command_name"
+
+  mkdir -p "$shim_dir"
+  cat > "$shim" <<SHIM
+#!/usr/bin/env sh
+exec flatpak run $app_id "\\$@"
+SHIM
+  chmod 755 "$shim"
+}
+
+chrome_plugin_arch() {
+  case "$(uname -m)" in
+    x86_64) echo "x64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) return 1 ;;
+  esac
+}
+
+chrome_plugin_host_path() {
+  local arch
+  arch="$(chrome_plugin_arch)" || return 1
+
+  local candidate
+  for candidate in \
+    "$app_dir/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/$arch/extension-host" \
+    "$HOME/.codex/plugins/cache/openai-bundled/chrome/latest/extension-host/linux/$arch/extension-host"
+  do
+    if [ -x "$candidate" ]; then
+      readlink -f "$candidate" 2>/dev/null || printf '%s\\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+chrome_plugin_metadata() {
+  local field="$1"
+  local fallback="$2"
+  local extension_json="$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/extension-id.json"
+  local install_manifest="$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/installManifest.mjs"
+
+  python3 - "$field" "$fallback" "$extension_json" "$install_manifest" <<'PY' 2>/dev/null || printf '%s\\n' "$fallback"
+import json
+import pathlib
+import re
+import sys
+
+field, fallback, extension_json, install_manifest = sys.argv[1:5]
+value = None
+
+try:
+    data = json.loads(pathlib.Path(extension_json).read_text(encoding="utf-8"))
+    value = data.get(field)
+except OSError:
+    pass
+except json.JSONDecodeError:
+    pass
+
+if not isinstance(value, str) or not value:
+    try:
+        text = pathlib.Path(install_manifest).read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    pattern = rf'{re.escape(field)}\\s*:\\s*"([^"]+)"'
+    match = re.search(pattern, text)
+    if match:
+        value = match.group(1)
+
+print(value if isinstance(value, str) and value else fallback)
+PY
+}
+
+write_flatpak_native_host_manifest() {
+  local app_id="$1"
+  local browser_config_dir="$2"
+  local host_path="$3"
+  local extension_id="$4"
+  local host_name="$5"
+  local native_dir="$HOME/.var/app/$app_id/config/$browser_config_dir/NativeMessagingHosts"
+  local wrapper_dir="$HOME/.var/app/$app_id/config/codex-desktop"
+  local wrapper="$wrapper_dir/$host_name"
+  local manifest="$native_dir/$host_name.json"
+
+  mkdir -p "$native_dir" "$wrapper_dir"
+  cat > "$wrapper" <<WRAPPER
+#!/usr/bin/env sh
+exec /usr/bin/flatpak-spawn --host "$host_path" "\\$@"
+WRAPPER
+  chmod 755 "$wrapper"
+
+  python3 - "$manifest" "$host_name" "$wrapper" "$extension_id" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest, host_name, wrapper, extension_id = sys.argv[1:5]
+payload = {
+    "name": host_name,
+    "description": "Codex chrome native messaging host",
+    "type": "stdio",
+    "path": wrapper,
+    "allowed_origins": [f"chrome-extension://{extension_id}/"],
+}
+path = pathlib.Path(manifest)
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+PY
+}
+
+prepare_flatpak_browser_integration() {
+  local shim_dir="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/flatpak-bin"
+  local host_path=""
+  local extension_id=""
+  local host_name=""
+
+  if ! has_command google-chrome && ! has_command chrome && flatpak_app_installed com.google.Chrome; then
+    write_flatpak_browser_shim "$shim_dir" google-chrome com.google.Chrome
+    write_flatpak_browser_shim "$shim_dir" chrome com.google.Chrome
+    path_prepend_if_dir "$shim_dir"
+  fi
+
+  if ! has_command chromium && ! has_command chromium-browser && flatpak_app_installed org.chromium.Chromium; then
+    write_flatpak_browser_shim "$shim_dir" chromium org.chromium.Chromium
+    write_flatpak_browser_shim "$shim_dir" chromium-browser org.chromium.Chromium
+    path_prepend_if_dir "$shim_dir"
+  fi
+
+  if ! has_command brave-browser && ! has_command brave && flatpak_app_installed com.brave.Browser; then
+    write_flatpak_browser_shim "$shim_dir" brave-browser com.brave.Browser
+    write_flatpak_browser_shim "$shim_dir" brave com.brave.Browser
+    path_prepend_if_dir "$shim_dir"
+  fi
+
+  if [ -z "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
+    if flatpak_app_installed com.google.Chrome && [ -d "$HOME/.var/app/com.google.Chrome/config/google-chrome" ]; then
+      export CODEX_CHROME_USER_DATA_DIR="$HOME/.var/app/com.google.Chrome/config/google-chrome"
+    elif flatpak_app_installed com.brave.Browser && [ -d "$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser" ]; then
+      export CODEX_CHROME_USER_DATA_DIR="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"
+    elif flatpak_app_installed org.chromium.Chromium && [ -d "$HOME/.var/app/org.chromium.Chromium/config/chromium" ]; then
+      export CODEX_CHROME_USER_DATA_DIR="$HOME/.var/app/org.chromium.Chromium/config/chromium"
+    fi
+  fi
+
+  host_path="$(chrome_plugin_host_path || true)"
+  [ -n "$host_path" ] || return 0
+  extension_id="$(chrome_plugin_metadata extensionId hehggadaopoacecdllhhajmbjkdcmajg)"
+  host_name="$(chrome_plugin_metadata extensionHostName com.openai.codexextension)"
+
+  if flatpak_app_installed com.google.Chrome && [ -d "$HOME/.var/app/com.google.Chrome/config/google-chrome" ]; then
+    write_flatpak_native_host_manifest com.google.Chrome google-chrome "$host_path" "$extension_id" "$host_name" || true
+  fi
+  if flatpak_app_installed org.chromium.Chromium && [ -d "$HOME/.var/app/org.chromium.Chromium/config/chromium" ]; then
+    write_flatpak_native_host_manifest org.chromium.Chromium chromium "$host_path" "$extension_id" "$host_name" || true
+  fi
+  if flatpak_app_installed com.brave.Browser && [ -d "$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser" ]; then
+    write_flatpak_native_host_manifest com.brave.Browser BraveSoftware/Brave-Browser "$host_path" "$extension_id" "$host_name" || true
+  fi
+
+  export PATH
+}
+
 usage() {
   cat <<'USAGE'
 Usage: codex-desktop [command] [args]
@@ -351,6 +523,11 @@ doctor() {
 
   if has_command chromium || has_command chromium-browser || has_command google-chrome || has_command google-chrome-stable; then
     echo "ok: Chromium/Chrome is available for browser research"
+  elif flatpak_app_installed com.google.Chrome; then
+    echo "ok: Google Chrome Flatpak is available for browser research"
+    if [ -n "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
+      echo "ok: Chrome Flatpak profile: $CODEX_CHROME_USER_DATA_DIR"
+    fi
   else
     echo "missing: Chromium/Chrome for browser research"
   fi
@@ -480,6 +657,7 @@ case "\${1:-desktop}" in
   desktop)
     shift
     prepare_runtime_path
+    prepare_flatpak_browser_integration
     launch_desktop "$@"
     ;;
   logs)
@@ -495,6 +673,7 @@ case "\${1:-desktop}" in
     ;;
   doctor)
     prepare_runtime_path
+    prepare_flatpak_browser_integration
     doctor
     ;;
   install-desktop-entry)

@@ -20,6 +20,10 @@ function createConvertedAppFixture(root: string): string {
   const appDir = join(root, "codex-app")
   mkdirSync(join(appDir, "resources/node-runtime/bin"), { recursive: true })
   mkdirSync(join(appDir, "resources/plugins/openai-bundled/plugins/computer-use/bin"), { recursive: true })
+  mkdirSync(join(appDir, "resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64"), {
+    recursive: true,
+  })
+  mkdirSync(join(appDir, "resources/plugins/openai-bundled/plugins/chrome/scripts"), { recursive: true })
   mkdirSync(join(appDir, ".codex-linux"), { recursive: true })
   mkdirSync(join(appDir, "content/webview/assets"), { recursive: true })
 
@@ -39,6 +43,14 @@ function createConvertedAppFixture(root: string): string {
   writeExecutable(
     join(appDir, "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic"),
     "#!/usr/bin/env bash\necho cosmic fixture\n",
+  )
+  writeExecutable(
+    join(appDir, "resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64/extension-host"),
+    "#!/usr/bin/env bash\necho chrome native host fixture\n",
+  )
+  writeFileSync(
+    join(appDir, "resources/plugins/openai-bundled/plugins/chrome/scripts/extension-id.json"),
+    `${JSON.stringify({ extensionId: "hehggadaopoacecdllhhajmbjkdcmajg", extensionHostName: "com.openai.codexextension" })}\n`,
   )
   writeFileSync(join(appDir, "resources/app.asar"), "fixture-asar")
   writeFileSync(join(appDir, "version"), "41.3.0\n")
@@ -135,11 +147,28 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     const cacheHome = join(tmp, "xdg-cache")
     const caskPrefix = join(tmp, "homebrew")
     const caskRoot = join(caskPrefix, "Caskroom/codex-desktop/dmg.test")
+    const flatpakBin = join(tmp, ".local/bin")
+    const flatpakChromeProfile = join(tmp, ".var/app/com.google.Chrome/config/google-chrome")
     mkdirSync(join(caskPrefix, "bin"), { recursive: true })
     mkdirSync(caskRoot, { recursive: true })
+    mkdirSync(join(flatpakChromeProfile, "Default"), { recursive: true })
+    mkdirSync(join(flatpakChromeProfile, "NativeMessagingHosts"), { recursive: true })
+    mkdirSync(flatpakBin, { recursive: true })
     cpSync(join(extractDir, "bin"), join(caskRoot, "bin"), { recursive: true })
     cpSync(join(extractDir, "share"), join(caskRoot, "share"), { recursive: true })
     writeExecutable(join(caskPrefix, "bin/codex"), "#!/usr/bin/env bash\necho codex cli fixture\n")
+    writeExecutable(
+      join(flatpakBin, "flatpak"),
+      [
+        "#!/usr/bin/env bash",
+        "case \"${1:-}:${2:-}\" in",
+        "  info:com.google.Chrome) exit 0 ;;",
+        "  run:com.google.Chrome) shift 2; echo flatpak chrome launch:\"$@\" ;;",
+        "  *) exit 1 ;;",
+        "esac",
+      ].join("\n"),
+    )
+    writeFileSync(join(flatpakChromeProfile, "Default/Preferences"), "{}\n")
 
     const appGridLaunch = execFileSync(join(caskRoot, "bin/codex-desktop"), ["desktop", "--smoke"], {
       encoding: "utf8",
@@ -152,6 +181,29 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     })
     assert.match(appGridLaunch, /fixture desktop launch:--smoke/)
     assert.match(appGridLaunch, /fixture codex path:.*\/homebrew\/bin\/codex/)
+
+    const flatpakShim = readFileSync(join(cacheHome, "codex-desktop/flatpak-bin/google-chrome"), "utf8")
+    assert.match(flatpakShim, /flatpak run com\.google\.Chrome/)
+
+    const nativeHostWrapperPath = join(
+      tmp,
+      ".var/app/com.google.Chrome/config/codex-desktop/com.openai.codexextension",
+    )
+    const nativeHostWrapper = readFileSync(nativeHostWrapperPath, "utf8")
+    assert.match(nativeHostWrapper, /flatpak-spawn --host/)
+    assert.match(nativeHostWrapper, /extension-host/)
+
+    const flatpakManifest = JSON.parse(
+      readFileSync(
+        join(flatpakChromeProfile, "NativeMessagingHosts/com.openai.codexextension.json"),
+        "utf8",
+      ),
+    )
+    assert.equal(flatpakManifest.name, "com.openai.codexextension")
+    assert.equal(flatpakManifest.path, nativeHostWrapperPath)
+    assert.deepEqual(flatpakManifest.allowed_origins, [
+      "chrome-extension://hehggadaopoacecdllhhajmbjkdcmajg/",
+    ])
 
     const desktopInstall = execFileSync(join(extractDir, "bin/codex-desktop"), ["install-desktop-entry"], {
       encoding: "utf8",
