@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
@@ -29,7 +29,14 @@ function createConvertedAppFixture(root: string): string {
 
   writeExecutable(
     join(appDir, "start.sh"),
-    "#!/usr/bin/env bash\nset -euo pipefail\necho \"fixture desktop launch:$*\"\necho \"fixture codex path:$(command -v codex || true)\"\n",
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "echo \"fixture desktop launch:$*\"",
+      "echo \"fixture codex path:$(command -v codex || true)\"",
+      "echo \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"",
+      "",
+    ].join("\n"),
   )
   writeExecutable(join(appDir, "electron"), "#!/usr/bin/env bash\necho electron fixture\n")
   writeExecutable(
@@ -138,17 +145,24 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.match(help, /Usage: codex-desktop/)
     assert.match(help, /desktop/)
 
-    const launch = execFileSync(join(extractDir, "bin/codex-desktop"), ["desktop", "--smoke"], {
-      encoding: "utf8",
-    })
-    assert.match(launch, /fixture desktop launch:--smoke/)
-
     const dataHome = join(tmp, "xdg-data")
     const cacheHome = join(tmp, "xdg-cache")
     const caskPrefix = join(tmp, "homebrew")
     const caskRoot = join(caskPrefix, "Caskroom/codex-desktop/dmg.test")
     const flatpakBin = join(tmp, ".local/bin")
     const flatpakChromeProfile = join(tmp, ".var/app/com.google.Chrome/config/google-chrome")
+    const osReleasePath = join(tmp, "os-release")
+    const nonBluefinOsReleasePath = join(tmp, "non-bluefin-os-release")
+    writeFileSync(nonBluefinOsReleasePath, "NAME=Debian\nID=debian\n")
+
+    const launch = execFileSync(join(extractDir, "bin/codex-desktop"), ["desktop", "--smoke"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CODEX_DESKTOP_OS_RELEASE_FILE: nonBluefinOsReleasePath,
+      },
+    })
+    assert.match(launch, /fixture desktop launch:--smoke/)
     mkdirSync(join(caskPrefix, "bin"), { recursive: true })
     mkdirSync(caskRoot, { recursive: true })
     mkdirSync(join(flatpakChromeProfile, "Default"), { recursive: true })
@@ -169,21 +183,31 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
       ].join("\n"),
     )
     writeFileSync(join(flatpakChromeProfile, "Default/Preferences"), "{}\n")
+    writeFileSync(osReleasePath, "NAME=Bluefin\nVARIANT_ID=bluefin\nID_LIKE=\"ublue fedora\"\n")
+
+    const bluefinWaylandEnv = {
+      HOME: tmp,
+      PATH: "/usr/bin:/bin",
+      XDG_CACHE_HOME: cacheHome,
+      XDG_DATA_HOME: dataHome,
+      XDG_SESSION_TYPE: "wayland",
+      WAYLAND_DISPLAY: "wayland-0",
+      XDG_CURRENT_DESKTOP: "GNOME",
+      CODEX_DESKTOP_OS_RELEASE_FILE: osReleasePath,
+    }
 
     const appGridLaunch = execFileSync(join(caskRoot, "bin/codex-desktop"), ["desktop", "--smoke"], {
       encoding: "utf8",
-      env: {
-        HOME: tmp,
-        PATH: "/usr/bin:/bin",
-        XDG_CACHE_HOME: cacheHome,
-        XDG_DATA_HOME: dataHome,
-      },
+      env: bluefinWaylandEnv,
     })
-    assert.match(appGridLaunch, /fixture desktop launch:--smoke/)
+    assert.match(appGridLaunch, /fixture desktop launch:--x11 --smoke/)
     assert.match(appGridLaunch, /fixture codex path:.*\/homebrew\/bin\/codex/)
+    assert.match(appGridLaunch, new RegExp(`fixture chrome user data:${flatpakChromeProfile}`))
 
     const flatpakShim = readFileSync(join(cacheHome, "codex-desktop/flatpak-bin/google-chrome"), "utf8")
     assert.match(flatpakShim, /flatpak run com\.google\.Chrome/)
+    const flatpakChromeShim = readFileSync(join(cacheHome, "codex-desktop/flatpak-bin/chrome"), "utf8")
+    assert.match(flatpakChromeShim, /flatpak run com\.google\.Chrome/)
 
     const nativeHostWrapperPath = join(
       tmp,
@@ -205,6 +229,34 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
       "chrome-extension://hehggadaopoacecdllhhajmbjkdcmajg/",
     ])
 
+    const ozoneWaylandLaunch = execFileSync(join(caskRoot, "bin/codex-desktop"), ["desktop", "--smoke"], {
+      encoding: "utf8",
+      env: {
+        ...bluefinWaylandEnv,
+        CODEX_DESKTOP_LINUX_OZONE: "wayland",
+      },
+    })
+    assert.match(ozoneWaylandLaunch, /fixture desktop launch:--wayland --smoke/)
+    assert.doesNotMatch(ozoneWaylandLaunch, /fixture desktop launch:--x11 --wayland/)
+
+    const explicitWaylandLaunch = execFileSync(
+      join(caskRoot, "bin/codex-desktop"),
+      ["desktop", "--wayland", "--smoke"],
+      {
+        encoding: "utf8",
+        env: bluefinWaylandEnv,
+      },
+    )
+    assert.match(explicitWaylandLaunch, /fixture desktop launch:--wayland --smoke/)
+    assert.doesNotMatch(explicitWaylandLaunch, /fixture desktop launch:--x11 --wayland/)
+
+    const explicitX11Launch = execFileSync(join(caskRoot, "bin/codex-desktop"), ["desktop", "--x11", "--smoke"], {
+      encoding: "utf8",
+      env: bluefinWaylandEnv,
+    })
+    assert.match(explicitX11Launch, /fixture desktop launch:--x11 --smoke/)
+    assert.doesNotMatch(explicitX11Launch, /--x11 --x11/)
+
     const desktopInstall = execFileSync(join(extractDir, "bin/codex-desktop"), ["install-desktop-entry"], {
       encoding: "utf8",
       env: {
@@ -219,6 +271,7 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.match(desktopEntry, /^Exec=\/home\/linuxbrew\/\.linuxbrew\/bin\/codex-desktop desktop %U$/m)
     assert.match(desktopEntry, /^Icon=.*\/icons\/hicolor\/512x512\/apps\/codex-desktop\.png$/m)
     assert.match(desktopEntry, /^MimeType=x-scheme-handler\/codex;x-scheme-handler\/codex-browser-sidebar;$/m)
+    assert.equal(statSync(join(dataHome, "applications/codex-desktop.desktop")).mode & 0o111, 0o111)
     assert.ok(existsSync(join(dataHome, "icons/hicolor/512x512/apps/codex-desktop.png")))
     assert.ok(existsSync(join(dataHome, "icons/hicolor/256x256/apps/codex-desktop.png")))
 

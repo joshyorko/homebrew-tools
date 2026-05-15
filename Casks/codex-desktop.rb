@@ -50,6 +50,7 @@ cask "codex-desktop" do
   postflight do
     applications_dir = "#{Dir.home}/.local/share/applications"
     desktop_id = "codex-desktop.desktop"
+    desktop_target = "#{applications_dir}/#{desktop_id}"
     xdg_mime = [
       "/usr/bin/xdg-mime",
       "/bin/xdg-mime",
@@ -61,6 +62,7 @@ cask "codex-desktop" do
       "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
     ].find { |path| File.executable?(path) }
 
+    FileUtils.chmod 0755, desktop_target if File.exist?(desktop_target)
     if xdg_mime
       system xdg_mime, "default", desktop_id, "x-scheme-handler/codex"
       system xdg_mime, "default", desktop_id, "x-scheme-handler/codex-browser-sidebar"

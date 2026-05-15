@@ -287,41 +287,25 @@ chrome_plugin_host_path() {
   return 1
 }
 
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g'
+}
+
 chrome_plugin_metadata() {
   local field="$1"
   local fallback="$2"
   local extension_json="$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/extension-id.json"
   local install_manifest="$app_dir/resources/plugins/openai-bundled/plugins/chrome/scripts/installManifest.mjs"
+  local value=""
 
-  python3 - "$field" "$fallback" "$extension_json" "$install_manifest" <<'PY' 2>/dev/null || printf '%s\\n' "$fallback"
-import json
-import pathlib
-import re
-import sys
+  if [ -f "$extension_json" ]; then
+    value="$(sed -nE "s/.*\\\"$field\\\"[[:space:]]*:[[:space:]]*\\\"([^\\\"]+)\\\".*/\\1/p" "$extension_json" | head -n 1 || true)"
+  fi
+  if [ -z "$value" ] && [ -f "$install_manifest" ]; then
+    value="$(sed -nE "s/.*$field[[:space:]]*:[[:space:]]*\\\"([^\\\"]+)\\\".*/\\1/p" "$install_manifest" | head -n 1 || true)"
+  fi
 
-field, fallback, extension_json, install_manifest = sys.argv[1:5]
-value = None
-
-try:
-    data = json.loads(pathlib.Path(extension_json).read_text(encoding="utf-8"))
-    value = data.get(field)
-except OSError:
-    pass
-except json.JSONDecodeError:
-    pass
-
-if not isinstance(value, str) or not value:
-    try:
-        text = pathlib.Path(install_manifest).read_text(encoding="utf-8")
-    except OSError:
-        text = ""
-    pattern = rf'{re.escape(field)}\\s*:\\s*"([^"]+)"'
-    match = re.search(pattern, text)
-    if match:
-        value = match.group(1)
-
-print(value if isinstance(value, str) and value else fallback)
-PY
+  printf '%s\\n' "\${value:-$fallback}"
 }
 
 write_flatpak_native_host_manifest() {
@@ -342,27 +326,17 @@ exec /usr/bin/flatpak-spawn --host "$host_path" "\\$@"
 WRAPPER
   chmod 755 "$wrapper"
 
-  python3 - "$manifest" "$host_name" "$wrapper" "$extension_id" <<'PY'
-import json
-import pathlib
-import sys
-
-manifest, host_name, wrapper, extension_id = sys.argv[1:5]
-payload = {
-    "name": host_name,
-    "description": "Codex chrome native messaging host",
-    "type": "stdio",
-    "path": wrapper,
-    "allowed_origins": [f"chrome-extension://{extension_id}/"],
-}
-path = pathlib.Path(manifest)
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-PY
+  printf '{"name":"%s","description":"Codex chrome native messaging host","type":"stdio","path":"%s","allowed_origins":["chrome-extension://%s/"]}' \
+    "$(json_escape "$host_name")" \
+    "$(json_escape "$wrapper")" \
+    "$(json_escape "$extension_id")" > "$manifest"
 }
 
 prepare_flatpak_browser_integration() {
   local shim_dir="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/flatpak-bin"
+  local google_chrome_profile="$HOME/.var/app/com.google.Chrome/config/google-chrome"
+  local chromium_profile="$HOME/.var/app/org.chromium.Chromium/config/chromium"
+  local brave_profile="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"
   local host_path=""
   local extension_id=""
   local host_name=""
@@ -386,12 +360,15 @@ prepare_flatpak_browser_integration() {
   fi
 
   if [ -z "\${CODEX_CHROME_USER_DATA_DIR:-}" ]; then
-    if flatpak_app_installed com.google.Chrome && [ -d "$HOME/.var/app/com.google.Chrome/config/google-chrome" ]; then
-      export CODEX_CHROME_USER_DATA_DIR="$HOME/.var/app/com.google.Chrome/config/google-chrome"
-    elif flatpak_app_installed com.brave.Browser && [ -d "$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser" ]; then
-      export CODEX_CHROME_USER_DATA_DIR="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"
-    elif flatpak_app_installed org.chromium.Chromium && [ -d "$HOME/.var/app/org.chromium.Chromium/config/chromium" ]; then
-      export CODEX_CHROME_USER_DATA_DIR="$HOME/.var/app/org.chromium.Chromium/config/chromium"
+    if flatpak_app_installed com.google.Chrome; then
+      mkdir -p "$google_chrome_profile/NativeMessagingHosts"
+      export CODEX_CHROME_USER_DATA_DIR="$google_chrome_profile"
+    elif flatpak_app_installed com.brave.Browser; then
+      mkdir -p "$brave_profile/NativeMessagingHosts"
+      export CODEX_CHROME_USER_DATA_DIR="$brave_profile"
+    elif flatpak_app_installed org.chromium.Chromium; then
+      mkdir -p "$chromium_profile/NativeMessagingHosts"
+      export CODEX_CHROME_USER_DATA_DIR="$chromium_profile"
     fi
   fi
 
@@ -400,17 +377,85 @@ prepare_flatpak_browser_integration() {
   extension_id="$(chrome_plugin_metadata extensionId hehggadaopoacecdllhhajmbjkdcmajg)"
   host_name="$(chrome_plugin_metadata extensionHostName com.openai.codexextension)"
 
-  if flatpak_app_installed com.google.Chrome && [ -d "$HOME/.var/app/com.google.Chrome/config/google-chrome" ]; then
+  if flatpak_app_installed com.google.Chrome; then
+    mkdir -p "$google_chrome_profile/NativeMessagingHosts"
     write_flatpak_native_host_manifest com.google.Chrome google-chrome "$host_path" "$extension_id" "$host_name" || true
   fi
-  if flatpak_app_installed org.chromium.Chromium && [ -d "$HOME/.var/app/org.chromium.Chromium/config/chromium" ]; then
+  if flatpak_app_installed org.chromium.Chromium; then
+    mkdir -p "$chromium_profile/NativeMessagingHosts"
     write_flatpak_native_host_manifest org.chromium.Chromium chromium "$host_path" "$extension_id" "$host_name" || true
   fi
-  if flatpak_app_installed com.brave.Browser && [ -d "$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser" ]; then
+  if flatpak_app_installed com.brave.Browser; then
+    mkdir -p "$brave_profile/NativeMessagingHosts"
     write_flatpak_native_host_manifest com.brave.Browser BraveSoftware/Brave-Browser "$host_path" "$extension_id" "$host_name" || true
   fi
 
   export PATH
+}
+
+os_release_text() {
+  local os_release_file="\${CODEX_DESKTOP_OS_RELEASE_FILE:-/etc/os-release}"
+  [ -r "$os_release_file" ] || return 1
+  cat "$os_release_file" 2>/dev/null || true
+}
+
+is_bluefin_like() {
+  local text
+  text="$(os_release_text || true)"
+  case "$text" in
+    *Bluefin*|*bluefin*|*Universal*Blue*|*universal-blue*|*ublue*|*ublue-os*|*VARIANT_ID=bluefin*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+has_explicit_electron_rendering_arg() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --x11|--wayland|--safe-mode|--disable-gpu|--enable-gpu|--ozone-platform|--ozone-platform=*|--ozone-platform-hint|--ozone-platform-hint=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+desired_desktop_rendering_mode() {
+  if has_explicit_electron_rendering_arg "$@"; then
+    echo "explicit"
+    return 0
+  fi
+
+  case "\${CODEX_DESKTOP_LINUX_OZONE:-auto}" in
+    x11|X11)
+      echo "x11"
+      ;;
+    wayland|WAYLAND)
+      echo "wayland"
+      ;;
+    auto|"")
+      if is_bluefin_like; then
+        echo "x11"
+      else
+        echo "auto"
+      fi
+      ;;
+    default|off|none)
+      echo "auto"
+      ;;
+    *)
+      echo "Invalid CODEX_DESKTOP_LINUX_OZONE='\${CODEX_DESKTOP_LINUX_OZONE:-}'; using auto" >&2
+      if is_bluefin_like; then
+        echo "x11"
+      else
+        echo "auto"
+      fi
+      ;;
+  esac
 }
 
 usage() {
@@ -532,6 +577,41 @@ doctor() {
     echo "missing: Chromium/Chrome for browser research"
   fi
 
+  if flatpak_app_installed com.google.Chrome; then
+    local chrome_shim="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/flatpak-bin/google-chrome"
+    local chrome_host_name
+    local chrome_manifest
+    local chrome_wrapper
+    local chrome_host_path
+    chrome_host_name="$(chrome_plugin_metadata extensionHostName com.openai.codexextension)"
+    chrome_manifest="$HOME/.var/app/com.google.Chrome/config/google-chrome/NativeMessagingHosts/$chrome_host_name.json"
+    chrome_wrapper="$HOME/.var/app/com.google.Chrome/config/codex-desktop/$chrome_host_name"
+    chrome_host_path="$(chrome_plugin_host_path || true)"
+    check_path "Google Chrome Flatpak command shim" "$chrome_shim" || missing=1
+    check_path "Google Chrome Flatpak native host wrapper" "$chrome_wrapper" || missing=1
+    check_path "Google Chrome Flatpak native messaging manifest" "$chrome_manifest" || missing=1
+    if [ -n "$chrome_host_path" ] && [ -x "$chrome_host_path" ]; then
+      echo "ok: Google Chrome native host binary: $chrome_host_path"
+    else
+      echo "missing: Google Chrome native host binary"
+      missing=1
+    fi
+  fi
+
+  if is_bluefin_like; then
+    case "\${CODEX_DESKTOP_LINUX_OZONE:-auto}" in
+      wayland|WAYLAND)
+        echo "ok: Bluefin rendering default overridden: Wayland"
+        ;;
+      x11|X11)
+        echo "ok: Bluefin rendering default overridden: X11/XWayland"
+        ;;
+      *)
+        echo "ok: Bluefin rendering default: X11/XWayland"
+        ;;
+    esac
+  fi
+
   if [ -d "\${XDG_DATA_HOME:-$HOME/.local/share}/applications" ] ||
       mkdir -p "\${XDG_DATA_HOME:-$HOME/.local/share}/applications"; then
     echo "ok: user-local application directory is writable"
@@ -586,6 +666,7 @@ install_desktop_entry() {
     desktop_contents="$(printf '%s\\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' "$desktop_contents")"
   fi
   printf '%s\\n' "$desktop_contents" > "$desktop_target"
+  chmod 755 "$desktop_target"
 
   if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$applications_dir" >/dev/null 2>&1 || true
@@ -628,8 +709,23 @@ launch_desktop() {
     exit 70
   fi
 
+  local -a args=("$@")
+  local rendering_mode
+  rendering_mode="$(desired_desktop_rendering_mode "\${args[@]}")"
+  case "$rendering_mode" in
+    safe)
+      args=(--safe-mode "\${args[@]}")
+      ;;
+    x11)
+      args=(--x11 "\${args[@]}")
+      ;;
+    wayland)
+      args=(--wayland "\${args[@]}")
+      ;;
+  esac
+
   unset ELECTRON_RUN_AS_NODE
-  exec "$app_launcher" "$@"
+  exec "$app_launcher" "\${args[@]}"
 }
 
 web_mode() {
@@ -781,7 +877,7 @@ function main() {
 
     cpSync(appDir, join(metadataDir, "app"), { recursive: true, dereference: false })
     writeExecutable(join(packageDir, "bin/codex-desktop"), launcherScript())
-    writeFileSync(join(packageDir, "share/applications/codex-desktop.desktop"), desktopEntry())
+    writeFileSync(join(packageDir, "share/applications/codex-desktop.desktop"), desktopEntry(), { mode: 0o755 })
     if (iconSource) {
       copyIfExists(iconSource.path, join(packageDir, "share/icons/hicolor/512x512/apps/codex-desktop.png"))
       copyIfExists(iconSource.path, join(packageDir, "share/icons/hicolor/256x256/apps/codex-desktop.png"))
