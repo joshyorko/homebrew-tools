@@ -96,6 +96,7 @@ function createConvertedAppFixture(root: string): string {
     [
       "body{background-color:#0000}",
       "[data-codex-window-type=electron]:not([data-codex-os=win32]) body{background:0 0}",
+      "[data-codex-window-type=electron]:not([data-codex-os=win32]) .app-shell-left-panel{background:color-mix(in srgb, var(--color-token-editor-background) 55%, transparent)}",
       ".main-surface{background-color:var(--color-token-main-surface-primary)}",
       "",
     ].join("\n"),
@@ -168,14 +169,20 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.computer_use_backend_included, true)
     assert.match(metadata.codex_dmg_sha256, /^[a-f0-9]{64}$/)
     assert.equal(metadata.linux_renderer_copy_patched, true)
+    assert.equal(metadata.linux_sidebar_surfaces_patched, true)
+    assert.equal(metadata.linux_sidebar_surfaces_present, true)
     assert.equal(metadata.linux_settings_sidebar_surface_patched, true)
     assert.equal(metadata.linux_settings_sidebar_surface_present, true)
+    assert.equal(metadata.linux_app_shell_sidebar_surface_patched, true)
+    assert.equal(metadata.linux_app_shell_sidebar_surface_present, true)
     assert.deepEqual(metadata.linux_protocol_schemes, ["codex", "codex-browser-sidebar"])
 
     const exportedMetadata = JSON.parse(readFileSync(metadataOutput, "utf8"))
     assert.equal(exportedMetadata.app_payload_tree_sha256, metadata.app_payload_tree_sha256)
     assert.equal(exportedMetadata.linux_renderer_copy_patched, true)
+    assert.equal(exportedMetadata.linux_sidebar_surfaces_present, true)
     assert.equal(exportedMetadata.linux_settings_sidebar_surface_present, true)
+    assert.equal(exportedMetadata.linux_app_shell_sidebar_surface_present, true)
 
     assert.equal(
       readFileSync(join(extractDir, "share/icons/hicolor/512x512/apps/codex-desktop.png"), "utf8"),
@@ -191,7 +198,9 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(report.serves_extracted_renderer, false)
     assert.equal(report.patch_count, 1)
     assert.equal(report.linux_renderer_copy_patched, true)
+    assert.equal(report.linux_sidebar_surfaces_present, true)
     assert.equal(report.linux_settings_sidebar_surface_present, true)
+    assert.equal(report.linux_app_shell_sidebar_surface_present, true)
 
     const rendererCopy = readFileSync(
       join(extractDir, "share/codex-desktop/app/content/webview/assets/remote-connections-settings-fixture.js"),
@@ -207,6 +216,10 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.match(
       settingsCss,
       /\[data-codex-window-type=electron\]\[data-codex-os=linux\] \.window-fx-sidebar-surface\{background:var\(--color-token-bg-primary\)\}/,
+    )
+    assert.match(
+      settingsCss,
+      /\[data-codex-window-type=electron\]\[data-codex-os=linux\] \.app-shell-left-panel\{background:var\(--color-token-bg-primary\)\}/,
     )
 
     const help = execFileSync(join(extractDir, "bin/codex-desktop"), ["--help"], { encoding: "utf8" })

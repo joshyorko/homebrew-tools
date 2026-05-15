@@ -25,7 +25,20 @@ const LINUX_RENDERER_COPY_REPLACEMENTS = [
 ]
 const LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR =
   "[data-codex-window-type=electron][data-codex-os=linux] .window-fx-sidebar-surface"
-const LINUX_SETTINGS_SIDEBAR_SURFACE_CSS = `${LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR}{background:var(--color-token-bg-primary)}`
+const LINUX_APP_SHELL_SIDEBAR_SURFACE_SELECTOR =
+  "[data-codex-window-type=electron][data-codex-os=linux] .app-shell-left-panel"
+const LINUX_SIDEBAR_SURFACE_RULES = [
+  {
+    key: "settings",
+    selector: LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR,
+    css: `${LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR}{background:var(--color-token-bg-primary)}`,
+  },
+  {
+    key: "app_shell",
+    selector: LINUX_APP_SHELL_SIDEBAR_SURFACE_SELECTOR,
+    css: `${LINUX_APP_SHELL_SIDEBAR_SURFACE_SELECTOR}{background:var(--color-token-bg-primary)}`,
+  },
+]
 
 function linuxProtocolMimeTypes() {
   return `${LINUX_PROTOCOL_SCHEMES.map((scheme) => `x-scheme-handler/${scheme}`).join(";")};`
@@ -466,42 +479,63 @@ function patchLinuxRendererCopy(appDir) {
   }
 }
 
-function patchLinuxSettingsSidebarSurface(appDir) {
+function patchLinuxSidebarSurfaces(appDir) {
   const assetsDir = join(appDir, "content/webview/assets")
   const cssFiles = listCssFiles(assetsDir)
 
-  for (const path of cssFiles) {
-    const contents = readFileSync(path, "utf8")
-    if (contents.includes(LINUX_SETTINGS_SIDEBAR_SURFACE_SELECTOR)) {
-      return {
-        patched: false,
-        present: true,
-        files: [relative(appDir, path)],
+  const ruleStatuses = LINUX_SIDEBAR_SURFACE_RULES.map((rule) => {
+    for (const path of cssFiles) {
+      const contents = readFileSync(path, "utf8")
+      if (contents.includes(rule.selector)) {
+        return {
+          ...rule,
+          patched: false,
+          present: true,
+          file: relative(appDir, path),
+        }
       }
     }
-  }
+
+    return {
+      ...rule,
+      patched: false,
+      present: false,
+      file: null,
+    }
+  })
+
+  const missingRules = ruleStatuses.filter((rule) => !rule.present)
 
   const target = cssFiles.find((path) => {
     const contents = readFileSync(path, "utf8")
     return contents.includes(".app-shell-left-panel") || contents.includes(".main-surface")
   }) ?? cssFiles[0]
 
-  if (!target) {
-    return {
-      patched: false,
-      present: false,
-      files: [],
+  if (missingRules.length > 0 && target) {
+    const before = readFileSync(target, "utf8")
+    const separator = before.endsWith("\n") ? "" : "\n"
+    writeFileSync(target, `${before}${separator}${missingRules.map((rule) => rule.css).join("\n")}\n`)
+
+    const targetFile = relative(appDir, target)
+    for (const rule of missingRules) {
+      rule.patched = true
+      rule.present = true
+      rule.file = targetFile
     }
   }
 
-  const before = readFileSync(target, "utf8")
-  const separator = before.endsWith("\n") ? "" : "\n"
-  writeFileSync(target, `${before}${separator}${LINUX_SETTINGS_SIDEBAR_SURFACE_CSS}\n`)
-
+  const files = Array.from(new Set(ruleStatuses.flatMap((rule) => rule.file ? [rule.file] : [])))
   return {
-    patched: true,
-    present: true,
-    files: [relative(appDir, target)],
+    patched: ruleStatuses.some((rule) => rule.patched),
+    present: ruleStatuses.every((rule) => rule.present),
+    files,
+    rules: ruleStatuses.map((rule) => ({
+      key: rule.key,
+      selector: rule.selector,
+      patched: rule.patched,
+      present: rule.present,
+      file: rule.file,
+    })),
   }
 }
 
@@ -1349,7 +1383,18 @@ StartupNotify=true
 `
 }
 
-function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSettingsSidebarSurfacePatch) {
+function sidebarSurfaceRule(sidebarSurfacePatch, key) {
+  return sidebarSurfacePatch.rules.find((rule) => rule.key === key) ?? {
+    patched: false,
+    present: false,
+    file: null,
+  }
+}
+
+function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSidebarSurfacePatch) {
+  const settingsSidebarSurface = sidebarSurfaceRule(linuxSidebarSurfacePatch, "settings")
+  const appShellSidebarSurface = sidebarSurfaceRule(linuxSidebarSurfacePatch, "app_shell")
+
   return {
     package: "codex-desktop-linux",
     browser_mode_status: "research",
@@ -1361,9 +1406,16 @@ function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linu
     linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
     linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
     linux_renderer_copy_files: linuxRendererCopyPatch.files,
-    linux_settings_sidebar_surface_patched: linuxSettingsSidebarSurfacePatch.patched,
-    linux_settings_sidebar_surface_present: linuxSettingsSidebarSurfacePatch.present,
-    linux_settings_sidebar_surface_files: linuxSettingsSidebarSurfacePatch.files,
+    linux_sidebar_surfaces_patched: linuxSidebarSurfacePatch.patched,
+    linux_sidebar_surfaces_present: linuxSidebarSurfacePatch.present,
+    linux_sidebar_surface_files: linuxSidebarSurfacePatch.files,
+    linux_sidebar_surface_rules: linuxSidebarSurfacePatch.rules,
+    linux_settings_sidebar_surface_patched: settingsSidebarSurface.patched,
+    linux_settings_sidebar_surface_present: settingsSidebarSurface.present,
+    linux_settings_sidebar_surface_files: settingsSidebarSurface.file ? [settingsSidebarSurface.file] : [],
+    linux_app_shell_sidebar_surface_patched: appShellSidebarSurface.patched,
+    linux_app_shell_sidebar_surface_present: appShellSidebarSurface.present,
+    linux_app_shell_sidebar_surface_files: appShellSidebarSurface.file ? [appShellSidebarSurface.file] : [],
     next_steps: [
       "Serve the extracted webview assets from 127.0.0.1.",
       "Inventory Electron/preload globals expected by the renderer.",
@@ -1388,7 +1440,7 @@ function main() {
   assertConvertedApp(appDir)
   const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
   const linuxRendererCopyPatch = patchLinuxRendererCopy(appDir)
-  const linuxSettingsSidebarSurfacePatch = patchLinuxSettingsSidebarSurface(appDir)
+  const linuxSidebarSurfacePatch = patchLinuxSidebarSurfaces(appDir)
 
   if (codexDmg && !existsSync(codexDmg)) {
     throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
@@ -1397,6 +1449,8 @@ function main() {
   const rebuildReport = readJsonIfPresent(rebuildReportPath)
   const patchReport = readJsonIfPresent(patchReportPath)
   const appTreeSha256 = hashDirectory(appDir)
+  const settingsSidebarSurface = sidebarSurfaceRule(linuxSidebarSurfacePatch, "settings")
+  const appShellSidebarSurface = sidebarSurfaceRule(linuxSidebarSurfacePatch, "app_shell")
   const computerUseBackend = join(
     appDir,
     "resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
@@ -1423,9 +1477,16 @@ function main() {
     linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
     linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
     linux_renderer_copy_files: linuxRendererCopyPatch.files,
-    linux_settings_sidebar_surface_patched: linuxSettingsSidebarSurfacePatch.patched,
-    linux_settings_sidebar_surface_present: linuxSettingsSidebarSurfacePatch.present,
-    linux_settings_sidebar_surface_files: linuxSettingsSidebarSurfacePatch.files,
+    linux_sidebar_surfaces_patched: linuxSidebarSurfacePatch.patched,
+    linux_sidebar_surfaces_present: linuxSidebarSurfacePatch.present,
+    linux_sidebar_surface_files: linuxSidebarSurfacePatch.files,
+    linux_sidebar_surface_rules: linuxSidebarSurfacePatch.rules,
+    linux_settings_sidebar_surface_patched: settingsSidebarSurface.patched,
+    linux_settings_sidebar_surface_present: settingsSidebarSurface.present,
+    linux_settings_sidebar_surface_files: settingsSidebarSurface.file ? [settingsSidebarSurface.file] : [],
+    linux_app_shell_sidebar_surface_patched: appShellSidebarSurface.patched,
+    linux_app_shell_sidebar_surface_present: appShellSidebarSurface.present,
+    linux_app_shell_sidebar_surface_files: appShellSidebarSurface.file ? [appShellSidebarSurface.file] : [],
     linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
     browser_mode_status: "research",
@@ -1456,7 +1517,7 @@ function main() {
     writeFileSync(
       join(metadataDir, "renderer-report.json"),
       `${JSON.stringify(
-        rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSettingsSidebarSurfacePatch),
+        rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSidebarSurfacePatch),
         null,
         2,
       )}\n`,
