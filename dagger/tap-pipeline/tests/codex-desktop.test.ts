@@ -76,6 +76,13 @@ function createConvertedAppFixture(root: string): string {
   writeFileSync(join(appDir, "version"), "41.3.0\n")
   writeFileSync(join(appDir, ".codex-linux/codex-desktop.png"), "fallback-linux-icon")
   writeFileSync(join(appDir, "content/webview/assets/app-fixture_hash.png"), "official-app-icon")
+  writeFileSync(
+    join(appDir, "content/webview/assets/remote-connections-settings-fixture.js"),
+    [
+      "const sshTitle = `SSH connections from this Mac`",
+      "",
+    ].join("\n"),
+  )
 
   return appDir
 }
@@ -136,9 +143,12 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.desktop_icon_source, "official-webview-app-asset")
     assert.equal(metadata.computer_use_backend_included, true)
     assert.match(metadata.codex_dmg_sha256, /^[a-f0-9]{64}$/)
+    assert.equal(metadata.linux_renderer_copy_patched, true)
+    assert.deepEqual(metadata.linux_protocol_schemes, ["codex", "codex-browser-sidebar"])
 
     const exportedMetadata = JSON.parse(readFileSync(metadataOutput, "utf8"))
     assert.equal(exportedMetadata.app_payload_tree_sha256, metadata.app_payload_tree_sha256)
+    assert.equal(exportedMetadata.linux_renderer_copy_patched, true)
 
     assert.equal(
       readFileSync(join(extractDir, "share/icons/hicolor/512x512/apps/codex-desktop.png"), "utf8"),
@@ -153,6 +163,14 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(report.loopback_only_default, true)
     assert.equal(report.serves_extracted_renderer, false)
     assert.equal(report.patch_count, 1)
+    assert.equal(report.linux_renderer_copy_patched, true)
+
+    const rendererCopy = readFileSync(
+      join(extractDir, "share/codex-desktop/app/content/webview/assets/remote-connections-settings-fixture.js"),
+      "utf8",
+    )
+    assert.doesNotMatch(rendererCopy, /SSH connections from this Mac/)
+    assert.match(rendererCopy, /SSH connections from this computer/)
 
     const help = execFileSync(join(extractDir, "bin/codex-desktop"), ["--help"], { encoding: "utf8" })
     assert.match(help, /Usage: codex-desktop/)
@@ -186,6 +204,22 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
       },
     })
     assert.match(launch, /fixture desktop launch:--smoke/)
+    const deepLinkLaunch = execFileSync(
+      join(extractDir, "bin/codex-desktop"),
+      ["desktop", "codex://threads/new?prompt=secret&foo=bar", "--smoke"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CODEX_DESKTOP_OS_RELEASE_FILE: nonBluefinOsReleasePath,
+          XDG_CACHE_HOME: cacheHome,
+        },
+      },
+    )
+    assert.match(deepLinkLaunch, /fixture desktop launch:codex:\/\/threads\/new\?prompt=secret&foo=bar --smoke/)
+    const launcherLog = readFileSync(join(cacheHome, "codex-desktop/launcher.log"), "utf8")
+    assert.match(launcherLog, /deep-link args: codex:\/\/threads\/new\?query_keys=foo,prompt/)
+    assert.doesNotMatch(launcherLog, /secret/)
     mkdirSync(join(caskPrefix, "bin"), { recursive: true })
     mkdirSync(caskRoot, { recursive: true })
     mkdirSync(join(flatpakChromeProfile, "Default"), { recursive: true })

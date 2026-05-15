@@ -19,6 +19,14 @@ import { execFileSync } from "node:child_process"
 
 const DEFAULT_CONVERSION_REPO = "https://github.com/ilysenko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT = "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a"
+const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
+const LINUX_RENDERER_COPY_REPLACEMENTS = [
+  ["SSH connections from this Mac", "SSH connections from this computer"],
+]
+
+function linuxProtocolMimeTypes() {
+  return `${LINUX_PROTOCOL_SCHEMES.map((scheme) => `x-scheme-handler/${scheme}`).join(";")};`
+}
 
 function parseArgs(argv) {
   const args = {}
@@ -359,6 +367,77 @@ function copyIfExists(source, destination) {
   return true
 }
 
+function countOccurrences(source, search) {
+  let count = 0
+  let index = source.indexOf(search)
+
+  while (index !== -1) {
+    count += 1
+    index = source.indexOf(search, index + search.length)
+  }
+
+  return count
+}
+
+function listTextFiles(root) {
+  if (!existsSync(root)) {
+    return []
+  }
+
+  const files = []
+
+  function walk(current) {
+    const stat = lstatSync(current)
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(current).sort()) {
+        walk(join(current, entry))
+      }
+      return
+    }
+
+    if (stat.isFile() && /\.(js|mjs|cjs|html|json)$/.test(current)) {
+      files.push(current)
+    }
+  }
+
+  walk(root)
+  return files
+}
+
+function patchLinuxRendererCopy(appDir) {
+  const assetsDir = join(appDir, "content/webview/assets")
+  const files = []
+  let replacementCount = 0
+
+  for (const path of listTextFiles(assetsDir)) {
+    const before = readFileSync(path, "utf8")
+    let after = before
+    let fileReplacementCount = 0
+
+    for (const [search, replacement] of LINUX_RENDERER_COPY_REPLACEMENTS) {
+      const count = countOccurrences(after, search)
+      if (count === 0) {
+        continue
+      }
+
+      after = after.split(search).join(replacement)
+      fileReplacementCount += count
+    }
+
+    if (after !== before) {
+      writeFileSync(path, after)
+      files.push(relative(appDir, path))
+      replacementCount += fileReplacementCount
+    }
+  }
+
+  return {
+    patched: replacementCount > 0,
+    files,
+    replacements: replacementCount,
+  }
+}
+
 function findAsset(appDir, pattern) {
   const assetsDir = join(appDir, "content/webview/assets")
   if (!existsSync(assetsDir)) {
@@ -409,6 +488,54 @@ launcher_log="\${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/launcher.log"
 launcher_note() {
   mkdir -p "$(dirname "$launcher_log")"
   printf '%s %s\\n' "$(date -Iseconds 2>/dev/null || date)" "$*" >> "$launcher_log" 2>/dev/null || true
+}
+
+redact_deep_link_arg() {
+  local arg="$1"
+
+  if [ "\${CODEX_DESKTOP_LOG_FULL_DEEP_LINKS:-0}" = "1" ]; then
+    printf '%s\\n' "$arg"
+    return 0
+  fi
+
+  local without_fragment="\${arg%%#*}"
+  local base="$without_fragment"
+  local query=""
+
+  case "$without_fragment" in
+    *\\?*)
+      base="\${without_fragment%%\\?*}"
+      query="\${without_fragment#*\\?}"
+      ;;
+  esac
+
+  if [ -z "$query" ]; then
+    printf '%s\\n' "$base"
+    return 0
+  fi
+
+  local query_keys
+  query_keys="$(printf '%s\\n' "$query" | tr '&' '\\n' | sed -n 's/^\\([^=]*\\).*/\\1/p' | sed '/^$/d' | sort -u | paste -sd, -)"
+
+  if [ -n "$query_keys" ]; then
+    printf '%s?query_keys=%s\\n' "$base" "$query_keys"
+  else
+    printf '%s\\n' "$base"
+  fi
+}
+
+log_deep_link_args() {
+  local -a redacted=()
+  local arg
+
+  for arg in "$@"; do
+    case "$arg" in
+      *://*) redacted+=("$(redact_deep_link_arg "$arg")") ;;
+    esac
+  done
+
+  [ "\${#redacted[@]}" -gt 0 ] || return 0
+  launcher_note "deep-link args: \${redacted[*]}"
 }
 
 path_prepend_if_dir() {
@@ -1015,9 +1142,9 @@ install_desktop_entry() {
     desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed "s|^Icon=.*|Icon=$icon_target|")"
   fi
   if printf '%s\\n' "$desktop_contents" | grep -q '^MimeType='; then
-    desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed 's|^MimeType=.*|MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;|')"
+    desktop_contents="$(printf '%s\\n' "$desktop_contents" | sed 's|^MimeType=.*|MimeType=${linuxProtocolMimeTypes()}|')"
   else
-    desktop_contents="$(printf '%s\\nMimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' "$desktop_contents")"
+    desktop_contents="$(printf '%s\\nMimeType=${linuxProtocolMimeTypes()}' "$desktop_contents")"
   fi
   printf '%s\\n' "$desktop_contents" > "$desktop_target"
   chmod 755 "$desktop_target"
@@ -1078,6 +1205,7 @@ launch_desktop() {
       ;;
   esac
 
+  log_deep_link_args "\${args[@]}"
   unset ELECTRON_RUN_AS_NODE
   exec "$app_launcher" "\${args[@]}"
 }
@@ -1149,12 +1277,12 @@ Exec=codex-desktop desktop %U
 Icon=codex-desktop
 Terminal=false
 Categories=Development;
-MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;
+MimeType=${linuxProtocolMimeTypes()}
 StartupNotify=true
 `
 }
 
-function rendererReport(rebuildReport, patchReport) {
+function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch) {
   return {
     package: "codex-desktop-linux",
     browser_mode_status: "research",
@@ -1163,6 +1291,9 @@ function rendererReport(rebuildReport, patchReport) {
     extracted_webview_present: Boolean(rebuildReport?.appDir),
     main_bundle: patchReport?.mainBundle ?? null,
     patch_count: Array.isArray(patchReport?.patches) ? patchReport.patches.length : null,
+    linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
+    linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
+    linux_renderer_copy_files: linuxRendererCopyPatch.files,
     next_steps: [
       "Serve the extracted webview assets from 127.0.0.1.",
       "Inventory Electron/preload globals expected by the renderer.",
@@ -1186,6 +1317,7 @@ function main() {
 
   assertConvertedApp(appDir)
   const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
+  const linuxRendererCopyPatch = patchLinuxRendererCopy(appDir)
 
   if (codexDmg && !existsSync(codexDmg)) {
     throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
@@ -1217,6 +1349,10 @@ function main() {
     linux_editor_open_targets_patched: linuxEditorOpenTargetsPatch.patched,
     linux_editor_open_targets_main_bundle: linuxEditorOpenTargetsPatch.main_bundle,
     linux_editor_open_targets: linuxEditorOpenTargetsPatch.targets,
+    linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
+    linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
+    linux_renderer_copy_files: linuxRendererCopyPatch.files,
+    linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
     browser_mode_status: "research",
     artifact_role: "converted-dmg-linux-runtime",
@@ -1245,7 +1381,7 @@ function main() {
     writeFileSync(join(metadataDir, "release.json"), `${JSON.stringify(metadata, null, 2)}\n`)
     writeFileSync(
       join(metadataDir, "renderer-report.json"),
-      `${JSON.stringify(rendererReport(rebuildReport, patchReport), null, 2)}\n`,
+      `${JSON.stringify(rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch), null, 2)}\n`,
     )
 
     if (rebuildReportPath && existsSync(rebuildReportPath)) {
