@@ -2326,6 +2326,8 @@ export class TapPipeline {
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
           .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+          .replace(/^  depends_on cask: "codex"\n/m, "")
+          .replace(/^  depends_on formula: "desktop-file-utils"\n/m, "")
         const smokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
 
         return dag
@@ -2344,7 +2346,7 @@ export class TapPipeline {
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("codex-desktop-linux"),
-              "brew install --cask --ignore-dependencies test/tap/codex-desktop",
+              "brew install --cask test/tap/codex-desktop",
               "test -x \"$(brew --prefix)/bin/codex-desktop\"",
               "printf '#!/usr/bin/env bash\\necho codex cli fixture\\n' > \"$(brew --prefix)/bin/codex\"",
               "chmod +x \"$(brew --prefix)/bin/codex\"",
