@@ -167,6 +167,7 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.managed_node_version, "v22.22.2")
     assert.equal(metadata.desktop_icon_source, "official-webview-app-asset")
     assert.equal(metadata.computer_use_backend_included, true)
+    assert.equal(metadata.linux_computer_use_ui_enabled, false)
     assert.match(metadata.codex_dmg_sha256, /^[a-f0-9]{64}$/)
     assert.equal(metadata.linux_renderer_copy_patched, true)
     assert.equal(metadata.linux_sidebar_surfaces_patched, true)
@@ -175,6 +176,8 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.linux_settings_sidebar_surface_present, true)
     assert.equal(metadata.linux_app_shell_sidebar_surface_patched, true)
     assert.equal(metadata.linux_app_shell_sidebar_surface_present, true)
+    assert.equal(metadata.linux_icon_visibility_patched, true)
+    assert.equal(metadata.linux_icon_visibility_present, true)
     assert.deepEqual(metadata.linux_protocol_schemes, ["codex", "codex-browser-sidebar"])
 
     const exportedMetadata = JSON.parse(readFileSync(metadataOutput, "utf8"))
@@ -201,6 +204,8 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(report.linux_sidebar_surfaces_present, true)
     assert.equal(report.linux_settings_sidebar_surface_present, true)
     assert.equal(report.linux_app_shell_sidebar_surface_present, true)
+    assert.equal(report.linux_icon_visibility_patched, true)
+    assert.equal(report.linux_icon_visibility_present, true)
 
     const rendererCopy = readFileSync(
       join(extractDir, "share/codex-desktop/app/content/webview/assets/remote-connections-settings-fixture.js"),
@@ -220,6 +225,10 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.match(
       settingsCss,
       /\[data-codex-window-type=electron\]\[data-codex-os=linux\] \.app-shell-left-panel\{background:var\(--color-token-bg-primary\)\}/,
+    )
+    assert.match(
+      settingsCss,
+      /\[data-codex-window-type=electron\]\[data-codex-os=linux\] \[role=menu\] \[role=menuitem\] :is\(img,svg\)\{width:20px;height:20px;min-width:20px;min-height:20px\}/,
     )
 
     const help = execFileSync(join(extractDir, "bin/codex-desktop"), ["--help"], { encoding: "utf8" })
@@ -492,6 +501,8 @@ test("codex desktop auto-update mirrors upstream DMG polling", () => {
   assert.match(workflow, /release-bundle\s+--package-id="\$\{\{ matrix\.package_id \}\}"/)
   assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
+  assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
+  assert.match(pipeline, /"--computer-use-ui-enabled",\s*"true"/)
   assert.match(pipeline, /depends_on cask: "codex"\\n\/m, ""/)
   assert.match(pipeline, /depends_on formula: "desktop-file-utils"\\n\/m, ""/)
   assert.match(pipeline, /brew install --cask test\/tap\/codex-desktop/)

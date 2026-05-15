@@ -194,7 +194,9 @@ codex-desktop web --inspect
 The Dagger package id is `codex-desktop-linux`, pinned to the field-research commit
 `43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a` from
 `ilysenko/codex-desktop-linux`. The tap auto-update workflow checks the official DMG every two
-hours. The cask installs the launcher, desktop entry, URL handlers, and app icons automatically.
+hours. The build enables upstream's Linux Computer Use UI opt-in before converting the DMG, then
+records `linux_computer_use_ui_enabled` in `release.json`. The cask installs the launcher, desktop
+entry, URL handlers, and app icons automatically.
 Use the standard release-bundle target for the upstream DMG path, or the Codex-specific target when
 testing a local DMG:
 

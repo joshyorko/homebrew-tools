@@ -1251,6 +1251,7 @@ export class TapPipeline {
       .withWorkdir("/conversion")
       .withEnvVariable("CODEX_INSTALL_DIR", "/work/codex-app")
       .withEnvVariable("CODEX_INSTALL_ALLOW_RUNNING", "1")
+      .withEnvVariable("CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1")
       .withEnvVariable("CODEX_ELECTRON_CACHE_DIR", "/root/.cache/codex-desktop/electron")
       .withEnvVariable("CODEX_MANAGED_NODE_CACHE_DIR", "/root/.cache/codex-desktop/node-runtime")
       .withEnvVariable("CODEX_PATCH_REPORT_JSON", "/work/reports/patch-report.json")
@@ -1287,6 +1288,8 @@ export class TapPipeline {
         "/work/reports/patch-report.json",
         "--metadata-output",
         metadataPath,
+        "--computer-use-ui-enabled",
+        "true",
         "--output",
         artifactPath,
       ])

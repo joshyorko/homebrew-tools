@@ -39,6 +39,13 @@ const LINUX_SIDEBAR_SURFACE_RULES = [
     css: `${LINUX_APP_SHELL_SIDEBAR_SURFACE_SELECTOR}{background:var(--color-token-bg-primary)}`,
   },
 ]
+const LINUX_ICON_VISIBILITY_SELECTOR =
+  "[data-codex-window-type=electron][data-codex-os=linux] [role=menu] [role=menuitem] :is(img,svg)"
+const LINUX_ICON_VISIBILITY_RULE = {
+  key: "menu_item_icons",
+  selector: LINUX_ICON_VISIBILITY_SELECTOR,
+  css: `${LINUX_ICON_VISIBILITY_SELECTOR}{width:20px;height:20px;min-width:20px;min-height:20px}`,
+}
 
 function linuxProtocolMimeTypes() {
   return `${LINUX_PROTOCOL_SCHEMES.map((scheme) => `x-scheme-handler/${scheme}`).join(";")};`
@@ -68,7 +75,7 @@ function requiredArg(args, name) {
   const value = args[name]
   if (!value) {
     throw new Error(
-      "Usage: package-codex-desktop-linux.mjs --app-dir <converted-codex-app> --version <version> --output <tar.gz> [--codex-dmg <Codex.dmg>] [--rebuild-report <json>] [--patch-report <json>] [--metadata-output <json>]",
+      "Usage: package-codex-desktop-linux.mjs --app-dir <converted-codex-app> --version <version> --output <tar.gz> [--codex-dmg <Codex.dmg>] [--rebuild-report <json>] [--patch-report <json>] [--metadata-output <json>] [--computer-use-ui-enabled true|false]",
     )
   }
 
@@ -536,6 +543,47 @@ function patchLinuxSidebarSurfaces(appDir) {
       present: rule.present,
       file: rule.file,
     })),
+  }
+}
+
+function patchLinuxIconVisibility(appDir) {
+  const assetsDir = join(appDir, "content/webview/assets")
+  const cssFiles = listCssFiles(assetsDir)
+  const target = cssFiles.find((path) => {
+    const contents = readFileSync(path, "utf8")
+    return contents.includes(".app-shell-left-panel") || contents.includes(".main-surface")
+  }) ?? cssFiles[0]
+
+  for (const path of cssFiles) {
+    const contents = readFileSync(path, "utf8")
+    if (contents.includes(LINUX_ICON_VISIBILITY_RULE.selector)) {
+      return {
+        patched: false,
+        present: true,
+        file: relative(appDir, path),
+        rule: LINUX_ICON_VISIBILITY_RULE,
+      }
+    }
+  }
+
+  if (!target) {
+    return {
+      patched: false,
+      present: false,
+      file: null,
+      rule: LINUX_ICON_VISIBILITY_RULE,
+    }
+  }
+
+  const before = readFileSync(target, "utf8")
+  const separator = before.endsWith("\n") ? "" : "\n"
+  writeFileSync(target, `${before}${separator}${LINUX_ICON_VISIBILITY_RULE.css}\n`)
+
+  return {
+    patched: true,
+    present: true,
+    file: relative(appDir, target),
+    rule: LINUX_ICON_VISIBILITY_RULE,
   }
 }
 
@@ -1391,7 +1439,13 @@ function sidebarSurfaceRule(sidebarSurfacePatch, key) {
   }
 }
 
-function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSidebarSurfacePatch) {
+function rendererReport(
+  rebuildReport,
+  patchReport,
+  linuxRendererCopyPatch,
+  linuxSidebarSurfacePatch,
+  linuxIconVisibilityPatch,
+) {
   const settingsSidebarSurface = sidebarSurfaceRule(linuxSidebarSurfacePatch, "settings")
   const appShellSidebarSurface = sidebarSurfaceRule(linuxSidebarSurfacePatch, "app_shell")
 
@@ -1416,6 +1470,10 @@ function rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linu
     linux_app_shell_sidebar_surface_patched: appShellSidebarSurface.patched,
     linux_app_shell_sidebar_surface_present: appShellSidebarSurface.present,
     linux_app_shell_sidebar_surface_files: appShellSidebarSurface.file ? [appShellSidebarSurface.file] : [],
+    linux_icon_visibility_patched: linuxIconVisibilityPatch.patched,
+    linux_icon_visibility_present: linuxIconVisibilityPatch.present,
+    linux_icon_visibility_file: linuxIconVisibilityPatch.file,
+    linux_icon_visibility_rule: linuxIconVisibilityPatch.rule,
     next_steps: [
       "Serve the extracted webview assets from 127.0.0.1.",
       "Inventory Electron/preload globals expected by the renderer.",
@@ -1436,11 +1494,13 @@ function main() {
   const rebuildReportPath = args["rebuild-report"] ? resolve(args["rebuild-report"]) : undefined
   const patchReportPath = args["patch-report"] ? resolve(args["patch-report"]) : undefined
   const metadataOutput = args["metadata-output"] ? resolve(args["metadata-output"]) : undefined
+  const computerUseUiEnabled = args["computer-use-ui-enabled"] === "true"
 
   assertConvertedApp(appDir)
   const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
   const linuxRendererCopyPatch = patchLinuxRendererCopy(appDir)
   const linuxSidebarSurfacePatch = patchLinuxSidebarSurfaces(appDir)
+  const linuxIconVisibilityPatch = patchLinuxIconVisibility(appDir)
 
   if (codexDmg && !existsSync(codexDmg)) {
     throw new Error(`Codex DMG input does not exist: ${codexDmg}`)
@@ -1471,6 +1531,7 @@ function main() {
     desktop_icon_source: iconSource ? iconSource.kind : null,
     desktop_icon_sha256: iconSource ? sha256File(iconSource.path) : null,
     computer_use_backend_included: fileIsExecutable(computerUseBackend),
+    linux_computer_use_ui_enabled: computerUseUiEnabled,
     linux_editor_open_targets_patched: linuxEditorOpenTargetsPatch.patched,
     linux_editor_open_targets_main_bundle: linuxEditorOpenTargetsPatch.main_bundle,
     linux_editor_open_targets: linuxEditorOpenTargetsPatch.targets,
@@ -1487,6 +1548,10 @@ function main() {
     linux_app_shell_sidebar_surface_patched: appShellSidebarSurface.patched,
     linux_app_shell_sidebar_surface_present: appShellSidebarSurface.present,
     linux_app_shell_sidebar_surface_files: appShellSidebarSurface.file ? [appShellSidebarSurface.file] : [],
+    linux_icon_visibility_patched: linuxIconVisibilityPatch.patched,
+    linux_icon_visibility_present: linuxIconVisibilityPatch.present,
+    linux_icon_visibility_file: linuxIconVisibilityPatch.file,
+    linux_icon_visibility_rule: linuxIconVisibilityPatch.rule,
     linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
     browser_mode_status: "research",
@@ -1517,7 +1582,13 @@ function main() {
     writeFileSync(
       join(metadataDir, "renderer-report.json"),
       `${JSON.stringify(
-        rendererReport(rebuildReport, patchReport, linuxRendererCopyPatch, linuxSidebarSurfacePatch),
+        rendererReport(
+          rebuildReport,
+          patchReport,
+          linuxRendererCopyPatch,
+          linuxSidebarSurfacePatch,
+          linuxIconVisibilityPatch,
+        ),
         null,
         2,
       )}\n`,
