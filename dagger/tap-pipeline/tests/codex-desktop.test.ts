@@ -565,3 +565,35 @@ test("codex desktop conversion patch handles Electron 42 native modules", () => 
     rmSync(tmp, { recursive: true, force: true })
   }
 })
+
+test("codex desktop conversion patch skips repos with native Electron 42 patch", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "codex-desktop-native-patch-test-"))
+  const conversionDir = join(tmp, "conversion")
+
+  try {
+    mkdirSync(join(conversionDir, "scripts/lib"), { recursive: true })
+    writeFileSync(
+      join(conversionDir, "scripts/lib/native-modules.sh"),
+      [
+        "#!/bin/bash",
+        "patch_better_sqlite3_for_v8_external_pointer_api() {",
+        "    :",
+        "}",
+        "build_native_modules() {",
+        '    npm install "better-sqlite3@$bs3_build_ver" "node-pty@$npty_ver" --ignore-scripts 2>&1 >&2',
+        "    patch_better_sqlite3_for_v8_external_pointer_api \"$build_dir/node_modules/better-sqlite3\"",
+        "}",
+      ].join("\n"),
+    )
+
+    execFileSync(process.execPath, [conversionPatchScriptPath.pathname, "--conversion-dir", conversionDir], {
+      cwd: repoRoot.pathname,
+    })
+
+    const nativeModules = readFileSync(join(conversionDir, "scripts/lib/native-modules.sh"), "utf8")
+    assert.doesNotMatch(nativeModules, /patch-codex-desktop-conversion\.mjs" --better-sqlite3-dir/)
+    assert.match(nativeModules, /patch_better_sqlite3_for_v8_external_pointer_api/)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})

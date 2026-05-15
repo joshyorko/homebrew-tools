@@ -106,6 +106,10 @@ function patchConversionNativeModules(conversionDir) {
   }
 
   patchFile(nativeModules, (contents) => {
+    if (contents.includes("patch_better_sqlite3_for_v8_external_pointer_api")) {
+      return contents
+    }
+
     const hook = `    node "${scriptPath}" --better-sqlite3-dir "$build_dir/node_modules/better-sqlite3" 2>&1 >&2`
     if (contents.includes(hook)) {
       return contents
