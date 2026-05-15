@@ -177,8 +177,8 @@ That smoke test is the real end-to-end path:
 
 ### Codex Desktop (Linux DMG Conversion Runtime)
 
-Codex Desktop Linux support follows the same core idea as
-[`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux): poll the official
+Codex Desktop Linux support follows the same core idea as the tap-owned
+[`joshyorko/codex-desktop-linux`](https://github.com/joshyorko/codex-desktop-linux): poll the official
 `https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`, convert that DMG, patch the extracted
 app for Linux Electron, rebuild native modules, stage bundled resources, and package the resulting
 `codex-app/` as a Homebrew artifact through the tap's Dagger pipeline.
@@ -193,7 +193,7 @@ codex-desktop web --inspect
 
 The Dagger package id is `codex-desktop-linux`, pinned to the field-research commit
 `43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a` from
-`ilysenko/codex-desktop-linux`. The tap auto-update workflow checks the official DMG every two
+`joshyorko/codex-desktop-linux`. The tap auto-update workflow checks the official DMG every two
 hours. The build enables upstream's Linux Computer Use UI opt-in before converting the DMG, then
 records `linux_computer_use_ui_enabled` in `release.json`. The cask installs the launcher, desktop
 entry, URL handlers, and app icons automatically.

@@ -17,7 +17,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
 
-const DEFAULT_CONVERSION_REPO = "https://github.com/ilysenko/codex-desktop-linux"
+const DEFAULT_CONVERSION_REPO = "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT = "43c8bd1b5d4ab2eb4be8eb474528d6050c51db9a"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
