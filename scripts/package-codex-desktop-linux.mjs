@@ -16,11 +16,12 @@ import {
 import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
+import { createRequire } from "node:module"
 
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "ecd4ea539035e627c708eba0013a7665ad095036"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "5ff12de4dba995904edc6b2f37bf2b93628dc837"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
@@ -216,6 +217,19 @@ function updateAsarIntegrity(node, buffer) {
 }
 
 function patchLinuxEditorTargets(source) {
+  if (
+    source.includes("linuxDetect:()=>lm(`code`)") &&
+    source.includes("linuxDetect:()=>lm(`code-insiders`)")
+  ) {
+    return source
+  }
+  if (
+    source.includes("codexLinuxIdeCommand(`vscode`)") &&
+    source.includes("codexLinuxIdeCommand(`vscodeInsiders`)")
+  ) {
+    return source
+  }
+
   const original = source
 
   const editorFactory = source.match(
@@ -379,6 +393,70 @@ function patchLinuxEditorOpenTargets(appDir) {
   }
 
   throw new Error("Could not find Codex Desktop main bundle with VS Code open target definitions")
+}
+
+function patchLinuxFeatureMainBundles(appDir) {
+  const featurePatches = loadLinuxFeatureMainBundlePatches()
+  if (featurePatches.length === 0) {
+    return []
+  }
+
+  const asarPath = join(appDir, "resources/app.asar")
+  let archive
+  try {
+    archive = readAsarHeader(asarPath)
+  } catch (error) {
+    if (readFileSync(asarPath, "utf8") === "fixture-asar") {
+      return featurePatches.map((patch) => ({
+        id: patch.id,
+        patched: false,
+        main_bundle: null,
+        skipped: "fixture-asar",
+      }))
+    }
+    throw error
+  }
+
+  const mainBundles = listAsarFileNodes(archive.header)
+    .filter((entry) => /^\.vite\/build\/main-[^/]+\.js$/.test(entry.path) && !entry.node.unpacked)
+    .sort((left, right) => left.path.localeCompare(right.path))
+  const results = []
+
+  for (const patch of featurePatches) {
+    let patchedFeature = false
+    for (const entry of mainBundles) {
+      const refreshedArchive = readAsarHeader(asarPath)
+      const refreshedEntry = listAsarFileNodes(refreshedArchive.header)
+        .find((candidate) => candidate.path === entry.path)
+      if (!refreshedEntry) {
+        continue
+      }
+
+      const start = refreshedArchive.payloadOffset + Number(BigInt(refreshedEntry.node.offset))
+      const source = refreshedArchive.source.subarray(start, start + refreshedEntry.node.size).toString("utf8")
+      const patched = patch.apply(source, { appDir, mainBundle: entry.path })
+      if (patched !== source) {
+        rewriteAsarWithPatchedFile(asarPath, entry.path, Buffer.from(patched, "utf8"))
+        results.push({
+          id: patch.id,
+          patched: true,
+          main_bundle: entry.path,
+        })
+        patchedFeature = true
+        break
+      }
+    }
+
+    if (!patchedFeature) {
+      results.push({
+        id: patch.id,
+        patched: false,
+        main_bundle: null,
+      })
+    }
+  }
+
+  return results
 }
 
 function writeExecutable(path, contents) {
@@ -745,6 +823,51 @@ function linuxFeaturesEnabled() {
   } catch {
     return []
   }
+}
+
+function loadLinuxFeatureMainBundlePatches() {
+  const featureIds = linuxFeaturesEnabled()
+  if (featureIds.length === 0) {
+    return []
+  }
+
+  const conversionRoot = process.env.CODEX_LINUX_FEATURES_ROOT?.trim()
+    ? resolve(process.env.CODEX_LINUX_FEATURES_ROOT.trim())
+    : process.cwd()
+  const requireFromConversion = createRequire(join(conversionRoot, "package.json"))
+  const patches = []
+
+  for (const featureId of featureIds) {
+    const manifestPath = join(conversionRoot, "linux-features", featureId, "feature.json")
+    if (!existsSync(manifestPath)) {
+      continue
+    }
+
+    let manifest
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
+    } catch {
+      continue
+    }
+
+    const entrypoint = manifest?.entrypoints?.mainBundlePatch
+    if (typeof entrypoint !== "string" || entrypoint.length === 0 || entrypoint.includes("..")) {
+      continue
+    }
+
+    const patchPath = join(conversionRoot, "linux-features", featureId, entrypoint)
+    if (!existsSync(patchPath)) {
+      continue
+    }
+
+    const moduleExports = requireFromConversion(patchPath)
+    const apply = moduleExports.applyMainBundlePatch ?? moduleExports.apply ?? moduleExports
+    if (typeof apply === "function") {
+      patches.push({ id: featureId, apply })
+    }
+  }
+
+  return patches
 }
 
 function findAsset(appDir, pattern) {
@@ -1658,6 +1781,7 @@ function main() {
 
   assertConvertedApp(appDir)
   const linuxEditorOpenTargetsPatch = patchLinuxEditorOpenTargets(appDir)
+  const linuxFeatureMainBundlePatches = patchLinuxFeatureMainBundles(appDir)
   const linuxRendererCopyPatch = patchLinuxRendererCopy(appDir)
   const linuxSidebarSurfacePatch = patchLinuxSidebarSurfaces(appDir)
   const linuxIconVisibilityPatch = patchLinuxIconVisibility(appDir)
@@ -1697,6 +1821,7 @@ function main() {
     linux_editor_open_targets_patched: linuxEditorOpenTargetsPatch.patched,
     linux_editor_open_targets_main_bundle: linuxEditorOpenTargetsPatch.main_bundle,
     linux_editor_open_targets: linuxEditorOpenTargetsPatch.targets,
+    linux_feature_main_bundle_patches: linuxFeatureMainBundlePatches,
     linux_renderer_copy_patched: linuxRendererCopyPatch.patched,
     linux_renderer_copy_replacements: linuxRendererCopyPatch.replacements,
     linux_renderer_copy_files: linuxRendererCopyPatch.files,

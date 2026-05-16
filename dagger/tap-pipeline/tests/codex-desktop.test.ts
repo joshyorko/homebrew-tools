@@ -201,6 +201,7 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     assert.equal(metadata.linux_webview_server_stale_detection_patched, true)
     assert.equal(metadata.linux_webview_server_stale_detection_file, "start.sh")
     assert.deepEqual(metadata.linux_features_enabled, [])
+    assert.deepEqual(metadata.linux_feature_main_bundle_patches, [])
     assert.deepEqual(metadata.linux_protocol_schemes, ["codex", "codex-browser-sidebar"])
 
     const exportedMetadata = JSON.parse(readFileSync(metadataOutput, "utf8"))
@@ -565,7 +566,7 @@ test("codex desktop release is driven by codex-desktop-linux dispatch", () => {
   assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
-  assert.match(pipeline, /CODEX_DESKTOP_LINUX_FEATURES = \["remote-mobile-control"\]/)
+  assert.match(pipeline, /CODEX_DESKTOP_LINUX_FEATURES = \["remote-mobile-control", "open-target-discovery"\]/)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG", "\/work\/linux-features\.json"/)
   assert.match(pipeline, /linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES/)
   assert.match(pipeline, /"--computer-use-ui-enabled",\s*"true"/)
