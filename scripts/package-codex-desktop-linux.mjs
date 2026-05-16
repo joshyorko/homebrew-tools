@@ -20,7 +20,7 @@ import { execFileSync } from "node:child_process"
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "1744dd272ac4515636fa2dfb90c28bbd0afa0259"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "ecd4ea539035e627c708eba0013a7665ad095036"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
