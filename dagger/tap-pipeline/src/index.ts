@@ -457,7 +457,7 @@ export class TapPipeline {
           "sha=$(sha256sum /inputs/Codex.dmg | awk '{print $1}')",
           "bytes=$(wc -c < /inputs/Codex.dmg | tr -d ' ')",
           "kind=$(file -b /inputs/Codex.dmg)",
-          "entries=$({ 7zz l -ba /inputs/Codex.dmg || 7z l -ba /inputs/Codex.dmg || true; } 2>/dev/null | awk '{$1=$1; print}' | head -200 | jq -R -s 'split(\"\\n\")[:-1]')",
+          "entries=$({ 7zz l -ba /inputs/Codex.dmg || 7z l -ba /inputs/Codex.dmg || true; } 2>/dev/null | awk 'NR <= 200 {$1=$1; print}' | jq -R -s 'split(\"\\n\")[:-1]')",
           "jq -n --arg package codex-desktop-linux --arg repo \"" + CODEX_DESKTOP_CONVERSION_REPO + "\" --arg commit \"" + CODEX_DESKTOP_CONVERSION_COMMIT + "\" --arg sha \"$sha\" --arg bytes \"$bytes\" --arg kind \"$kind\" --argjson entries \"$entries\" '{package: $package, upstream_conversion_repo: $repo, upstream_conversion_commit: $commit, codex_dmg_sha256: $sha, codex_dmg_bytes: ($bytes | tonumber), codex_dmg_file_type: $kind, dmg_listing_sample: $entries}'",
         ].join("\n"),
       ])
