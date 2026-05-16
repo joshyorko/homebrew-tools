@@ -20,7 +20,7 @@ import { execFileSync } from "node:child_process"
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "764b06214cb67bc5e9863e42fcc8989d59f09d58"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "1744dd272ac4515636fa2dfb90c28bbd0afa0259"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
@@ -218,18 +218,45 @@ function updateAsarIntegrity(node, buffer) {
 function patchLinuxEditorTargets(source) {
   const original = source
 
-  source = source.replace(
-    "function Cw({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,darwinEnv:a,darwinArgs:o,hidden:s}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:s,detect:r,env:a,args:o??ww,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:s,detect:i,args:ww,supportsSsh:!0}:void 0}}}",
-    "function Cw({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,linuxDetect:a,darwinEnv:o,darwinArgs:s,hidden:c}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:c,detect:r,env:o,args:s??ww,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:c,detect:i,args:ww,supportsSsh:!0}:void 0,linux:a?{label:t,icon:n,kind:`editor`,hidden:c,detect:a,args:ww,supportsSsh:!0}:void 0}}}",
+  const editorFactory = source.match(
+    /function\s+([A-Za-z_$][\w$]*)\(\{id:([A-Za-z_$][\w$]*),label:([A-Za-z_$][\w$]*),icon:([A-Za-z_$][\w$]*),darwinDetect:([A-Za-z_$][\w$]*),win32Detect:([A-Za-z_$][\w$]*),darwinEnv:([A-Za-z_$][\w$]*),darwinArgs:([A-Za-z_$][\w$]*),hidden:([A-Za-z_$][\w$]*)\}\)\{return\{id:\2,platforms:\{darwin:\5\?\{label:\3,icon:\4,kind:`editor`,hidden:\9,detect:\5,env:\7,args:\8\?\?([A-Za-z_$][\w$]*),supportsSsh:!0\}:void 0,win32:\6\?\{label:\3,icon:\4,kind:`editor`,hidden:\9,detect:\6,args:\10,supportsSsh:!0\}:void 0\}\}\}/,
   )
-  source = source.replace(
-    "var qT=Cw({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,`/Applications/Code.app/Contents/Resources/app/bin/code`]),win32Detect:JT});",
-    "var qT=Cw({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`,`/Applications/Code.app/Contents/Resources/app/bin/code`]),win32Detect:JT,linuxDetect:()=>lm(`code`)});",
-  )
-  source = source.replace(
-    "var YT=Cw({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,`/Applications/Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:XT});",
-    "var YT=Cw({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>uw([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`,`/Applications/Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:XT,linuxDetect:()=>lm(`code-insiders`)});",
-  )
+  if (editorFactory) {
+    const [
+      factorySource,
+      functionName,
+      idParam,
+      labelParam,
+      iconParam,
+      darwinDetectParam,
+      win32DetectParam,
+      darwinEnvParam,
+      darwinArgsParam,
+      hiddenParam,
+      defaultArgsName,
+    ] = editorFactory
+    const linuxDetectParam = unusedMinifiedParameterName(
+      [
+        idParam,
+        labelParam,
+        iconParam,
+        darwinDetectParam,
+        win32DetectParam,
+        darwinEnvParam,
+        darwinArgsParam,
+        hiddenParam,
+        defaultArgsName,
+      ],
+      "l",
+    )
+    source = source.replace(
+      factorySource,
+      `function ${functionName}({id:${idParam},label:${labelParam},icon:${iconParam},darwinDetect:${darwinDetectParam},win32Detect:${win32DetectParam},linuxDetect:${linuxDetectParam},darwinEnv:${darwinEnvParam},darwinArgs:${darwinArgsParam},hidden:${hiddenParam}}){return{id:${idParam},platforms:{darwin:${darwinDetectParam}?{label:${labelParam},icon:${iconParam},kind:\`editor\`,hidden:${hiddenParam},detect:${darwinDetectParam},env:${darwinEnvParam},args:${darwinArgsParam}??${defaultArgsName},supportsSsh:!0}:void 0,win32:${win32DetectParam}?{label:${labelParam},icon:${iconParam},kind:\`editor\`,hidden:${hiddenParam},detect:${win32DetectParam},args:${defaultArgsName},supportsSsh:!0}:void 0,linux:${linuxDetectParam}?{label:${labelParam},icon:${iconParam},kind:\`editor\`,hidden:${hiddenParam},detect:${linuxDetectParam},args:${defaultArgsName},supportsSsh:!0}:void 0}}}`,
+    )
+  }
+
+  source = patchEditorTargetLinuxDetect(source, "vscode", "code")
+  source = patchEditorTargetLinuxDetect(source, "vscodeInsiders", "code-insiders")
 
   if (source === original) {
     throw new Error("Codex Desktop main bundle did not match the expected VS Code target registry")
@@ -239,6 +266,31 @@ function patchLinuxEditorTargets(source) {
   }
 
   return source
+}
+
+function unusedMinifiedParameterName(usedNames, preferredName) {
+  const used = new Set(usedNames)
+  if (!used.has(preferredName)) {
+    return preferredName
+  }
+  for (const name of "abcdefghijklmnopqrstuvwxyz") {
+    if (!used.has(name)) {
+      return name
+    }
+  }
+  throw new Error("Could not allocate a minified parameter name for Linux editor detection")
+}
+
+function patchEditorTargetLinuxDetect(source, targetId, command) {
+  const targetPattern = new RegExp(
+    `([A-Za-z_$][\\\\w$]*\\s*=\\s*[A-Za-z_$][\\\\w$]*\\(\\{id:\`${targetId}\`[\\s\\S]*?)(\\}\\);)`,
+  )
+  return source.replace(targetPattern, (match, targetSource, suffix) => {
+    if (match.includes("linuxDetect:")) {
+      return match
+    }
+    return `${targetSource},linuxDetect:()=>lm(\`${command}\`)${suffix}`
+  })
 }
 
 function rewriteAsarWithPatchedFile(asarPath, targetPath, patchedBuffer) {
@@ -308,7 +360,12 @@ function patchLinuxEditorOpenTargets(appDir) {
   for (const entry of mainBundles) {
     const start = archive.payloadOffset + Number(BigInt(entry.node.offset))
     const source = archive.source.subarray(start, start + entry.node.size).toString("utf8")
-    if (!source.includes("id:`vscodeInsiders`") || !source.includes("function Cw({id:")) {
+    if (
+      !source.includes("id:`vscode`") ||
+      !source.includes("id:`vscodeInsiders`") ||
+      !source.includes("label:`VS Code`") ||
+      !source.includes("label:`VS Code Insiders`")
+    ) {
       continue
     }
 
