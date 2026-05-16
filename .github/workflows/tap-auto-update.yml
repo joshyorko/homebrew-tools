@@ -133,6 +133,7 @@ jobs:
         call: >-
           auto-update-status
           --slot-id="${{ steps.slot.outputs.slot_id }}"
+          --codex-desktop-conversion-commit="${{ github.event.client_payload.conversion_sha }}"
           --github-token=env://GH_TOKEN
 
     - name: Build matrix from slot output
@@ -187,6 +188,7 @@ jobs:
           -o "$RUNNER_TEMP/bundle"
           release-bundle
           --package-id="${{ matrix.package_id }}"
+          --codex-desktop-conversion-commit="${{ github.event.client_payload.conversion_sha }}"
           --github-token=env://GH_TOKEN
 
     - name: Upload release bundle artifact

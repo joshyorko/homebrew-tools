@@ -57,8 +57,12 @@ function compactVersionSegment(value: string): string {
   return segment.length > 0 ? segment : "unknown"
 }
 
-function codexDesktopPackageVersion(dmgVersion: string): string {
-  return `${dmgVersion}.conv.${compactVersionSegment(CODEX_DESKTOP_CONVERSION_COMMIT)}`
+function codexDesktopConversionCommit(value?: string): string {
+  return value && value.length > 0 ? value : CODEX_DESKTOP_CONVERSION_COMMIT
+}
+
+function codexDesktopPackageVersion(dmgVersion: string, conversionCommit?: string): string {
+  return `${dmgVersion}.conv.${compactVersionSegment(codexDesktopConversionCommit(conversionCommit))}`
 }
 
 function stripRequiredPrefix(value: string, prefix?: string): string {
@@ -363,13 +367,17 @@ export class TapPipeline {
   }
 
   @func()
-  async autoUpdateStatus(slotId: string, githubToken?: Secret): Promise<string> {
+  async autoUpdateStatus(
+    slotId: string,
+    githubToken?: Secret,
+    codexDesktopConversionCommit?: string,
+  ): Promise<string> {
     this.setGithubToken(githubToken)
 
     const entries = slotPackages(parseAutoUpdateSlotId(slotId))
     const statuses = await Promise.all(entries.map(async (entry): Promise<AutoUpdatePackageStatus> => {
       const currentVersion = await this.currentPackagedVersion(entry.id)
-      const upstreamVersion = await this.resolveUpstreamVersion(entry.id)
+      const upstreamVersion = await this.resolveUpstreamVersion(entry.id, codexDesktopConversionCommit)
       const currentReleasePublished = await this.tapReleaseExists(entry.id, currentVersion)
 
       return {
@@ -392,7 +400,10 @@ export class TapPipeline {
     return json(entries.filter((entry) => entry.needs_update).map((entry) => entry.id))
   }
 
-  private async resolveCodexDesktopDmgMetadata(sourceUrl = CODEX_DESKTOP_DMG_URL): Promise<CodexDesktopDmgMetadata> {
+  private async resolveCodexDesktopDmgMetadata(
+    sourceUrl = CODEX_DESKTOP_DMG_URL,
+    conversionCommit?: string,
+  ): Promise<CodexDesktopDmgMetadata> {
     const raw = JSON.parse((await dag
       .container()
       .from(NODE_IMAGE)
@@ -434,6 +445,7 @@ export class TapPipeline {
       ...raw,
       version: codexDesktopPackageVersion(
         `dmg.${compactHttpTimestamp(raw.lastModified)}.${raw.cacheSegment.slice(0, 12)}`,
+        conversionCommit,
       ),
     }
   }
@@ -1252,11 +1264,14 @@ export class TapPipeline {
     codexDmg: File,
     version = CODEX_DESKTOP_MANUAL_VERSION,
     dmgMetadata?: CodexDesktopDmgMetadata,
+    requestedConversionCommit?: string,
   ): Promise<CodexDesktopBuild> {
     const assetName = `codex-desktop-linux-${version}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
     const metadataPath = "/work/codex-desktop-linux-metadata.json"
-    const conversionRef = dag.git(CODEX_DESKTOP_CONVERSION_REPO).ref(CODEX_DESKTOP_CONVERSION_COMMIT)
+    const conversionRef = dag.git(CODEX_DESKTOP_CONVERSION_REPO).ref(
+      codexDesktopConversionCommit(requestedConversionCommit),
+    )
     const conversionCommit = await conversionRef.commit()
     const container = this.codexDesktopBaseContainer()
       .withDirectory("/tap", tap)
@@ -1337,8 +1352,14 @@ export class TapPipeline {
     }
   }
 
-  private async buildCodexDesktopArtifactFromUpstream(tap: Directory): Promise<CodexDesktopBuild> {
-    const dmgMetadata = await this.resolveCodexDesktopDmgMetadata(CODEX_DESKTOP_DMG_URL)
+  private async buildCodexDesktopArtifactFromUpstream(
+    tap: Directory,
+    requestedConversionCommit?: string,
+  ): Promise<CodexDesktopBuild> {
+    const dmgMetadata = await this.resolveCodexDesktopDmgMetadata(
+      CODEX_DESKTOP_DMG_URL,
+      requestedConversionCommit,
+    )
     const downloadContainer = this.codexDesktopBaseContainer()
       .withExec([
         "bash",
@@ -1356,6 +1377,7 @@ export class TapPipeline {
       downloadContainer.file("/inputs/Codex.dmg"),
       dmgMetadata.version,
       dmgMetadata,
+      requestedConversionCommit,
     )
   }
 
@@ -1625,7 +1647,7 @@ export class TapPipeline {
     }
   }
 
-  private async resolveUpstreamVersion(packageId: string): Promise<string> {
+  private async resolveUpstreamVersion(packageId: string, codexDesktopConversionCommit?: string): Promise<string> {
     const entry = this.packageEntry(packageId)
 
     switch (entry.autoUpdate.kind) {
@@ -1670,7 +1692,10 @@ export class TapPipeline {
           throw new Error(`HTTP header fingerprint auto-update is not implemented for ${packageId}`)
         }
 
-        return (await this.resolveCodexDesktopDmgMetadata(entry.upstream.url)).version
+        return (await this.resolveCodexDesktopDmgMetadata(
+          entry.upstream.url,
+          codexDesktopConversionCommit,
+        )).version
       }
     }
   }
@@ -2619,7 +2644,11 @@ export class TapPipeline {
   }
 
   @func()
-  async releaseMetadata(packageId: string, githubToken?: Secret): Promise<string> {
+  async releaseMetadata(
+    packageId: string,
+    githubToken?: Secret,
+    codexDesktopConversionCommit?: string,
+  ): Promise<string> {
     this.setGithubToken(githubToken)
 
     const tap = this.source
@@ -2670,7 +2699,7 @@ export class TapPipeline {
         return json(this.t3CodeReleaseMetadata(build))
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifactFromUpstream(tap)
+        const build = await this.buildCodexDesktopArtifactFromUpstream(tap, codexDesktopConversionCommit)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -2703,7 +2732,11 @@ export class TapPipeline {
   }
 
   @func()
-  async releaseBundle(packageId: string, githubToken?: Secret): Promise<Directory> {
+  async releaseBundle(
+    packageId: string,
+    githubToken?: Secret,
+    codexDesktopConversionCommit?: string,
+  ): Promise<Directory> {
     this.setGithubToken(githubToken)
 
     const ciLog = await this.ciCheck(packageId, githubToken)
@@ -2858,7 +2891,7 @@ export class TapPipeline {
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifactFromUpstream(tap)
+        const build = await this.buildCodexDesktopArtifactFromUpstream(tap, codexDesktopConversionCommit)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -2937,11 +2970,21 @@ export class TapPipeline {
   }
 
   @func()
-  async codexDesktopReleaseBundle(codexDmg: File, githubToken?: Secret): Promise<Directory> {
+  async codexDesktopReleaseBundle(
+    codexDmg: File,
+    githubToken?: Secret,
+    codexDesktopConversionCommit?: string,
+  ): Promise<Directory> {
     this.setGithubToken(githubToken)
 
     const ciLog = await this.ciCheck("codex-desktop-linux", githubToken)
-    const build = await this.buildCodexDesktopArtifact(this.source, codexDmg)
+    const build = await this.buildCodexDesktopArtifact(
+      this.source,
+      codexDmg,
+      CODEX_DESKTOP_MANUAL_VERSION,
+      undefined,
+      codexDesktopConversionCommit,
+    )
     const sha256 = (
       await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
     ).trim().split(/\s+/)[0]
