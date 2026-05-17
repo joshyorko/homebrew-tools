@@ -279,6 +279,19 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     const help = execFileSync(join(extractDir, "bin/codex-desktop"), ["--help"], { encoding: "utf8" })
     assert.match(help, /Usage: codex-desktop/)
     assert.match(help, /desktop/)
+    assert.match(help, /serve/)
+
+    const serveOsReleasePath = join(tmp, "serve-os-release")
+    writeFileSync(serveOsReleasePath, "NAME=Bluefin\nVARIANT_ID=bluefin\nID_LIKE=\"ublue fedora\"\n")
+    const serve = execFileSync(join(extractDir, "bin/codex-desktop"), ["serve", "--smoke"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CODEX_DESKTOP_OS_RELEASE_FILE: serveOsReleasePath,
+      },
+    })
+    assert.match(serve, /fixture desktop launch:serve --smoke/)
+    assert.doesNotMatch(serve, /fixture desktop launch:--x11 serve --smoke/)
 
     const webInspect = JSON.parse(
       execFileSync(join(extractDir, "bin/codex-desktop"), ["web", "--inspect"], { encoding: "utf8" }),

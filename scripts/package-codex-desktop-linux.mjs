@@ -1274,6 +1274,7 @@ Usage: codex-desktop [command] [args]
 
 Commands:
   desktop                 Launch Codex Desktop
+  serve [args]            Run the Codex Desktop app launcher serve mode
   logs [--follow|--path]  Show the Codex Desktop launcher log
   doctor                  Check Bluefin/Linux runtime readiness
   --help, -h, help        Show this help
@@ -1642,6 +1643,16 @@ launch_desktop() {
   exec "$app_launcher" "\${args[@]}"
 }
 
+serve_mode() {
+  if [ ! -x "$app_launcher" ]; then
+    echo "Converted Codex Desktop launcher is missing or not executable: $app_launcher" >&2
+    exit 70
+  fi
+
+  unset ELECTRON_RUN_AS_NODE
+  exec "$app_launcher" serve "$@"
+}
+
 web_mode() {
   if [ "\${1:-}" = "--inspect" ]; then
     cat "$renderer_report"
@@ -1670,6 +1681,11 @@ case "\${1:-desktop}" in
     prepare_flatpak_browser_integration
     prepare_editor_integration
     launch_desktop "$@"
+    ;;
+  serve)
+    shift
+    prepare_runtime_path
+    serve_mode "$@"
     ;;
   logs)
     shift
