@@ -1654,12 +1654,17 @@ serve_mode() {
 }
 
 web_mode() {
-  if [ "\${1:-}" = "--inspect" ]; then
-    cat "$renderer_report"
-    return 0
+  if [ ! -x "$app_launcher" ]; then
+    echo "Converted Codex Desktop launcher is missing or not executable: $app_launcher" >&2
+    exit 70
   fi
 
-  echo "Browser renderer mode is still research-only for this package. Run: codex-desktop web --inspect" >&2
+  if [ "\${1:-}" = "--inspect" ]; then
+    unset ELECTRON_RUN_AS_NODE
+    exec "$app_launcher" web --inspect
+  fi
+
+  echo "Browser renderer mode is served by: codex-desktop serve --workspace <path> --profile <path>" >&2
   exit 64
 }
 
