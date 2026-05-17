@@ -22,7 +22,7 @@ const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const CODEX_DESKTOP_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "5ff12de4dba995904edc6b2f37bf2b93628dc837"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "078c16d68e6f1cb6ecdbff1f4054d70156ef42bb"
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 const CODEX_DESKTOP_LINUX_FEATURES = ["remote-mobile-control", "open-target-discovery"]
@@ -1203,7 +1203,22 @@ export class TapPipeline {
         [
           "set -euo pipefail",
           "mkdir -p /work/fixture-app/resources/node-runtime/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64 /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/scripts /work/fixture-app/.codex-linux /work/fixture-app/content/webview/assets /work/reports",
-          "printf '#!/usr/bin/env bash\\nset -euo pipefail\\necho \"fixture desktop launch:$*\"\\necho \"fixture codex path:$(command -v codex || true)\"\\necho \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"\\necho \"fixture editor:${EDITOR:-}\"\\n' > /work/fixture-app/start.sh",
+          "cat > /work/fixture-app/start.sh <<'SH'",
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          "if [ \"${1:-}\" = web ] && [ \"${2:-}\" = --inspect ]; then",
+          "  printf '%s\\n' '{\"package\":\"codex-desktop-linux\",\"mode\":\"devcontainer-web\",\"loopback_only_default\":true}'",
+          "  exit 0",
+          "fi",
+          "if [ \"${1:-}\" = web ]; then",
+          "  echo 'codex-desktop web is now served by: codex-desktop serve --workspace <path> --profile <path>' >&2",
+          "  exit 64",
+          "fi",
+          "echo \"fixture desktop launch:$*\"",
+          "echo \"fixture codex path:$(command -v codex || true)\"",
+          "echo \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"",
+          "echo \"fixture editor:${EDITOR:-}\"",
+          "SH",
           "chmod +x /work/fixture-app/start.sh",
           "printf '#!/usr/bin/env bash\\necho electron fixture\\n' > /work/fixture-app/electron",
           "chmod +x /work/fixture-app/electron",
@@ -2473,14 +2488,14 @@ export class TapPipeline {
               "test -f \"$HOME/.local/share/icons/hicolor/256x256/apps/codex-desktop.png\"",
               "codex-desktop logs --path",
               "web_report=$(codex-desktop web --inspect)",
-              "case \"$web_report\" in *'\"browser_mode_status\": \"research\"'*) ;; *) printf '%s\\n' \"$web_report\"; exit 1 ;; esac",
-              "case \"$web_report\" in *'\"serves_extracted_renderer\": false'*) ;; *) printf '%s\\n' \"$web_report\"; exit 1 ;; esac",
+              "case \"$web_report\" in *'\"mode\":\"devcontainer-web\"'*) ;; *) printf '%s\\n' \"$web_report\"; exit 1 ;; esac",
+              "case \"$web_report\" in *'\"loopback_only_default\":true'*) ;; *) printf '%s\\n' \"$web_report\"; exit 1 ;; esac",
               "set +e",
               "codex-desktop web >/tmp/codex-desktop-web.out 2>&1",
               "web_status=$?",
               "set -e",
               "test \"$web_status\" -eq 64",
-              "grep -q 'research-only' /tmp/codex-desktop-web.out",
+              "grep -q 'codex-desktop serve --workspace' /tmp/codex-desktop-web.out",
             ].join("\n"),
           ])
           .stdout()

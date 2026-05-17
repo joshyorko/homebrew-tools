@@ -21,7 +21,7 @@ import { createRequire } from "node:module"
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "5ff12de4dba995904edc6b2f37bf2b93628dc837"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "078c16d68e6f1cb6ecdbff1f4054d70156ef42bb"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
@@ -1274,6 +1274,7 @@ Usage: codex-desktop [command] [args]
 
 Commands:
   desktop                 Launch Codex Desktop
+  serve [args]            Run the Codex Desktop app launcher serve mode
   logs [--follow|--path]  Show the Codex Desktop launcher log
   doctor                  Check Bluefin/Linux runtime readiness
   --help, -h, help        Show this help
@@ -1642,13 +1643,28 @@ launch_desktop() {
   exec "$app_launcher" "\${args[@]}"
 }
 
-web_mode() {
-  if [ "\${1:-}" = "--inspect" ]; then
-    cat "$renderer_report"
-    return 0
+serve_mode() {
+  if [ ! -x "$app_launcher" ]; then
+    echo "Converted Codex Desktop launcher is missing or not executable: $app_launcher" >&2
+    exit 70
   fi
 
-  echo "Browser renderer mode is still research-only for this package. Run: codex-desktop web --inspect" >&2
+  unset ELECTRON_RUN_AS_NODE
+  exec "$app_launcher" serve "$@"
+}
+
+web_mode() {
+  if [ ! -x "$app_launcher" ]; then
+    echo "Converted Codex Desktop launcher is missing or not executable: $app_launcher" >&2
+    exit 70
+  fi
+
+  if [ "\${1:-}" = "--inspect" ]; then
+    unset ELECTRON_RUN_AS_NODE
+    exec "$app_launcher" web --inspect
+  fi
+
+  echo "Browser renderer mode is served by: codex-desktop serve --workspace <path> --profile <path>" >&2
   exit 64
 }
 
@@ -1670,6 +1686,11 @@ case "\${1:-desktop}" in
     prepare_flatpak_browser_integration
     prepare_editor_integration
     launch_desktop "$@"
+    ;;
+  serve)
+    shift
+    prepare_runtime_path
+    serve_mode "$@"
     ;;
   logs)
     shift
