@@ -48,6 +48,14 @@ function createConvertedAppFixture(root: string): string {
     [
       "#!/usr/bin/env bash",
       "set -euo pipefail",
+      "if [ \"${1:-}\" = web ] && [ \"${2:-}\" = --inspect ]; then",
+      "  printf '%s\\n' '{\"package\":\"codex-desktop-linux\",\"mode\":\"devcontainer-web\",\"loopback_only_default\":true}'",
+      "  exit 0",
+      "fi",
+      "if [ \"${1:-}\" = web ]; then",
+      "  echo 'codex-desktop web is now served by: codex-desktop serve --workspace <path> --profile <path>' >&2",
+      "  exit 64",
+      "fi",
       "echo \"fixture desktop launch:$*\"",
       "echo \"fixture codex path:$(command -v codex || true)\"",
       "echo \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"",
@@ -296,12 +304,12 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
     const webInspect = JSON.parse(
       execFileSync(join(extractDir, "bin/codex-desktop"), ["web", "--inspect"], { encoding: "utf8" }),
     )
-    assert.equal(webInspect.browser_mode_status, "research")
-    assert.equal(webInspect.serves_extracted_renderer, false)
+    assert.equal(webInspect.mode, "devcontainer-web")
+    assert.equal(webInspect.loopback_only_default, true)
 
     const webLaunch = spawnSync(join(extractDir, "bin/codex-desktop"), ["web"], { encoding: "utf8" })
     assert.equal(webLaunch.status, 64)
-    assert.match(webLaunch.stderr, /research-only/)
+    assert.match(webLaunch.stderr, /codex-desktop serve --workspace/)
 
     const dataHome = join(tmp, "xdg-data")
     const cacheHome = join(tmp, "xdg-cache")
