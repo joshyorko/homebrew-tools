@@ -35,6 +35,6 @@ class CodexDesktopLinuxBuilder < Formula
   test do
     output = shell_output("#{bin}/codex-desktop-linux-builder --help")
     assert_match "official OpenAI DMG", output
-    assert_match "codex-desktop-local-bundle", output
+    assert_match "--skip-install", output
   end
 end
