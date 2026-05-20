@@ -1277,6 +1277,7 @@ Commands:
   serve [args]            Run the Codex Desktop app launcher serve mode
   logs [--follow|--path]  Show the Codex Desktop launcher log
   doctor                  Check Bluefin/Linux runtime readiness
+  remote-control hosts    Manage OpenAI remote-control host records
   --help, -h, help        Show this help
 
 Running codex-desktop with no command launches desktop mode.
@@ -1668,6 +1669,16 @@ web_mode() {
   exit 64
 }
 
+remote_control_mode() {
+  if [ ! -x "$app_launcher" ]; then
+    echo "Converted Codex Desktop launcher is missing or not executable: $app_launcher" >&2
+    exit 70
+  fi
+
+  unset ELECTRON_RUN_AS_NODE
+  exec "$app_launcher" remote-control "$@"
+}
+
 bridge_mode() {
   cat <<'BRIDGE'
 The browser bridge is not started by the packaged desktop runtime yet.
@@ -1708,6 +1719,11 @@ case "\${1:-desktop}" in
     prepare_flatpak_browser_integration
     prepare_editor_integration
     doctor
+    ;;
+  remote-control)
+    shift
+    prepare_runtime_path
+    remote_control_mode "$@"
     ;;
   install-desktop-entry)
     prepare_runtime_path
@@ -1866,6 +1882,9 @@ function main() {
     linux_webview_app_icons_files: linuxWebviewAppIconsCopy.files,
     linux_webview_server_stale_detection_patched: linuxWebviewServerStaleDetectionPatch.patched,
     linux_webview_server_stale_detection_file: linuxWebviewServerStaleDetectionPatch.file,
+    linux_remote_mobile_control_autostart_marker: existsSync(
+      join(appDir, ".codex-linux/remote-mobile-control-enabled"),
+    ),
     linux_features_enabled: linuxFeaturesEnabled(),
     linux_protocol_schemes: LINUX_PROTOCOL_SCHEMES,
     updater_enabled: false,
