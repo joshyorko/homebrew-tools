@@ -22,7 +22,27 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 codex_dmg=""
 conversion_commit=""
 bundle_dir=""
+auto_bundle_dir=0
 skip_install=0
+temp_tap_name=""
+install_succeeded=0
+
+cleanup() {
+    status=$?
+    trap - EXIT
+
+    if [ -n "$temp_tap_name" ]; then
+        brew untap --force "$temp_tap_name" >/dev/null 2>&1 || true
+    fi
+
+    if [ "$status" -eq 0 ] && [ "$install_succeeded" -eq 1 ] && [ "$auto_bundle_dir" -eq 1 ]; then
+        rm -rf "$bundle_dir"
+    fi
+
+    return "$status"
+}
+
+trap cleanup EXIT
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -74,6 +94,7 @@ fi
 
 if [ -z "$bundle_dir" ]; then
     bundle_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-desktop-local.XXXXXX")"
+    auto_bundle_dir=1
 else
     mkdir -p "$bundle_dir"
     bundle_dir="$(realpath "$bundle_dir")"
@@ -120,8 +141,25 @@ export CODEX_DESKTOP_LOCAL_ARTIFACT="$artifact"
 export HOMEBREW_NO_AUTO_UPDATE="${HOMEBREW_NO_AUTO_UPDATE:-1}"
 export HOMEBREW_NO_ENV_HINTS="${HOMEBREW_NO_ENV_HINTS:-1}"
 
+temp_tap_name="codex-local/codex-desktop-local-$(date +%s)-$$"
+brew tap-new --no-git "$temp_tap_name" >/dev/null
+temp_tap_dir="$(brew --repository "$temp_tap_name")"
+mkdir -p "$temp_tap_dir/Casks"
+cp "$cask_file" "$temp_tap_dir/Casks/codex-desktop.rb"
+brew ruby -- -e '
+  cask_path, artifact = ARGV
+  needle = %q{url "file://#{ENV.fetch("CODEX_DESKTOP_LOCAL_ARTIFACT")}"}
+  replacement = "url #{("file://" + artifact).dump}"
+  contents = File.read(cask_path)
+  abort "Generated cask does not contain local artifact URL placeholder" unless contents.include?(needle)
+  File.write(cask_path, contents.sub(needle, replacement))
+' "$temp_tap_dir/Casks/codex-desktop.rb" "$artifact"
+local_cask_token="$temp_tap_name/codex-desktop"
+
 if brew list --cask codex-desktop >/dev/null 2>&1; then
-    brew reinstall --cask "$cask_file"
+    brew reinstall --cask "$local_cask_token"
 else
-    brew install --cask "$cask_file"
+    brew install --cask "$local_cask_token"
 fi
+
+install_succeeded=1
