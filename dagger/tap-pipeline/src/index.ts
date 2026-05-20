@@ -973,6 +973,25 @@ export class TapPipeline {
     system update_desktop_database, applications_dir if update_desktop_database
   end
 
+  uninstall_postflight do
+    require "socket"
+
+    control_socket = "#{Dir.home}/.codex/app-server-control/app-server-control.sock"
+
+    stale_control_socket = false
+    if File.socket?(control_socket)
+      begin
+        UNIXSocket.open(control_socket).close
+      rescue SystemCallError
+        stale_control_socket = true
+      end
+    end
+
+    if stale_control_socket
+      FileUtils.rm_f control_socket
+    end
+  end
+
   zap trash: [
     "#{Dir.home}/.local/share/applications/codex-desktop.desktop",
     "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png",
