@@ -21,7 +21,7 @@ import { createRequire } from "node:module"
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "f04391c03f708f200d2871b5fb1f011986a17e30"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "5c1255fc7aa34983fa4c77418cf44173e6cd4128"
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
