@@ -25,7 +25,6 @@ test("package registry covers every planned adapter kind", () => {
   assert.deepEqual(
     [...kinds].sort(),
     [
-      "codex_desktop_linux_cask",
       "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",
@@ -170,17 +169,10 @@ test("t3code CLI main uses timestamped main snapshots instead of smoke labels", 
   }
 })
 
-test("codex desktop auto-update tracks the official upstream DMG", () => {
+test("codex desktop is not registered for tap auto-update or release publishing", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
 
-  assert.ok(entry)
-  assert.equal(entry.autoUpdate.kind, "http_header_fingerprint")
-
-  if (entry.upstream.kind === "http_file") {
-    assert.equal(entry.upstream.url, "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg")
-  } else {
-    assert.fail("codex desktop should use the official Codex.dmg URL as its upstream source")
-  }
+  assert.equal(entry, undefined)
 })
 
 test("t3code CLI builders do not rewrite the upstream runtime package version", () => {

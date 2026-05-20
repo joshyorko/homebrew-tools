@@ -542,14 +542,21 @@ test("codex desktop artifact packages a converted DMG app layout", () => {
 
 test("public codex desktop cask is disabled and points users to local install", () => {
   const cask = readFileSync(new URL("../../../Casks/codex-desktop.rb", import.meta.url), "utf8")
+  const formula = readFileSync(new URL("../../../Formula/codex-desktop-linux-builder.rb", import.meta.url), "utf8")
 
   assert.match(cask, /cask "codex-desktop"/)
   assert.match(cask, /version "local-only"/)
   assert.match(cask, /disable! date: "2026-05-20"/)
   assert.match(cask, /converted Codex Desktop app artifacts are no longer distributed/)
-  assert.match(cask, /scripts\/install-codex-desktop-local\.sh/)
+  assert.match(cask, /brew install --HEAD joshyorko\/tools\/codex-desktop-linux-builder/)
+  assert.match(cask, /codex-desktop-linux-builder/)
   assert.doesNotMatch(cask, /releases\/download\/codex-desktop-linux/)
   assert.doesNotMatch(cask, /binary "bin\/codex-desktop"/)
+  assert.match(formula, /class CodexDesktopLinuxBuilder < Formula/)
+  assert.match(formula, /head "https:\/\/github\.com\/joshyorko\/homebrew-tools\.git"/)
+  assert.match(formula, /depends_on "dagger"/)
+  assert.match(formula, /scripts\/install-codex-desktop-local\.sh/)
+  assert.doesNotMatch(formula, /releases\/download\/codex-desktop-linux/)
 })
 
 test("codex desktop is local-only and not published by tap automation", () => {
@@ -565,6 +572,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.doesNotMatch(slots, /codex-desktop-linux/)
   assert.doesNotMatch(workflow, /13 \*\/2 \* \* \*/)
   assert.match(pipeline, /codex-desktop-linux is local-only and must not be published as a release bundle/)
+  assert.match(pipeline, /codex-desktop-linux is local-only and must not be published as release metadata/)
   assert.match(pipeline, /codexDesktopLocalBundle/)
   assert.match(pipeline, /CODEX_DESKTOP_LOCAL_ARTIFACT/)
   assert.match(pipeline, /No converted Codex Desktop app payload is distributed by the tap/)
@@ -588,6 +596,11 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /depends_on formula: "desktop-file-utils"/)
   assert.match(pipeline, /brew install --cask test\/tap\/codex-desktop/)
   assert.match(pipeline, /patch-codex-desktop-conversion\.mjs/)
+  assert.ok(
+    pipeline.indexOf('if (packageId === "codex-desktop-linux")') <
+      pipeline.indexOf("const ciLog = await this.ciCheck(packageId, githubToken)"),
+    "releaseBundle must reject codex-desktop-linux before running ciCheck",
+  )
   assert.doesNotMatch(pipeline, /--icon[\s\S]*\/conversion\/assets\/codex\.png/)
   assert.doesNotMatch(pipeline, /ca-certificates cargo curl/)
   assert.doesNotMatch(pipeline, /p7zip-full rustc sudo/)

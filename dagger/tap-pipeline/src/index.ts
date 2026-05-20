@@ -879,22 +879,23 @@ export class TapPipeline {
 
   private codexDesktopReleaseMetadata(build: CodexDesktopBuild, sha256: string): Record<string, unknown> {
     return {
-      ...releaseMetadataForPackage("codex-desktop-linux", {
+      package: "codex-desktop-linux",
+      kind: "codex_desktop_linux_cask",
+      homebrew_path: "Casks/codex-desktop.rb",
+      version: build.version,
+      release_tag: `codex-desktop-linux-${build.version}`,
+      asset_name: build.assetName,
+      artifact_sha256: sha256,
+      download_url: "file://${CODEX_DESKTOP_LOCAL_ARTIFACT}",
+      release_title: `Codex Desktop Linux ${build.version}`,
+      release_notes: `Local-only Homebrew artifact built by converting the official upstream Codex.dmg from ${CODEX_DESKTOP_DMG_URL} into a Linux Electron runtime on this machine.`,
+      commit_message: `Build local codex-desktop cask ${build.version}`,
+      upstream: {
+        kind: "http_file",
+        url: CODEX_DESKTOP_DMG_URL,
         version: build.version,
-        releaseTag: `codex-desktop-linux-${build.version}`,
-        assetName: build.assetName,
-        artifactSha256: sha256,
-        downloadUrl: "file://${CODEX_DESKTOP_LOCAL_ARTIFACT}",
-        releaseTitle: `Codex Desktop Linux ${build.version}`,
-        releaseNotes: `Local-only Homebrew artifact built by converting the official upstream Codex.dmg from ${CODEX_DESKTOP_DMG_URL} into a Linux Electron runtime on this machine.`,
-        commitMessage: `Build local codex-desktop cask ${build.version}`,
-        upstream: {
-          kind: "http_file",
-          url: CODEX_DESKTOP_DMG_URL,
-          version: build.version,
-          commit: build.conversionCommit,
-        },
-      }),
+        commit: build.conversionCommit,
+      },
       ...build.metadata,
     }
   }
@@ -2806,11 +2807,10 @@ end
         return json(this.t3CodeReleaseMetadata(build))
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifactFromUpstream(tap, codexDesktopConversionCommit)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        return json(this.codexDesktopReleaseMetadata(build, sha256))
+        void codexDesktopConversionCommit
+        throw new Error(
+          "codex-desktop-linux is local-only and must not be published as release metadata. Use codex-desktop-local-bundle from scripts/install-codex-desktop-local.sh.",
+        )
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
@@ -2845,6 +2845,13 @@ end
     codexDesktopConversionCommit?: string,
   ): Promise<Directory> {
     this.setGithubToken(githubToken)
+
+    if (packageId === "codex-desktop-linux") {
+      void codexDesktopConversionCommit
+      throw new Error(
+        "codex-desktop-linux is local-only and must not be published as a release bundle. Use codex-desktop-local-bundle from scripts/install-codex-desktop-local.sh.",
+      )
+    }
 
     const ciLog = await this.ciCheck(packageId, githubToken)
     const tap = this.source

@@ -70,7 +70,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
-| `scripts/install-codex-desktop-local.sh` | Build and install Codex Desktop locally from the official DMG |
+| `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
@@ -186,11 +186,18 @@ modules, stages bundled resources, renders a temporary local cask, and installs
 that cask through Homebrew.
 
 ```bash
-scripts/install-codex-desktop-local.sh
+brew install --HEAD joshyorko/tools/codex-desktop-linux-builder
+codex-desktop-linux-builder
 codex-desktop --help
 codex-desktop desktop
 codex-desktop doctor
 codex-desktop web --inspect
+```
+
+From a repo checkout, the same builder is available directly:
+
+```bash
+scripts/install-codex-desktop-local.sh
 ```
 
 The Dagger function is `codex-desktop-local-bundle`. It is for local export only,

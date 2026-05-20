@@ -13,6 +13,7 @@ cask "codex-desktop" do
     Codex Desktop is local-only in this tap.
 
     Build from the official OpenAI DMG on this machine and install with:
-      scripts/install-codex-desktop-local.sh
+      brew install --HEAD joshyorko/tools/codex-desktop-linux-builder
+      codex-desktop-linux-builder
   EOS
 end
