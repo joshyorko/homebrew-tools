@@ -1,3 +1,5 @@
 {
-    "image": "ghcr.io/joshyorko/ror:latest"
+  "image": "ghcr.io/joshyorko/ror:latest",
+  "remoteUser": "vscode",
+  "postStartCommand": "sudo mkdir -p /home/vscode/.vscode-server-insiders /home/vscode/.vscode-server /home/vscode/.cache /home/vscode/.config /home/vscode/.local /home/vscode/.npm /home/vscode/.zsh_history_dir && sudo chown -R vscode:vscode /home/vscode/.vscode-server-insiders /home/vscode/.vscode-server /home/vscode/.cache /home/vscode/.config /home/vscode/.local /home/vscode/.npm /home/vscode/.zsh_history_dir 2>/dev/null || true"
 }
