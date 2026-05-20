@@ -22,7 +22,7 @@ const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const CODEX_DESKTOP_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "10d6999a7bb926e6e74ff9ca66621e06a0d8afa7"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "d9580f7012aedbf853d5b8190f4d50bd244936ed"
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 const CODEX_DESKTOP_LINUX_FEATURES = ["remote-mobile-control", "open-target-discovery"]
