@@ -884,10 +884,10 @@ export class TapPipeline {
         releaseTag: `codex-desktop-linux-${build.version}`,
         assetName: build.assetName,
         artifactSha256: sha256,
-        downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/codex-desktop-linux-${build.version}/${build.assetName}`,
+        downloadUrl: "file://${CODEX_DESKTOP_LOCAL_ARTIFACT}",
         releaseTitle: `Codex Desktop Linux ${build.version}`,
-        releaseNotes: `Homebrew artifact built by converting the official upstream Codex.dmg from ${CODEX_DESKTOP_DMG_URL} into a Linux Electron runtime.`,
-        commitMessage: `Update codex-desktop cask to ${build.version}`,
+        releaseNotes: `Local-only Homebrew artifact built by converting the official upstream Codex.dmg from ${CODEX_DESKTOP_DMG_URL} into a Linux Electron runtime on this machine.`,
+        commitMessage: `Build local codex-desktop cask ${build.version}`,
         upstream: {
           kind: "http_file",
           url: CODEX_DESKTOP_DMG_URL,
@@ -897,6 +897,101 @@ export class TapPipeline {
       }),
       ...build.metadata,
     }
+  }
+
+  private renderCodexDesktopLocalCask(version: string, sha256: string): string {
+    return `cask "codex-desktop" do
+  version "${version}"
+  sha256 "${sha256}"
+
+  url "file://#{ENV.fetch("CODEX_DESKTOP_LOCAL_ARTIFACT")}"
+  name "Codex Desktop"
+  desc "Linux runtime for a locally converted Codex Desktop app"
+  homepage "https://github.com/joshyorko/homebrew-tools"
+
+  livecheck do
+    skip "Built locally from the official upstream Codex.dmg input."
+  end
+
+  depends_on cask: "codex"
+  depends_on formula: "desktop-file-utils"
+
+  binary "bin/codex-desktop", target: "codex-desktop"
+  artifact "share/applications/codex-desktop.desktop",
+           target: "#{Dir.home}/.local/share/applications/codex-desktop.desktop"
+  artifact "share/icons/hicolor/512x512/apps/codex-desktop.png",
+           target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png"
+  artifact "share/icons/hicolor/256x256/apps/codex-desktop.png",
+           target: "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
+
+  preflight do
+    FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
+    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
+    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/256x256/apps"
+
+    desktop_file = "#{staged_path}/share/applications/codex-desktop.desktop"
+    desktop_contents = File.read(desktop_file)
+    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/codex-desktop desktop %U")
+    desktop_contents.gsub!(
+      /^Icon=.*/,
+      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png"
+    )
+    desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=Codex")
+    desktop_contents << "StartupWMClass=Codex\\n" unless desktop_contents.match?(/^StartupWMClass=/)
+    desktop_contents.gsub!(/^X-GNOME-WMClass=.*/, "X-GNOME-WMClass=Codex")
+    desktop_contents << "X-GNOME-WMClass=Codex\\n" unless desktop_contents.match?(/^X-GNOME-WMClass=/)
+    mime_type = "MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;"
+    if desktop_contents.match?(/^MimeType=/)
+      desktop_contents.gsub!(/^MimeType=.*/, mime_type)
+    else
+      desktop_contents << "#{mime_type}\\n"
+    end
+    File.write(desktop_file, desktop_contents)
+  end
+
+  postflight do
+    applications_dir = "#{Dir.home}/.local/share/applications"
+    desktop_id = "codex-desktop.desktop"
+    desktop_target = "#{applications_dir}/#{desktop_id}"
+    xdg_mime = [
+      "/usr/bin/xdg-mime",
+      "/bin/xdg-mime",
+      "#{HOMEBREW_PREFIX}/bin/xdg-mime",
+    ].find { |path| File.executable?(path) }
+    update_desktop_database = [
+      "/usr/bin/update-desktop-database",
+      "/bin/update-desktop-database",
+      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
+    ].find { |path| File.executable?(path) }
+
+    FileUtils.chmod 0755, desktop_target if File.exist?(desktop_target)
+    if xdg_mime
+      system xdg_mime, "default", desktop_id, "x-scheme-handler/codex"
+      system xdg_mime, "default", desktop_id, "x-scheme-handler/codex-browser-sidebar"
+    end
+    system update_desktop_database, applications_dir if update_desktop_database
+  end
+
+  zap trash: [
+    "#{Dir.home}/.local/share/applications/codex-desktop.desktop",
+    "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png",
+    "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png",
+  ]
+
+  caveats <<~EOS
+    This cask installs a local artifact generated on this machine from the official OpenAI DMG.
+    No converted Codex Desktop app payload is distributed by the tap.
+
+    Launch from your app grid as Codex Desktop, or run:
+      codex-desktop
+
+    Logs and diagnostics:
+      codex-desktop logs
+      codex-desktop logs --follow
+      codex-desktop doctor
+  EOS
+end
+`
   }
 
   private vscodeReleaseMetadata(build: VscodeBuild, sha256: string): Record<string, unknown> {
@@ -2387,11 +2482,7 @@ export class TapPipeline {
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        const caskContents = await tap.file("Casks/codex-desktop.rb").contents()
-        const updatedCask = caskContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+        const updatedCask = this.renderCodexDesktopLocalCask(build.version, sha256)
           .replace(/^  depends_on cask: "codex"\n/m, "")
           .replace(/^  depends_on formula: "desktop-file-utils"\n/m, "")
         const smokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
@@ -2402,6 +2493,7 @@ export class TapPipeline {
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withEnvVariable("CODEX_DESKTOP_LOCAL_ARTIFACT", `/artifacts/${build.assetName}`)
           .withDirectory("/tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
@@ -2906,24 +2998,9 @@ export class TapPipeline {
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopArtifactFromUpstream(tap, codexDesktopConversionCommit)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const release = this.codexDesktopReleaseMetadata(build, sha256)
-        const caskContents = await tap.file("Casks/codex-desktop.rb").contents()
-        const updatedCask = caskContents
-          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const codexDmg = build.container.file("/inputs/Codex.dmg")
-
-        return dag.directory()
-          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
-          .withFile("release.json", dag.file("release.json", json(release)))
-          .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmg)))
-          .withFile("ci.log", dag.file("ci.log", ciLog))
+        throw new Error(
+          "codex-desktop-linux is local-only and must not be published as a release bundle. Use codex-desktop-local-bundle from scripts/install-codex-desktop-local.sh.",
+        )
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
@@ -2990,36 +3067,47 @@ export class TapPipeline {
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
   ): Promise<Directory> {
-    this.setGithubToken(githubToken)
-
-    const ciLog = await this.ciCheck("codex-desktop-linux", githubToken)
-    const build = await this.buildCodexDesktopArtifact(
-      this.source,
-      codexDmg,
-      CODEX_DESKTOP_MANUAL_VERSION,
-      undefined,
-      codexDesktopConversionCommit,
+    void codexDmg
+    void githubToken
+    void codexDesktopConversionCommit
+    throw new Error(
+      "codex-desktop-release-bundle is disabled because converted Codex Desktop app payloads are local-only. Use codex-desktop-local-bundle or scripts/install-codex-desktop-local.sh.",
     )
+  }
+
+  @func()
+  async codexDesktopLocalBundle(
+    codexDmg?: File,
+    codexDesktopConversionCommit?: string,
+  ): Promise<Directory> {
+    const build = codexDmg
+      ? await this.buildCodexDesktopArtifact(
+        this.source,
+        codexDmg,
+        CODEX_DESKTOP_MANUAL_VERSION,
+        undefined,
+        codexDesktopConversionCommit,
+      )
+      : await this.buildCodexDesktopArtifactFromUpstream(this.source, codexDesktopConversionCommit)
     const sha256 = (
       await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
     ).trim().split(/\s+/)[0]
-    const dmgReport = JSON.parse(await this.codexDesktopDmgReport(codexDmg)) as Record<string, unknown>
-    const release: Record<string, unknown> = {
+    const caskContents = this.renderCodexDesktopLocalCask(build.version, sha256)
+    const codexDmgFile = codexDmg ?? build.container.file("/inputs/Codex.dmg")
+    const dmgReport = JSON.parse(await this.codexDesktopDmgReport(codexDmgFile)) as Record<string, unknown>
+    const localMetadata: Record<string, unknown> = {
       ...this.codexDesktopReleaseMetadata(build, sha256),
+      distribution: "local-only",
+      download_url: "file://${CODEX_DESKTOP_LOCAL_ARTIFACT}",
+      release_notes: "Local-only Homebrew install bundle built from the official upstream Codex.dmg on this machine.",
       codex_dmg_sha256: dmgReport.codex_dmg_sha256,
       codex_dmg_bytes: dmgReport.codex_dmg_bytes,
     }
-    const caskContents = await this.source.file("Casks/codex-desktop.rb").contents()
-    const updatedCask = caskContents
-      .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-      .replace(/version ".*"/, `version "${build.version}"`)
-      .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
 
     return dag.directory()
       .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-      .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
-      .withFile("release.json", dag.file("release.json", json(release)))
-      .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmg)))
-      .withFile("ci.log", dag.file("ci.log", ciLog))
+      .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", caskContents))
+      .withFile("release.json", dag.file("release.json", json(localMetadata)))
+      .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmgFile)))
   }
 }

@@ -1,10 +1,5 @@
 [
   {
-    "id": "codex-desktop-2h",
-    "description": "Codex Desktop refresh after the conversion repo validates the official upstream Codex.dmg.",
-    "packageIds": ["codex-desktop-linux"]
-  },
-  {
     "id": "rcc-daily",
     "description": "Daily RCC refresh.",
     "packageIds": ["rcc"]

@@ -1,9 +1,6 @@
 name: Tap Auto Update
 
 on:
-  repository_dispatch:
-    types:
-    - codex-desktop-linux-ready
   schedule:
   - cron: "0 6 * * *"
   - cron: "0 7 * * *"
@@ -20,7 +17,6 @@ on:
         required: true
         type: choice
         options:
-        - codex-desktop-2h
         - rcc-daily
         - action-server-daily
         - desktop-6h
@@ -41,8 +37,6 @@ env:
   GH_TOKEN: ${{ github.token }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   RELEASE_RETENTION_PER_PACKAGE: "3"
-  CODEX_DESKTOP_CONVERSION_REPO: ${{ github.event.client_payload.conversion_repo }}
-  CODEX_DESKTOP_CONVERSION_COMMIT: ${{ github.event.client_payload.conversion_sha }}
 
 jobs:
   resolve:
@@ -64,34 +58,10 @@ jobs:
         EVENT_ACTION: ${{ github.event.action }}
         EVENT_SCHEDULE: ${{ github.event.schedule }}
         INPUT_SLOT_ID: ${{ inputs.slot_id }}
-        DISPATCH_PACKAGE_ID: ${{ github.event.client_payload.package_id }}
-        DISPATCH_CONVERSION_REPO: ${{ github.event.client_payload.conversion_repo }}
-        DISPATCH_CONVERSION_SHA: ${{ github.event.client_payload.conversion_sha }}
-        DISPATCH_DMG_SHA256: ${{ github.event.client_payload.dmg_sha256 }}
-        DISPATCH_SOURCE_RUN_URL: ${{ github.event.client_payload.source_run_url }}
       run: |
         set -euo pipefail
 
-        if [ "$EVENT_NAME" = "repository_dispatch" ]; then
-          if [ "$EVENT_ACTION" != "codex-desktop-linux-ready" ]; then
-            echo "Unsupported repository_dispatch action: $EVENT_ACTION" >&2
-            exit 1
-          fi
-          if [ "${DISPATCH_PACKAGE_ID:-}" != "codex-desktop-linux" ]; then
-            echo "Unsupported repository_dispatch package_id: ${DISPATCH_PACKAGE_ID:-missing}" >&2
-            exit 1
-          fi
-          if [ -z "${DISPATCH_CONVERSION_REPO:-}" ]; then
-            echo "repository_dispatch is missing client_payload.conversion_repo" >&2
-            exit 1
-          fi
-          if [ -z "${DISPATCH_CONVERSION_SHA:-}" ]; then
-            echo "repository_dispatch is missing client_payload.conversion_sha" >&2
-            exit 1
-          fi
-          slot_id="codex-desktop-2h"
-          trigger_source="repository_dispatch:$EVENT_ACTION"
-        elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+        if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
           slot_id="$INPUT_SLOT_ID"
           trigger_source="workflow_dispatch"
         else
@@ -114,18 +84,6 @@ jobs:
         echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
         echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
 
-        if [ "$EVENT_NAME" = "repository_dispatch" ]; then
-          {
-            echo "## Codex Desktop Dispatch"
-            echo
-            echo "Package: \`${DISPATCH_PACKAGE_ID}\`"
-            echo "Conversion repo: \`${DISPATCH_CONVERSION_REPO}\`"
-            echo "Conversion SHA: \`${DISPATCH_CONVERSION_SHA:-unknown}\`"
-            echo "DMG SHA-256: \`${DISPATCH_DMG_SHA256:-unknown}\`"
-            echo "Source run: ${DISPATCH_SOURCE_RUN_URL:-unknown}"
-          } >> "$GITHUB_STEP_SUMMARY"
-        fi
-
     - name: Resolve packages needing update
       id: dagger_plan
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
@@ -137,7 +95,6 @@ jobs:
         call: >-
           auto-update-status
           --slot-id="${{ steps.slot.outputs.slot_id }}"
-          --codex-desktop-conversion-commit="${{ github.event.client_payload.conversion_sha }}"
           --github-token=env://GH_TOKEN
 
     - name: Build matrix from slot output
@@ -192,7 +149,6 @@ jobs:
           -o "$RUNNER_TEMP/bundle"
           release-bundle
           --package-id="${{ matrix.package_id }}"
-          --codex-desktop-conversion-commit="${{ github.event.client_payload.conversion_sha }}"
           --github-token=env://GH_TOKEN
 
     - name: Upload release bundle artifact

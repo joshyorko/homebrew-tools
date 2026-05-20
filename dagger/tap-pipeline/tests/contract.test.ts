@@ -91,7 +91,6 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
-      "codex-desktop-linux",
       "devpod-linux",
       "eitype",
       "fizzy-cli-master",

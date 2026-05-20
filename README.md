@@ -70,7 +70,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
-| `brew install --cask joshyorko/tools/codex-desktop` | Install Codex Desktop Linux runtime |
+| `scripts/install-codex-desktop-local.sh` | Build and install Codex Desktop locally from the official DMG |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
@@ -177,44 +177,35 @@ That smoke test is the real end-to-end path:
 
 ### Codex Desktop (Linux DMG Conversion Runtime)
 
-Codex Desktop Linux support follows the same core idea as the tap-owned
-[`joshyorko/codex-desktop-linux`](https://github.com/joshyorko/codex-desktop-linux): poll the official
-`https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`, convert that DMG, patch the extracted
-app for Linux Electron, rebuild native modules, stage bundled resources, and package the resulting
-`codex-app/` as a Homebrew artifact through the tap's Dagger pipeline.
+Codex Desktop Linux support is local-only in this tap. The tap no longer
+publishes converted Codex Desktop app payloads as GitHub release assets. The
+local builder downloads the official
+`https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`, converts that DMG on
+this machine, patches the extracted app for Linux Electron, rebuilds native
+modules, stages bundled resources, renders a temporary local cask, and installs
+that cask through Homebrew.
 
 ```bash
-brew install --cask joshyorko/tools/codex-desktop
+scripts/install-codex-desktop-local.sh
 codex-desktop --help
 codex-desktop desktop
 codex-desktop doctor
 codex-desktop web --inspect
 ```
 
-The Dagger package id is `codex-desktop-linux`. The default conversion source is
-`joshyorko/codex-desktop-linux` at `078c16d68e6f1cb6ecdbff1f4054d70156ef42bb`, and dispatch
-builds use the validated conversion commit sent by that repo. The Codex Desktop repo checks the
-official DMG, validates the Linux conversion, and dispatches this tap to build the Homebrew artifact
-after that validation passes. The generated version includes both the DMG fingerprint and the
-conversion commit, so self-hosted Linux fixes can rebuild against the same official DMG. The build
-enables upstream's Linux Computer Use UI opt-in before converting the DMG, then records
-`linux_computer_use_ui_enabled` in `release.json`. The cask installs the launcher, desktop entry,
-URL handlers, and app icons automatically.
-Use the standard release-bundle target for the upstream DMG path, or the Codex-specific target when
-testing a local DMG:
+The Dagger function is `codex-desktop-local-bundle`. It is for local export only,
+not release publishing:
 
 ```bash
 dagger -m ./dagger/tap-pipeline call codex-desktop-renderer-report --codex-dmg=/path/to/Codex.dmg
-dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle release-bundle --package-id=codex-desktop-linux
-dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle codex-desktop-release-bundle --codex-dmg=/path/to/Codex.dmg
+dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle codex-desktop-local-bundle
 ```
 
-That release bundle keeps the standard tap shape:
+That local bundle keeps the standard tap shape:
 - `artifacts/` contains the tarball Homebrew installs
-- `homebrew/` contains the rendered cask with the artifact URL and checksum
+- `homebrew/` contains the rendered local cask with a `file://` URL and checksum
 - `release.json` records the DMG hash, conversion commit, Electron version, managed Node runtime,
   and final artifact hash
-- `ci.log` records the Homebrew fixture smoke test
 
 Manual GNOME/Bluefin validation checklist:
 - run `codex-desktop doctor` to inspect Codex CLI, browser, and Linux Computer Use readiness
