@@ -15,17 +15,27 @@ Options:
   --bundle-dir PATH             Write the local bundle here instead of a temp dir.
   --skip-install                Build only; do not run brew install/reinstall.
   -h, --help                    Show this help.
+
+Environment defaults:
+  CODEX_DESKTOP_CONVERSION_COMMIT  Conversion ref used when --conversion-commit is omitted.
+  CODEX_DESKTOP_CODEX_DMG          DMG path used when --codex-dmg is omitted.
+  CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
+  CODEX_DESKTOP_SKIP_INSTALL       Set to any non-empty value to imply --skip-install.
 EOF
 }
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-codex_dmg=""
-conversion_commit=""
-bundle_dir=""
+codex_dmg="${CODEX_DESKTOP_CODEX_DMG:-}"
+conversion_commit="${CODEX_DESKTOP_CONVERSION_COMMIT:-}"
+bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-}"
 auto_bundle_dir=0
 skip_install=0
 temp_tap_name=""
 install_succeeded=0
+
+if [ -n "${CODEX_DESKTOP_SKIP_INSTALL:-}" ]; then
+    skip_install=1
+fi
 
 cleanup() {
     status=$?
@@ -115,10 +125,14 @@ if [ -n "$conversion_commit" ]; then
 fi
 
 echo "Building local Codex Desktop bundle into $bundle_dir"
+if [ -n "$conversion_commit" ]; then
+    echo "Requested Codex Desktop Linux conversion ref: $conversion_commit"
+fi
 (cd "$repo_dir" && dagger "${dagger_args[@]}")
 
 artifact="$(find "$bundle_dir/artifacts" -maxdepth 1 -type f -name 'codex-desktop-linux-*.tar.gz' | sort | tail -n 1)"
 cask_file="$bundle_dir/homebrew/codex-desktop.rb"
+release_file="$bundle_dir/release.json"
 
 if [ -z "$artifact" ] || [ ! -f "$artifact" ]; then
     echo "Local Codex Desktop artifact was not produced under $bundle_dir/artifacts" >&2
@@ -131,6 +145,21 @@ fi
 
 echo "Local artifact: $artifact"
 echo "Local cask: $cask_file"
+if [ -f "$release_file" ]; then
+    built_conversion_commit="$(sed -n 's/.*"upstream_conversion_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$release_file" | head -n 1 || true)"
+    if [ -n "$built_conversion_commit" ]; then
+        echo "Built Codex Desktop Linux conversion commit: $built_conversion_commit"
+        if [[ "$conversion_commit" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            case "$built_conversion_commit" in
+                "$conversion_commit"*) ;;
+                *)
+                    echo "Built conversion commit does not match requested commit: $conversion_commit" >&2
+                    exit 70
+                    ;;
+            esac
+        fi
+    fi
+fi
 
 if [ "$skip_install" -eq 1 ]; then
     echo "Build complete. Skipping Homebrew install."
