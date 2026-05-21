@@ -17,6 +17,7 @@ import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
 import { createRequire } from "node:module"
+import { pathToFileURL } from "node:url"
 
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
@@ -223,9 +224,21 @@ function patchLinuxEditorTargets(source) {
   ) {
     return source
   }
+  if (linuxEditorTargetDetectorsPresent(source)) {
+    return source
+  }
   if (
     source.includes("codexLinuxIdeCommand(`vscode`)") &&
     source.includes("codexLinuxIdeCommand(`vscodeInsiders`)")
+  ) {
+    return source
+  }
+  if (
+    source.includes("function codexLinuxIdeCommand(") &&
+    source.includes("linux:codexLinuxIdePlatform(") &&
+    source.includes("...codexLinuxDiscoveredIdeTargets()") &&
+    source.includes("vscode:[`code`,`codium`]") &&
+    source.includes("vscodeInsiders:[`code-insiders`]")
   ) {
     return source
   }
@@ -269,17 +282,31 @@ function patchLinuxEditorTargets(source) {
     )
   }
 
-  source = patchEditorTargetLinuxDetect(source, "vscode", "code")
-  source = patchEditorTargetLinuxDetect(source, "vscodeInsiders", "code-insiders")
+  const linuxCommandDetectorName = inferLinuxEditorCommandDetector(source) ?? "lm"
+  source = patchEditorTargetLinuxDetect(source, "vscode", "code", linuxCommandDetectorName)
+  source = patchEditorTargetLinuxDetect(source, "vscodeInsiders", "code-insiders", linuxCommandDetectorName)
 
   if (source === original) {
     throw new Error("Codex Desktop main bundle did not match the expected VS Code target registry")
   }
-  if (!source.includes("linuxDetect:()=>lm(`code`)") || !source.includes("linuxDetect:()=>lm(`code-insiders`)")) {
+  if (!linuxEditorTargetDetectorsPresent(source)) {
     throw new Error("Codex Desktop Linux editor target patch did not produce both VS Code detectors")
   }
 
   return source
+}
+
+function inferLinuxEditorCommandDetector(source) {
+  return source.match(/pathCommand:([A-Za-z_$][\w$]*)\(`code`\)/)?.[1] ?? null
+}
+
+function linuxEditorTargetDetectorRegex(command) {
+  return new RegExp(`linuxDetect:\\(\\)=>[A-Za-z_$][\\w$]*\\(\`${command}\`\\)`, "u")
+}
+
+function linuxEditorTargetDetectorsPresent(source) {
+  return linuxEditorTargetDetectorRegex("code").test(source) &&
+    linuxEditorTargetDetectorRegex("code-insiders").test(source)
 }
 
 function unusedMinifiedParameterName(usedNames, preferredName) {
@@ -295,15 +322,15 @@ function unusedMinifiedParameterName(usedNames, preferredName) {
   throw new Error("Could not allocate a minified parameter name for Linux editor detection")
 }
 
-function patchEditorTargetLinuxDetect(source, targetId, command) {
+function patchEditorTargetLinuxDetect(source, targetId, command, commandDetectorName) {
   const targetPattern = new RegExp(
-    `([A-Za-z_$][\\\\w$]*\\s*=\\s*[A-Za-z_$][\\\\w$]*\\(\\{id:\`${targetId}\`[\\s\\S]*?)(\\}\\);)`,
+    `([A-Za-z_$][\\w$]*\\s*=\\s*[A-Za-z_$][\\w$]*\\(\\{id:\`${targetId}\`[\\s\\S]*?)(\\}\\);)`,
   )
   return source.replace(targetPattern, (match, targetSource, suffix) => {
     if (match.includes("linuxDetect:")) {
       return match
     }
-    return `${targetSource},linuxDetect:()=>lm(\`${command}\`)${suffix}`
+    return `${targetSource},linuxDetect:()=>${commandDetectorName}(\`${command}\`)${suffix}`
   })
 }
 
@@ -1964,4 +1991,8 @@ function main() {
   }
 }
 
-main()
+export { patchLinuxEditorTargets }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+}

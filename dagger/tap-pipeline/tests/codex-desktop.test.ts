@@ -742,3 +742,32 @@ test("codex desktop conversion patch skips repos with native Electron 42 patch",
     rmSync(tmp, { recursive: true, force: true })
   }
 })
+
+test("codex desktop packaging accepts converted open-target discovery patch", async () => {
+  const { patchLinuxEditorTargets } = await import(scriptPath.href)
+  const alreadyPatched = [
+    "function codexLinuxIdeCommand(e){let t={vscode:[`code`,`codium`],vscodeInsiders:[`code-insiders`]}[e]??[];return null}",
+    "function n({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,hidden:a}){return{id:e,platforms:{darwin:r?{}:void 0,win32:i?{}:void 0,linux:codexLinuxIdePlatform(e,t,n,a,o)}}}",
+    "var targets=[a,b,...codexLinuxDiscoveredIdeTargets()]",
+    "id:`vscode`,label:`VS Code`;id:`vscodeInsiders`,label:`VS Code Insiders`",
+  ].join("")
+
+  assert.equal(patchLinuxEditorTargets(alreadyPatched), alreadyPatched)
+})
+
+test("codex desktop packaging patches current VS Code target registry", async () => {
+  const { patchLinuxEditorTargets } = await import(scriptPath.href)
+  const currentRegistry = [
+    "function gT({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,darwinEnv:a,darwinArgs:o,hidden:s}){return{id:e,platforms:{darwin:r?{label:t,icon:n,kind:`editor`,hidden:s,detect:r,env:a,args:o??_T,supportsSsh:!0}:void 0,win32:i?{label:t,icon:n,kind:`editor`,hidden:s,detect:i,args:_T,supportsSsh:!0}:void 0}}}",
+    "var _T=(e,t)=>[e,t];",
+    "var BE=gT({id:`vscode`,label:`VS Code`,icon:`apps/vscode.png`,darwinDetect:()=>rT([`/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`]),win32Detect:VE});",
+    "function VE(){return Qi({pathCommand:Fi(`code`),executableName:`Code.exe`,installDirName:`Microsoft VS Code`})}",
+    "var HE=gT({id:`vscodeInsiders`,label:`VS Code Insiders`,icon:`apps/vscode-insiders.png`,darwinDetect:()=>rT([`/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code`]),win32Detect:UE});",
+    "function UE(){return Qi({pathCommand:Fi(`code-insiders`),executableName:`Code - Insiders.exe`,installDirName:`Microsoft VS Code Insiders`})}",
+  ].join("")
+
+  const patched = patchLinuxEditorTargets(currentRegistry)
+  assert.match(patched, /linuxDetect:\(\)=>Fi\(`code`\)/)
+  assert.match(patched, /linuxDetect:\(\)=>Fi\(`code-insiders`\)/)
+  assert.match(patched, /linux:[A-Za-z_$][\w$]*\?\{label:/)
+})
