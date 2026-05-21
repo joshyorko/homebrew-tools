@@ -198,7 +198,16 @@ From a repo checkout, the same builder is available directly:
 
 ```bash
 scripts/install-codex-desktop-local.sh
+make codex-desktop-install
+make codex-desktop-uninstall
+make codex-desktop-zap
 ```
+
+`codex-desktop-uninstall` removes the local-only Homebrew cask, Caskroom payload,
+desktop entry, app-grid icons, and temporary `codex-local/codex-desktop-local-*`
+taps. `codex-desktop-zap` also removes Codex Desktop app-local
+`~/.config/codex-desktop`, `~/.cache/codex-desktop`, and
+`~/.local/state/codex-desktop`. Both preserve `~/.codex`.
 
 The Dagger function is `codex-desktop-local-bundle`. It is for local export only,
 not release publishing:
