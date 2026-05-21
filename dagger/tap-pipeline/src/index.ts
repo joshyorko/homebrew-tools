@@ -403,10 +403,12 @@ export class TapPipeline {
   private async resolveCodexDesktopDmgMetadata(
     sourceUrl = CODEX_DESKTOP_DMG_URL,
     conversionCommit?: string,
+    dmgCacheBuster?: string,
   ): Promise<CodexDesktopDmgMetadata> {
     const raw = JSON.parse((await dag
       .container()
       .from(NODE_IMAGE)
+      .withEnvVariable("CODEX_DESKTOP_DMG_CACHE_BUSTER", dmgCacheBuster || "default")
       .withExec([
         "node",
         "--input-type=module",
@@ -1485,12 +1487,15 @@ end
   private async buildCodexDesktopArtifactFromUpstream(
     tap: Directory,
     requestedConversionCommit?: string,
+    dmgCacheBuster?: string,
   ): Promise<CodexDesktopBuild> {
     const dmgMetadata = await this.resolveCodexDesktopDmgMetadata(
       CODEX_DESKTOP_DMG_URL,
       requestedConversionCommit,
+      dmgCacheBuster,
     )
     const downloadContainer = this.codexDesktopBaseContainer()
+      .withEnvVariable("CODEX_DESKTOP_DMG_CACHE_BUSTER", dmgCacheBuster || dmgMetadata.cacheSegment)
       .withExec([
         "bash",
         "-lc",
@@ -3114,6 +3119,7 @@ end
   async codexDesktopLocalBundle(
     codexDmg?: File,
     codexDesktopConversionCommit?: string,
+    codexDesktopDmgCacheBuster?: string,
   ): Promise<Directory> {
     const build = codexDmg
       ? await this.buildCodexDesktopArtifact(
@@ -3123,7 +3129,11 @@ end
         undefined,
         codexDesktopConversionCommit,
       )
-      : await this.buildCodexDesktopArtifactFromUpstream(this.source, codexDesktopConversionCommit)
+      : await this.buildCodexDesktopArtifactFromUpstream(
+        this.source,
+        codexDesktopConversionCommit,
+        codexDesktopDmgCacheBuster,
+      )
     const sha256 = (
       await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
     ).trim().split(/\s+/)[0]

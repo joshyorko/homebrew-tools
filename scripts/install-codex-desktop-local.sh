@@ -18,6 +18,7 @@ Options:
 
 Environment defaults:
   CODEX_DESKTOP_CONVERSION_COMMIT  Conversion ref used when --conversion-commit is omitted.
+  CODEX_DESKTOP_CONVERSION_REPO    Conversion repository used when resolving mutable refs.
   CODEX_DESKTOP_CODEX_DMG          DMG path used when --codex-dmg is omitted.
   CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
   CODEX_DESKTOP_SKIP_INSTALL       Set to any non-empty value to imply --skip-install.
@@ -25,6 +26,8 @@ EOF
 }
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+codex_dmg_url="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
+conversion_repo="${CODEX_DESKTOP_CONVERSION_REPO:-https://github.com/joshyorko/codex-desktop-linux}"
 codex_dmg="${CODEX_DESKTOP_CODEX_DMG:-}"
 conversion_commit="${CODEX_DESKTOP_CONVERSION_COMMIT:-}"
 bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-}"
@@ -102,6 +105,49 @@ if [ -n "$codex_dmg" ]; then
     [ -f "$codex_dmg" ] || { echo "Codex DMG not found: $codex_dmg" >&2; exit 66; }
 fi
 
+resolved_conversion_commit="$conversion_commit"
+if [ -n "$conversion_commit" ] && ! [[ "$conversion_commit" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    if ! command -v git >/dev/null 2>&1; then
+        echo "git is required to resolve mutable Codex Desktop conversion refs." >&2
+        exit 69
+    fi
+
+    resolved_conversion_commit="$(
+        git ls-remote --exit-code "$conversion_repo" \
+            "$conversion_commit" \
+            "refs/heads/$conversion_commit" \
+            "refs/tags/$conversion_commit" \
+            2>/dev/null |
+            awk 'NR == 1 { print $1 }'
+    )"
+
+    if [ -z "$resolved_conversion_commit" ]; then
+        echo "Failed to resolve Codex Desktop Linux conversion ref '$conversion_commit' from $conversion_repo" >&2
+        exit 70
+    fi
+fi
+
+dmg_cache_buster=""
+if [ -z "$codex_dmg" ]; then
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "curl is required to resolve the current upstream Codex.dmg metadata." >&2
+        exit 69
+    fi
+
+    dmg_cache_buster="$(
+        curl -fsSIL --retry 3 "$codex_dmg_url" |
+            awk '
+                BEGIN { IGNORECASE = 1 }
+                /^last-modified:/ { last_modified = substr($0, index($0, ":") + 1); gsub(/^[ \t]+|[ \t\r]+$/, "", last_modified) }
+                /^etag:/ { etag = substr($0, index($0, ":") + 1); gsub(/^[ \t]+|[ \t\r]+$/, "", etag) }
+                /^content-length:/ { content_length = substr($0, index($0, ":") + 1); gsub(/^[ \t]+|[ \t\r]+$/, "", content_length) }
+                END {
+                    printf "last-modified=%s;etag=%s;content-length=%s\n", last_modified, etag, content_length
+                }
+            '
+    )"
+fi
+
 if [ -z "$bundle_dir" ]; then
     bundle_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-desktop-local.XXXXXX")"
     auto_bundle_dir=1
@@ -120,13 +166,22 @@ dagger_args=(
 if [ -n "$codex_dmg" ]; then
     dagger_args+=("--codex-dmg=$codex_dmg")
 fi
-if [ -n "$conversion_commit" ]; then
-    dagger_args+=("--codex-desktop-conversion-commit=$conversion_commit")
+if [ -n "$resolved_conversion_commit" ]; then
+    dagger_args+=("--codex-desktop-conversion-commit=$resolved_conversion_commit")
+fi
+if [ -n "$dmg_cache_buster" ]; then
+    dagger_args+=("--codex-desktop-dmg-cache-buster=$dmg_cache_buster")
 fi
 
 echo "Building local Codex Desktop bundle into $bundle_dir"
 if [ -n "$conversion_commit" ]; then
     echo "Requested Codex Desktop Linux conversion ref: $conversion_commit"
+fi
+if [ -n "$resolved_conversion_commit" ] && [ "$resolved_conversion_commit" != "$conversion_commit" ]; then
+    echo "Resolved Codex Desktop Linux conversion commit: $resolved_conversion_commit"
+fi
+if [ -n "$dmg_cache_buster" ]; then
+    echo "Resolved upstream Codex.dmg metadata: $dmg_cache_buster"
 fi
 (cd "$repo_dir" && dagger "${dagger_args[@]}")
 
@@ -149,11 +204,11 @@ if [ -f "$release_file" ]; then
     built_conversion_commit="$(sed -n 's/.*"upstream_conversion_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$release_file" | head -n 1 || true)"
     if [ -n "$built_conversion_commit" ]; then
         echo "Built Codex Desktop Linux conversion commit: $built_conversion_commit"
-        if [[ "$conversion_commit" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+        if [[ "$resolved_conversion_commit" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
             case "$built_conversion_commit" in
-                "$conversion_commit"*) ;;
+                "$resolved_conversion_commit"*) ;;
                 *)
-                    echo "Built conversion commit does not match requested commit: $conversion_commit" >&2
+                    echo "Built conversion commit does not match requested commit: $resolved_conversion_commit" >&2
                     exit 70
                     ;;
             esac
@@ -186,7 +241,7 @@ brew ruby -- -e '
 local_cask_token="$temp_tap_name/codex-desktop"
 
 if brew list --cask codex-desktop >/dev/null 2>&1; then
-    brew reinstall --cask "$local_cask_token"
+    brew reinstall --cask --force "$local_cask_token"
 else
     brew install --cask "$local_cask_token"
 fi
