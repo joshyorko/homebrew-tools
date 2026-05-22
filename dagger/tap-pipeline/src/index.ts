@@ -1,4 +1,5 @@
 import { dag, CacheSharingMode, Container, Directory, File, Secret, argument, object, func } from "@dagger.io/dagger"
+import { existsSync, readFileSync } from "node:fs"
 import {
   changedCiPackagesFromPaths,
   listAutoUpdateSlots as slotSummaries,
@@ -22,13 +23,27 @@ const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const CODEX_DESKTOP_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "self-hosted"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 const CODEX_DESKTOP_LINUX_FEATURES = ["remote-mobile-control", "open-target-discovery"]
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
+}
+
+function readDefaultCodexDesktopConversionRef(): string {
+  const refFile = new URL("../../../codex-desktop-conversion.ref", import.meta.url)
+  if (!existsSync(refFile)) {
+    return "self-hosted"
+  }
+
+  const ref = readFileSync(refFile, "utf8")
+    .split("\n")
+    .map((line) => line.replace(/\s*#.*/, "").trim())
+    .find((line) => line.length > 0)
+
+  return ref ?? "self-hosted"
 }
 
 function parseTextLines(output: string): string[] {

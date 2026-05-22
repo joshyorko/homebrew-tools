@@ -18,6 +18,7 @@ Options:
 
 Environment defaults:
   CODEX_DESKTOP_CONVERSION_COMMIT  Conversion ref used when --conversion-commit is omitted.
+  CODEX_DESKTOP_CONVERSION_REF_FILE File containing the default conversion ref.
   CODEX_DESKTOP_CONVERSION_REPO    Conversion repository used when resolving mutable refs.
   CODEX_DESKTOP_CODEX_DMG          DMG path used when --codex-dmg is omitted.
   CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
@@ -29,12 +30,28 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 codex_dmg_url="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 conversion_repo="${CODEX_DESKTOP_CONVERSION_REPO:-https://github.com/joshyorko/codex-desktop-linux}"
 codex_dmg="${CODEX_DESKTOP_CODEX_DMG:-}"
-conversion_commit="${CODEX_DESKTOP_CONVERSION_COMMIT:-}"
+conversion_ref_file="${CODEX_DESKTOP_CONVERSION_REF_FILE:-$repo_dir/codex-desktop-conversion.ref}"
 bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-}"
 auto_bundle_dir=0
 skip_install=0
 temp_tap_name=""
 install_succeeded=0
+
+read_default_conversion_ref() {
+    local ref_file="$1"
+    local ref=""
+
+    if [ -f "$ref_file" ]; then
+        ref="$(
+            sed -e 's/[[:space:]]*#.*//' -e '/^[[:space:]]*$/d' "$ref_file" |
+                head -n 1
+        )"
+    fi
+
+    printf '%s\n' "${ref:-self-hosted}"
+}
+
+conversion_commit="${CODEX_DESKTOP_CONVERSION_COMMIT:-$(read_default_conversion_ref "$conversion_ref_file")}"
 
 if [ -n "${CODEX_DESKTOP_SKIP_INSTALL:-}" ]; then
     skip_install=1

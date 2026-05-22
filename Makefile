@@ -1,4 +1,5 @@
-CODEX_DESKTOP_CONVERSION_COMMIT ?= self-hosted
+CODEX_DESKTOP_CONVERSION_REF_FILE ?= codex-desktop-conversion.ref
+CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//' -e '/^[[:space:]]*$$/d' "$(CODEX_DESKTOP_CONVERSION_REF_FILE)" 2>/dev/null | head -n 1)"; printf '%s\n' "$${ref:-self-hosted}")
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 
 ifneq ($(strip $(CODEX_DESKTOP_CODEX_DMG)),)
@@ -15,10 +16,12 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex-desktop-install codex-desktop-uninstall codex-desktop-zap install-codex-desktop uninstall-codex-desktop zap-codex-desktop
+.PHONY: codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap install-codex-desktop uninstall-codex-desktop zap-codex-desktop
 
 codex-desktop-install:
 	scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
+
+codex-install: codex-desktop-install
 
 codex-desktop-uninstall:
 	scripts/uninstall-codex-desktop-local.sh

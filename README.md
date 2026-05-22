@@ -199,9 +199,15 @@ From a repo checkout, the same builder is available directly:
 ```bash
 scripts/install-codex-desktop-local.sh
 make codex-desktop-install
+make codex-install
 make codex-desktop-uninstall
 make codex-desktop-zap
 ```
+
+`make codex-desktop-install` and `make codex-install` use the checked-in
+`codex-desktop-conversion.ref` by default, so local rebuilds follow the current
+test branch without pasting a commit SHA. Override with
+`CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
 
 `codex-desktop-uninstall` removes the local-only Homebrew cask, Caskroom payload,
 desktop entry, app-grid icons, and temporary `codex-local/codex-desktop-local-*`

@@ -22,7 +22,7 @@ import { pathToFileURL } from "node:url"
 const DEFAULT_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const DEFAULT_CONVERSION_COMMIT =
-  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || "self-hosted"
+  process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
 const LINUX_PROTOCOL_SCHEMES = ["codex", "codex-browser-sidebar"]
 const LINUX_RENDERER_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this computer"],
@@ -49,6 +49,20 @@ const LINUX_ICON_VISIBILITY_RULE = {
   key: "menu_item_icons",
   selector: LINUX_ICON_VISIBILITY_SELECTOR,
   css: `${LINUX_ICON_VISIBILITY_SELECTOR}{width:20px;height:20px;min-width:20px;min-height:20px}`,
+}
+
+function readDefaultCodexDesktopConversionRef() {
+  const refFile = new URL("../codex-desktop-conversion.ref", import.meta.url)
+  if (!existsSync(refFile)) {
+    return "self-hosted"
+  }
+
+  const ref = readFileSync(refFile, "utf8")
+    .split("\n")
+    .map((line) => line.replace(/\s*#.*/, "").trim())
+    .find((line) => line.length > 0)
+
+  return ref ?? "self-hosted"
 }
 
 function linuxProtocolMimeTypes() {
