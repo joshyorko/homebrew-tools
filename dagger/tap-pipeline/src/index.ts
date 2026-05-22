@@ -26,7 +26,16 @@ const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
-const CODEX_DESKTOP_LINUX_FEATURES = ["remote-mobile-control", "open-target-discovery"]
+const CODEX_DESKTOP_LINUX_FEATURES = [
+  "remote-mobile-control",
+  "remote-control-ui",
+  "open-target-discovery",
+  "read-aloud",
+  "read-aloud-mcp",
+  "conversation-mode",
+  "zed-opener",
+  "copilot-reasoning-effort",
+]
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`

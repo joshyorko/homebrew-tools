@@ -642,7 +642,18 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
-  assert.match(pipeline, /CODEX_DESKTOP_LINUX_FEATURES = \["remote-mobile-control", "open-target-discovery"\]/)
+  for (const feature of [
+    "remote-mobile-control",
+    "remote-control-ui",
+    "open-target-discovery",
+    "read-aloud",
+    "read-aloud-mcp",
+    "conversation-mode",
+    "zed-opener",
+    "copilot-reasoning-effort",
+  ]) {
+    assert.match(pipeline, new RegExp(`"${feature}"`))
+  }
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG", "\/work\/linux-features\.json"/)
   assert.match(pipeline, /linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES/)
   assert.match(pipeline, /remote-mobile-control-enabled/)
