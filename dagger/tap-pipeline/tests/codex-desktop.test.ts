@@ -615,7 +615,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(localUninstaller, /codex-local\\\/codex-desktop-local-/)
   assert.doesNotMatch(localUninstaller, /\.codex"/)
   assert.match(makefile, /codex-desktop-install:/)
-  assert.equal(defaultConversionRef, "codex/remote-mobile-controller-fixes")
+  assert.equal(defaultConversionRef, "codex/remote-control-stale-state-cleanup")
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_REF_FILE \?= codex-desktop-conversion\.ref/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_COMMIT \?= \$\(shell ref=/)
   assert.match(makefile, /\$\$\{ref:-self-hosted\}/)
