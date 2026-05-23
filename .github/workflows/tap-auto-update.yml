@@ -180,6 +180,7 @@ jobs:
         PACKAGE_IDS_JSON: ${{ needs.resolve.outputs.package_ids_json }}
       run: |
         set -euo pipefail
+        gh auth setup-git
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git pull --rebase origin "${GITHUB_REF_NAME}"
