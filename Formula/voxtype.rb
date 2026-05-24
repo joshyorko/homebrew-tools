@@ -1,9 +1,9 @@
 class Voxtype < Formula
   desc "Push-to-talk voice-to-text for Linux desktops"
   homepage "https://github.com/peteonrails/voxtype"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/voxtype-0.7.3/voxtype-0.7.3-homebrew-x86_64-linux.tar.gz"
-  version "0.7.3"
-  sha256 "d5e8663ca8025c0ad9a59850eb8923568ef246173ed8826f0f06d75a0d11c466"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/voxtype-0.7.4/voxtype-0.7.4-homebrew-x86_64-linux.tar.gz"
+  version "0.7.4"
+  sha256 "4e29ac62e27d9e1fa3572e84530168ed466ad2702b8ed6e9058d2717d8e5a510"
   license "MIT"
 
   livecheck do
