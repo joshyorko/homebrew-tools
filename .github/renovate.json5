@@ -4,6 +4,8 @@
     "github>joshyorko/renovate-config:org-inherited-config"
   ],
 
+  "skipArtifactsUpdate": true,
+
   // Tap package files are updated by the tap release pipeline, not Renovate.
   "homebrew": {
     "enabled": false
