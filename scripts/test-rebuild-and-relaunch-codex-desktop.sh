@@ -34,6 +34,8 @@ assert_contains "$foreground_output" "pull --ff-only"
 assert_contains "$foreground_output" "stop Codex Desktop"
 assert_contains "$foreground_output" "make -C"
 assert_contains "$foreground_output" "codex-desktop-install"
+assert_contains "$foreground_output" "env -u CODEX_ELECTRON_RESOURCES_PATH"
+assert_contains "$foreground_output" "-u CODEX_BROWSER_USE_NODE_PATH"
 assert_contains "$foreground_output" "codex-desktop desktop"
 
 echo "rebuild-and-relaunch dry-run test passed"

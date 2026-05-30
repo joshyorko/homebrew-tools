@@ -89,7 +89,7 @@ discover_codex_desktop_pids() {
         read_pid_file "$pid_file"
     done
 
-    pgrep -u "$(id -u)" -f '/Caskroom/codex-desktop/.*/share/codex-desktop/app/electron|/share/codex-desktop/app/electron' 2>/dev/null || true
+    pgrep -u "$(id -u)" -f '/Caskroom/codex-desktop/.*/share/codex-desktop/app/(start\.sh|electron|chrome_crashpad_handler|resources/node_repl|resources/node-runtime/bin/node)|/share/codex-desktop/app/(start\.sh|electron|chrome_crashpad_handler|resources/node_repl|resources/node-runtime/bin/node)' 2>/dev/null || true
 }
 
 unique_live_pids() {
@@ -187,6 +187,29 @@ build_and_install() {
     run make -C "$repo_dir" "$make_target"
 }
 
+codex_desktop_launch_command() {
+    local command=(
+        env
+        -u CODEX_ELECTRON_RESOURCES_PATH
+        -u CODEX_MANAGED_NODE_RUNTIME_DIR
+        -u CODEX_BROWSER_USE_NODE_PATH
+        -u NODE_REPL_NODE_PATH
+        -u CODEX_NODE_REPL_PATH
+        -u CODEX_LINUX_APP_DIR
+        -u CODEX_LINUX_LAUNCHER_CMD
+        -u CODEX_LINUX_FEATURES_DIR
+        -u CODEX_DESKTOP_LAUNCH_ACTION_SOCKET
+        -u CODEX_INTERNAL_ORIGINATOR_OVERRIDE
+        -u CODEX_THREAD_ID
+        -u CODEX_SHELL
+        -u CODEX_CI
+        codex-desktop
+        desktop
+    )
+
+    printf '%s\0' "${command[@]}"
+}
+
 launch_codex_desktop() {
     if [ "$launch_after" -eq 0 ]; then
         log "== launch skipped =="
@@ -194,14 +217,20 @@ launch_codex_desktop() {
     fi
 
     log "== launch Codex Desktop =="
+    local command=()
+    while IFS= read -r -d '' arg; do
+        command+=("$arg")
+    done < <(codex_desktop_launch_command)
+
     if [ "$dry_run" -eq 1 ]; then
-        log "DRY RUN: codex-desktop desktop"
+        printf 'DRY RUN: '
+        quote_command "${command[@]}"
         return 0
     fi
 
     local launch_log="${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop/rebuild-relaunch.log"
     mkdir -p "$(dirname "$launch_log")"
-    nohup codex-desktop desktop >>"$launch_log" 2>&1 &
+    nohup "${command[@]}" >>"$launch_log" 2>&1 &
     local launch_pid=$!
     disown "$launch_pid" 2>/dev/null || true
     log "Launched Codex Desktop as PID $launch_pid"
