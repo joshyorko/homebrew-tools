@@ -1,0 +1,58 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>joshyorko/renovate-config:org-inherited-config"
+  ],
+
+  // Tap package files are updated by the tap release pipeline, not Renovate.
+  "homebrew": {
+    "enabled": false
+  },
+  "ignorePaths": [
+    "Casks/**",
+    "Formula/**"
+  ],
+
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track the Dagger CLI version used by tap workflows.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "DAGGER_VERSION:\\s*[\"']?(?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']?"
+      ],
+      "depNameTemplate": "dagger/dagger",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "extractVersionTemplate": "^v?(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the RCC version exported inside workflow run blocks.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "RCC_VERSION=(?<currentValue>v?\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "joshyorko/rcc",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver",
+      "extractVersionTemplate": "^v?(?<version>.*)$"
+    }
+  ],
+
+  "packageRules": [
+    {
+      "groupName": "Dagger npm modules",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "dagger/**/package.json"
+      ]
+    }
+  ]
+}
