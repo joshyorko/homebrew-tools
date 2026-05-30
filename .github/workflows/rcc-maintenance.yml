@@ -102,7 +102,7 @@ jobs:
         branch_name="maintenance/workflows-$(date +%Y%m%d-%H%M%S)"
         git checkout -b "$branch_name"
         git add .github/workflows automation/maintenance-robot .gitignore
-        git commit -m "chore: update workflow action refs"
+        git commit -m "chore: update workflow dependency pins"
         echo "committed=true" >> "$GITHUB_OUTPUT"
         echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
 
@@ -118,7 +118,7 @@ jobs:
         cat > "$pr_body_file" <<EOF
         ## Automated RCC Maintenance
 
-        This PR updates allowed GitHub Actions workflow references and refreshes the local RCC maintenance robot.
+        This PR updates allowed workflow dependency pins and refreshes the local RCC maintenance robot.
 
         ### Changed files
 
@@ -127,7 +127,7 @@ jobs:
         ```
         EOF
         gh pr create \
-          --title "chore: update workflow action refs" \
+          --title "chore: update workflow dependency pins" \
           --body-file "$pr_body_file" \
           --base "${{ env.MAINTENANCE_TARGET_BRANCH }}" \
           --head "${{ steps.commit.outputs.branch_name }}"

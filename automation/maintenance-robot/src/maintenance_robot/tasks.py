@@ -32,7 +32,11 @@ def _run_workflow_updates() -> None:
     allowlists_dir = ROBOT_ROOT / "allowlists"
     report = MaintenanceReport()
     workflows_dir = REPO_ROOT / ".github" / "workflows"
-    updater = GitHubActionsUpdater(load_allowlist(allowlists_dir / "github_actions.json"), report=report)
+    updater = GitHubActionsUpdater(
+        load_allowlist(allowlists_dir / "github_actions.json"),
+        report=report,
+        version_allowlist=load_allowlist(allowlists_dir / "workflow_versions.json"),
+    )
     updated_files = updater.update_workflows(workflows_dir)
     if updated_files:
         logging.info("Updated GitHub Actions workflows: %s", ", ".join(sorted(updated_files)))

@@ -6,7 +6,7 @@
 
 dependencies:
   - python=3.13.11                 # https://www.python.org/downloads/
-  - uv=0.11.3                      # https://pypi.org/project/uv/
+  - uv=0.11.17                      # https://pypi.org/project/uv/
   - pip:
       - requests==2.33.1           # https://pypi.org/project/requests/
       - ruamel.yaml==0.19.1        # https://pypi.org/project/ruamel.yaml/

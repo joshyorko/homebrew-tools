@@ -1,0 +1,32 @@
+{
+  "env": {
+    "DAGGER_VERSION": {
+      "repo": "dagger/dagger",
+      "source": "release",
+      "max_major": 0,
+      "include_prerelease": false,
+      "pin_to_sha": false,
+      "value_prefix": ""
+    }
+  },
+  "run_exports": {
+    "RCC_VERSION": {
+      "repo": "joshyorko/rcc",
+      "source": "release",
+      "max_major": 18,
+      "include_prerelease": false,
+      "pin_to_sha": false,
+      "value_prefix": "v"
+    }
+  },
+  "with": {
+    "node-version": {
+      "repo": "nodejs/node",
+      "source": "release",
+      "max_major": 24,
+      "include_prerelease": false,
+      "pin_to_sha": false,
+      "major_only": true
+    }
+  }
+}

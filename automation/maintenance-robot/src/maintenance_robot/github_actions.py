@@ -11,7 +11,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from .github_api import ReleaseInfo, fetch_latest_version
-from .reporter import GitHubActionUpdate, MaintenanceReport
+from .reporter import GitHubActionUpdate, MaintenanceReport, WorkflowVersionUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,14 @@ class UpdateResult:
 
 
 class GitHubActionsUpdater:
-    def __init__(self, allowlist: dict[str, dict[str, object]], report: MaintenanceReport) -> None:
+    def __init__(
+        self,
+        allowlist: dict[str, dict[str, object]],
+        report: MaintenanceReport,
+        version_allowlist: Optional[dict[str, dict[str, dict[str, object]]]] = None,
+    ) -> None:
         self.allowlist = allowlist
+        self.version_allowlist = version_allowlist or {}
         self.report = report
         self._release_cache: dict[str, Optional[ReleaseInfo]] = {}
         self.yaml = YAML()
@@ -62,6 +68,18 @@ class GitHubActionsUpdater:
                             if result.comment:
                                 node.yaml_add_eol_comment(result.comment, key)
                             changed = True
+                    elif key == "env" and isinstance(value, CommentedMap):
+                        if self._update_named_versions(value, path, "env"):
+                            changed = True
+                    elif key == "with" and isinstance(value, CommentedMap):
+                        if self._update_named_versions(value, path, "with"):
+                            changed = True
+                        walk(value)
+                    elif key == "run" and isinstance(value, str):
+                        result = self._update_run_exports(value, path)
+                        if result != value:
+                            node[key] = result
+                            changed = True
                     else:
                         walk(value)
             elif isinstance(node, CommentedSeq):
@@ -75,6 +93,89 @@ class GitHubActionsUpdater:
                 self.yaml.dump(data, stream)
 
         return changed
+
+    def _update_named_versions(self, node: CommentedMap, path: Path, location: str) -> bool:
+        configs = self.version_allowlist.get(location, {})
+        changed = False
+        for name, config in configs.items():
+            if name not in node:
+                continue
+            value = node[name]
+            if not isinstance(value, str):
+                continue
+            result = self._maybe_update_version(name, value, path, location, config)
+            if result is None or result.value == value:
+                continue
+            node[name] = result.value
+            changed = True
+        return changed
+
+    def _update_run_exports(self, value: str, path: Path) -> str:
+        configs = self.version_allowlist.get("run_exports", {})
+        if not configs:
+            return value
+
+        updated_lines: list[str] = []
+        for line in value.splitlines():
+            updated_line = line
+            for name, config in configs.items():
+                pattern = re.compile(
+                    rf"(?P<prefix>echo\s+[\"']{re.escape(name)}=)(?P<version>[^\"']+)(?P<suffix>[\"']\s*>>\s*[\"']?\$GITHUB_ENV[\"']?)"
+                )
+                match = pattern.search(updated_line)
+                if not match:
+                    continue
+                result = self._maybe_update_version(name, match.group("version"), path, "run_exports", config)
+                if result is None or result.value == match.group("version"):
+                    continue
+                updated_line = (
+                    f"{updated_line[:match.start()]}"
+                    f"{match.group('prefix')}{result.value}{match.group('suffix')}"
+                    f"{updated_line[match.end():]}"
+                )
+            updated_lines.append(updated_line)
+
+        if value.endswith("\n"):
+            return "\n".join(updated_lines) + "\n"
+        return "\n".join(updated_lines)
+
+    def _maybe_update_version(
+        self,
+        name: str,
+        value: str,
+        path: Path,
+        location: str,
+        config: dict[str, object],
+    ) -> Optional[UpdateResult]:
+        current_version = self._to_version(value)
+        if current_version is None:
+            logger.debug("Skipping non-version value %s=%s in %s", name, value, path)
+            return None
+
+        release = self._get_configured_release(config)
+        if release is None:
+            return None
+
+        if bool(config.get("major_only", False)):
+            if release.version.major <= current_version.major:
+                return None
+            updated_value = str(release.version.major)
+        else:
+            if release.version <= current_version:
+                return None
+            updated_value = self._format_version_value(release, config)
+
+        logger.info("Updating %s in %s: %s -> %s", name, path, value, updated_value)
+        self.report.add_workflow_version_update(
+            WorkflowVersionUpdate(
+                file=path,
+                name=name,
+                location=location,
+                previous=value,
+                updated=updated_value,
+            )
+        )
+        return UpdateResult(value=updated_value)
 
     @staticmethod
     def _existing_eol_comment(node: CommentedMap, key: Any) -> Optional[str]:
@@ -168,15 +269,27 @@ class GitHubActionsUpdater:
     def _get_release(self, action: str) -> Optional[ReleaseInfo]:
         if action not in self._release_cache:
             config = self.allowlist.get(action, {})
-            repo = str(config.get("repo", ""))
-            if not repo:
-                self._release_cache[action] = None
-            else:
-                self._release_cache[action] = fetch_latest_version(
-                    repo=repo,
-                    source=str(config.get("source", "release")),
-                    include_prerelease=bool(config.get("include_prerelease", False)),
-                    max_major=int(config["max_major"]) if "max_major" in config else None,
-                    pin_to_sha=bool(config.get("pin_to_sha", True)),
-                )
+            self._release_cache[action] = self._get_configured_release(config)
         return self._release_cache[action]
+
+    def _get_configured_release(self, config: dict[str, object]) -> Optional[ReleaseInfo]:
+        repo = str(config.get("repo", ""))
+        if not repo:
+            return None
+        cache_key = f"{repo}:{config.get('source', 'release')}:{config.get('include_prerelease', False)}:{config.get('max_major', '')}:{config.get('pin_to_sha', True)}"
+        if cache_key not in self._release_cache:
+            self._release_cache[cache_key] = fetch_latest_version(
+                repo=repo,
+                source=str(config.get("source", "release")),
+                include_prerelease=bool(config.get("include_prerelease", False)),
+                max_major=int(config["max_major"]) if "max_major" in config else None,
+                pin_to_sha=bool(config.get("pin_to_sha", True)),
+            )
+        return self._release_cache[cache_key]
+
+    @staticmethod
+    def _format_version_value(release: ReleaseInfo, config: dict[str, object]) -> str:
+        prefix = config.get("value_prefix")
+        if prefix is None:
+            return release.tag
+        return f"{prefix}{release.version}"

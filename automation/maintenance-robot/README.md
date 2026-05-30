@@ -2,14 +2,20 @@
 
 RCC-powered maintenance robot for this tap.
 
-This robot is intentionally narrow. It updates GitHub Actions workflow references that
-we explicitly allowlist and writes a maintenance report. It does not try to mutate tap
-packages, release metadata, or arbitrary downloads.
+This robot is intentionally narrow. It updates workflow dependencies that we explicitly
+allowlist and writes a maintenance report. It does not try to mutate tap packages,
+release metadata, or arbitrary downloads.
+
+Currently tracked workflow dependencies:
+
+- GitHub Actions `uses:` refs in `allowlists/github_actions.json`
+- workflow `env` versions, `with` versions, and selected `$GITHUB_ENV` exports in
+  `allowlists/workflow_versions.json`
 
 ## Tasks
 
-- `maintenance`: update workflow action refs and write a report
-- `update-workflows`: targeted workflow update run
+- `maintenance`: update allowlisted workflow dependencies and write a report
+- `update-workflows`: targeted workflow dependency update run
 
 ## Local Usage
 
