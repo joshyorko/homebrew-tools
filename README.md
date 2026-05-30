@@ -204,6 +204,7 @@ make codex-desktop-uninstall
 make codex-desktop-zap
 make codex-desktop-rebuild-dry-run
 make codex-desktop-rebuild-relaunch
+make codex-desktop-rebuild-foreground
 ```
 
 `make codex-desktop-install` and `make codex-install` use the checked-in
@@ -211,11 +212,14 @@ make codex-desktop-rebuild-relaunch
 test branch without pasting a commit SHA. Override with
 `CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
 
-`make codex-desktop-rebuild-relaunch` is the local daily-driver loop: it
-fast-forwards this checkout, stops a running Codex Desktop process, rebuilds and
-reinstalls the local cask, then launches Codex Desktop again. Use
-`make codex-desktop-rebuild-dry-run` first to print the exact sequence without
-closing the app or starting a build.
+`make codex-desktop-rebuild-relaunch` is the local daily-driver loop designed to
+be safe when launched from inside Codex Desktop: it starts a detached worker,
+returns a PID and log path, then that worker fast-forwards this checkout, stops
+Codex Desktop, rebuilds and reinstalls the local cask, and launches Codex
+Desktop again. Use `make codex-desktop-rebuild-dry-run` first to print the
+detached worker command without closing the app or starting a build. Use
+`make codex-desktop-rebuild-foreground` only from an external terminal when you
+want the rebuild to stay attached to that terminal.
 
 `codex-desktop-uninstall` removes the local-only Homebrew cask, Caskroom payload,
 desktop entry, app-grid icons, and temporary `codex-local/codex-desktop-local-*`

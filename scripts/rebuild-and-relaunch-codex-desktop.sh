@@ -10,6 +10,8 @@ local Codex Desktop cask, then launch Codex Desktop again.
 
 Options:
   --dry-run              Print the plan without closing, pulling, building, or launching.
+  --detach               Start a detached worker and return before closing Desktop.
+  --log-file PATH        Detached worker log path.
   --repo-dir PATH        Homebrew tools checkout. Defaults to this script's repo.
   --make-target TARGET   Make target to run. Defaults to codex-desktop-install.
   --skip-pull            Do not git fetch/pull before building.
@@ -22,14 +24,18 @@ EOF
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_path="$script_dir/$(basename "${BASH_SOURCE[0]}")"
 repo_dir="$(cd "$script_dir/.." && pwd)"
 make_target="codex-desktop-install"
 dry_run=0
+detach=0
+worker=0
 skip_pull=0
 allow_dirty=0
 launch_after=1
 follow_logs=0
 wait_seconds=25
+log_file=""
 
 quote_command() {
     local arg
@@ -212,11 +218,82 @@ tail_logs() {
     run codex-desktop logs --follow
 }
 
+detached_default_log_file() {
+    local log_root="${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop"
+    printf '%s/rebuild-relaunch-%s.log\n' "$log_root" "$(date +%Y%m%d-%H%M%S)"
+}
+
+detached_worker_args() {
+    local args=(
+        --worker
+        --repo-dir "$repo_dir"
+        --make-target "$make_target"
+        --wait-seconds "$wait_seconds"
+    )
+
+    [ "$skip_pull" -eq 1 ] && args+=(--skip-pull)
+    [ "$allow_dirty" -eq 1 ] && args+=(--allow-dirty)
+    [ "$launch_after" -eq 0 ] && args+=(--no-launch)
+
+    printf '%s\0' "${args[@]}"
+}
+
+start_detached_worker() {
+    [ "$worker" -eq 0 ] || die "--detach cannot be combined with --worker"
+    [ "$follow_logs" -eq 0 ] || die "--detach cannot be combined with --follow-logs; tail the detached log instead"
+
+    local log_path="${log_file:-$(detached_default_log_file)}"
+    local log_dir
+    log_dir="$(dirname "$log_path")"
+
+    local worker_args=()
+    while IFS= read -r -d '' arg; do
+        worker_args+=("$arg")
+    done < <(detached_worker_args)
+
+    local command=(setsid bash "$script_path" "${worker_args[@]}")
+
+    if [ "$dry_run" -eq 1 ]; then
+        log "DRY RUN: would start detached rebuild worker:"
+        printf '+ '
+        quote_command "${command[@]}"
+        log "DRY RUN: worker log file: $log_path"
+        log "DRY RUN: detached worker would fetch/pull, stop Codex Desktop, build, install, and relaunch."
+        return 0
+    fi
+
+    command -v setsid >/dev/null 2>&1 || die "setsid is required for detached rebuilds"
+    command -v nohup >/dev/null 2>&1 || die "nohup is required for detached rebuilds"
+    mkdir -p "$log_dir"
+
+    nohup "${command[@]}" >>"$log_path" 2>&1 < /dev/null &
+    local worker_pid=$!
+    disown "$worker_pid" 2>/dev/null || true
+
+    log "Detached Codex Desktop rebuild worker started."
+    log "PID: $worker_pid"
+    log "Log file: $log_path"
+    log "Watch from any terminal: tail -f $(printf '%q' "$log_path")"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --dry-run)
             dry_run=1
             shift
+            ;;
+        --detach)
+            detach=1
+            shift
+            ;;
+        --worker)
+            worker=1
+            shift
+            ;;
+        --log-file)
+            log_file="${2:-}"
+            [ -n "$log_file" ] || die "--log-file requires a path"
+            shift 2
             ;;
         --repo-dir)
             repo_dir="${2:-}"
@@ -260,9 +337,21 @@ while [ "$#" -gt 0 ]; do
 done
 
 repo_dir="$(cd "$repo_dir" && pwd)"
+if [ -n "$log_file" ]; then
+    log_file="$(realpath -m "$log_file")"
+fi
 
 if [ "$dry_run" -eq 1 ]; then
     log "DRY RUN: no processes will be closed, no git state will change, no build will run."
+fi
+
+if [ "$detach" -eq 1 ]; then
+    start_detached_worker
+    exit 0
+fi
+
+if [ "$worker" -eq 1 ]; then
+    log "Detached Codex Desktop rebuild worker running."
 fi
 
 check_repo
