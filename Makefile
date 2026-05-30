@@ -16,12 +16,21 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap install-codex-desktop uninstall-codex-desktop zap-codex-desktop
+.PHONY: codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop
 
 codex-desktop-install:
 	scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
 
 codex-install: codex-desktop-install
+
+codex-desktop-rebuild-relaunch:
+	scripts/rebuild-and-relaunch-codex-desktop.sh
+
+codex-desktop-rebuild-dry-run:
+	scripts/rebuild-and-relaunch-codex-desktop.sh --dry-run
+
+test-codex-desktop-rebuild:
+	scripts/test-rebuild-and-relaunch-codex-desktop.sh
 
 codex-desktop-uninstall:
 	scripts/uninstall-codex-desktop-local.sh

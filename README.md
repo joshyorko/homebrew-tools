@@ -202,12 +202,20 @@ make codex-desktop-install
 make codex-install
 make codex-desktop-uninstall
 make codex-desktop-zap
+make codex-desktop-rebuild-dry-run
+make codex-desktop-rebuild-relaunch
 ```
 
 `make codex-desktop-install` and `make codex-install` use the checked-in
 `codex-desktop-conversion.ref` by default, so local rebuilds follow the current
 test branch without pasting a commit SHA. Override with
 `CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
+
+`make codex-desktop-rebuild-relaunch` is the local daily-driver loop: it
+fast-forwards this checkout, stops a running Codex Desktop process, rebuilds and
+reinstalls the local cask, then launches Codex Desktop again. Use
+`make codex-desktop-rebuild-dry-run` first to print the exact sequence without
+closing the app or starting a build.
 
 `codex-desktop-uninstall` removes the local-only Homebrew cask, Caskroom payload,
 desktop entry, app-grid icons, and temporary `codex-local/codex-desktop-local-*`
