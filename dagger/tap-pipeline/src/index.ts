@@ -128,6 +128,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
       ]
+    case "codex-release":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/codex-release.rb \"$tap_dir/Formula/\"",
+      ]
     case "fizzy-cli-master":
       return [
         "mkdir -p \"$tap_dir/Formula\"",
@@ -203,6 +208,14 @@ async function gitChangedFiles(source: Directory, gitDir: Directory, baseRef: st
 }
 
 type T3Build = {
+  artifactPath: string
+  assetName: string
+  commit: string
+  container: Container
+  version: string
+}
+
+type CodexReleaseBuild = {
   artifactPath: string
   assetName: string
   commit: string
@@ -566,6 +579,8 @@ export class TapPipeline {
         return `devpod-linux-${version}`
       case "t3code-cli-main":
         return `t3code-cli-main-${version}`
+      case "codex-release":
+        return `codex-release-${version}`
       case "fizzy-cli-master":
         return `fizzy-cli-master-${version}`
       case "fizzy-popper-self-hosted":
@@ -811,6 +826,26 @@ export class TapPipeline {
         kind: "git",
         repo: "https://github.com/pingdotgg/t3code",
         ref: "main",
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
+  private codexReleaseMetadata(build: CodexReleaseBuild, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("codex-release", {
+      version: build.version,
+      releaseTag: `codex-release-${build.version}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/codex-release-${build.version}/${build.assetName}`,
+      releaseTitle: `Codex release ${build.version}`,
+      releaseNotes: `Codex fork snapshot from joshyorko/codex@${build.commit} (tap-release branch).`,
+      commitMessage: `Update codex-release formula to ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/joshyorko/codex",
+        ref: "tap-release",
         version: build.version,
         commit: build.commit,
       },
@@ -1131,6 +1166,58 @@ end
         "/tap/scripts/package-t3code-cli-main.mjs",
         "--upstream-dir",
         "/upstream",
+        "--version",
+        resolvedVersion,
+        "--output",
+        artifactPath,
+      ])
+
+    return {
+      artifactPath,
+      assetName,
+      commit,
+      container,
+      version: resolvedVersion,
+    }
+  }
+
+  private async buildCodexReleaseArtifact(
+    tap: Directory,
+    ref: string,
+    version?: string,
+  ): Promise<CodexReleaseBuild> {
+    const entry = this.packageEntry("codex-release")
+
+    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+      throw new Error("Expected codex-release to use a git-head auto-update strategy")
+    }
+
+    const resolvedGitHead = version && version.length > 0
+      ? undefined
+      : await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)
+    const upstreamRef = dag.git(entry.upstream.repo).ref(resolvedGitHead?.commit ?? ref)
+    const commit = await upstreamRef.commit()
+    const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
+
+    if (!resolvedVersion) {
+      throw new Error("Failed to resolve codex-release version")
+    }
+
+    const assetName = `codex-release-${resolvedVersion}.tar.gz`
+    const artifactPath = `/tmp/${assetName}`
+
+    const container = this.rustBaseContainer()
+      .withDirectory("/tap", tap)
+      .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
+      .withWorkdir("/upstream/codex-rs")
+      .withExec(["cargo", "build", "--locked", "--release", "--bin", "codex"])
+      .withExec([
+        "node",
+        "/tap/scripts/package-codex-release.mjs",
+        "--upstream-dir",
+        "/upstream",
+        "--binary",
+        "/upstream/codex-rs/target/release/codex",
         "--version",
         resolvedVersion,
         "--output",
@@ -2379,6 +2466,42 @@ end
           ])
           .stdout()
       }
+      case "codex-release": {
+        const build = await this.buildCodexReleaseArtifact(tap, "tap-release")
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        const formulaContents = await tap.file("Formula/codex-release.rb").contents()
+        const updatedFormula = formulaContents
+          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+        const smokeTap = tap.withFile("Formula/codex-release.rb", dag.file("codex-release.rb", updatedFormula))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("codex-release"),
+              "brew install test/tap/codex-release",
+              "test -x \"$(brew --prefix)/bin/codex\"",
+              "brew test test/tap/codex-release",
+              "codex --help",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
       case "fizzy-cli-master": {
         const build = await this.buildFizzyArtifact(tap, "master")
         const sha256 = (
@@ -2838,6 +2961,13 @@ end
         ).trim().split(/\s+/)[0]
         return json(this.t3codeCliReleaseMetadata(build, sha256))
       }
+      case "codex-release": {
+        const build = await this.buildCodexReleaseArtifact(tap, "tap-release")
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        return json(this.codexReleaseMetadata(build, sha256))
+      }
       case "fizzy-cli-master": {
         const build = await this.buildFizzyArtifact(tap, "master")
         const sha256 = (
@@ -2980,6 +3110,24 @@ end
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "codex-release": {
+        const build = await this.buildCodexReleaseArtifact(tap, "tap-release")
+        const sha256 = (
+          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+        ).trim().split(/\s+/)[0]
+        const release = this.codexReleaseMetadata(build, sha256)
+        const formulaContents = await tap.file("Formula/codex-release.rb").contents()
+        const updatedFormula = formulaContents
+          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+
+        return dag.directory()
+          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withFile("homebrew/codex-release.rb", dag.file("codex-release.rb", updatedFormula))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }

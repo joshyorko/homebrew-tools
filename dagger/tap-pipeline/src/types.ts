@@ -14,6 +14,7 @@ export type AutoUpdateSlotId =
   | "desktop-6h"
   | "vscode-insiders-2h"
   | "t3-daily"
+  | "codex-release-daily"
   | "t3-code-6h"
   | "fizzy-daily"
 

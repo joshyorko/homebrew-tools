@@ -72,6 +72,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
+| `brew install joshyorko/tools/codex-release` | Install Codex CLI from Josh Yorko's tap-release branch fork; executable remains `codex` |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
 | `brew install joshyorko/tools/eitype` | Install Eitype |
@@ -174,6 +175,27 @@ That smoke test is the real end-to-end path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
+
+### Codex Release (Fork Channel)
+
+Codex CLI packaged from Josh Yorko's fork `tap-release` branch for Linux/devcontainer use.
+The fork should keep upstream `main` available for clean syncs, then promote chosen
+commits to the `tap-release` branch for tap publishing.
+
+> [!NOTE]
+> Use the full tap path to make the fork channel explicit:
+> ```bash
+> brew install joshyorko/tools/codex-release
+> ```
+
+```bash
+brew install joshyorko/tools/codex-release
+codex --help
+```
+
+The formula token is `codex-release` so it does not collide with upstream, but it
+installs the `codex` executable and declares a conflict with any upstream `codex`
+formula that also owns that binary.
 
 ### Codex Desktop (Linux DMG Conversion Runtime)
 

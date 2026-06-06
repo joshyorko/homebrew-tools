@@ -90,6 +90,7 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
+      "codex-release",
       "devpod-linux",
       "eitype",
       "fizzy-cli-master",
@@ -167,6 +168,25 @@ test("t3code CLI main uses timestamped main snapshots instead of smoke labels", 
     assert.equal(entry.autoUpdate.prefix, "main.")
     assert.equal(entry.autoUpdate.includeCommitDate, true)
   }
+})
+
+test("codex release tracks the fork tap-release branch and installs codex", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-release")
+
+  assert.ok(entry)
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+
+  if (entry.autoUpdate.kind === "git_head_sha") {
+    assert.equal(entry.autoUpdate.ref, "tap-release")
+    assert.equal(entry.autoUpdate.prefix, "release.")
+    assert.equal(entry.autoUpdate.includeCommitDate, true)
+  }
+
+  const formula = readFileSync(new URL("../../../Formula/codex-release.rb", import.meta.url), "utf8")
+
+  assert.match(formula, /conflicts_with "codex"/)
+  assert.match(formula, /bin\/"codex"/)
+  assert.match(formula, /tap-release branch/)
 })
 
 test("codex desktop is not registered for tap auto-update or release publishing", () => {

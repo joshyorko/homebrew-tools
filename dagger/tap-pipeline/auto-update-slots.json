@@ -25,6 +25,11 @@
     "packageIds": ["t3code-cli-main", "t3-code-linux"]
   },
   {
+    "id": "codex-release-daily",
+    "description": "Daily Codex release-channel refresh from the fork's tap-release branch.",
+    "packageIds": ["codex-release"]
+  },
+  {
     "id": "t3-code-6h",
     "description": "Six-hour Linux desktop refresh for the T3 Code AppImage cask.",
     "packageIds": ["t3-code-linux"]

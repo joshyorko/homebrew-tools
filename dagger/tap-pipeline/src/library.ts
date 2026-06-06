@@ -54,6 +54,24 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "codex-release",
+    kind: "source_build_rust_formula",
+    homebrewPath: "Formula/codex-release.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "tap-release",
+      prefix: "release.",
+      shaLength: 12,
+      includeCommitDate: true,
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/joshyorko/codex",
+      ref: "tap-release",
+    },
+  },
+  {
     id: "fizzy-cli-master",
     kind: "source_build_go_formula",
     homebrewPath: "Formula/fizzy-cli-master.rb",
@@ -223,6 +241,10 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   [
     "t3code-cli-main",
     ["Formula/t3code-cli-main.rb", "scripts/package-t3code-cli-main.mjs", "dagger/t3code-cli-main-smoke/"],
+  ],
+  [
+    "codex-release",
+    ["Formula/codex-release.rb", "scripts/package-codex-release.mjs"],
   ],
   [
     "fizzy-cli-master",
