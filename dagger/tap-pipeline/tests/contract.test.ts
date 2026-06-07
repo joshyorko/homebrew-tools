@@ -190,6 +190,22 @@ test("codex release tracks the fork tap-release branch and installs codex", () =
   assert.match(formula, /tap-release branch/)
 })
 
+test("codex release build keeps a Dagger cargo target cache", () => {
+  const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
+  const sectionMatch = source.match(/private async buildCodexReleaseArtifact[\s\S]*?private async codexReleaseSmokeLog/)
+
+  assert.ok(sectionMatch)
+
+  const section = sectionMatch[0]
+  const cacheIndex = section.indexOf('dag.cacheVolume("tap-pipeline-cargo-target-codex-release")')
+  const buildIndex = section.indexOf('.withExec(["cargo", "build", "--locked", "--release", "--bin", "codex"])')
+
+  assert.match(section, /"\/upstream\/codex-rs\/target"/)
+  assert.notEqual(cacheIndex, -1)
+  assert.notEqual(buildIndex, -1)
+  assert.equal(cacheIndex < buildIndex, true)
+})
+
 test("antigravity CLI is a manual closed-source binary formula", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "antigravity-cli")
 

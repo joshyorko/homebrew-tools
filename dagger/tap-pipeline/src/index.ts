@@ -1233,6 +1233,11 @@ end
     const container = this.rustBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
+      .withMountedCache(
+        "/upstream/codex-rs/target",
+        dag.cacheVolume("tap-pipeline-cargo-target-codex-release"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withWorkdir("/upstream/codex-rs")
       .withExec(["cargo", "build", "--locked", "--release", "--bin", "codex"])
       .withExec([
