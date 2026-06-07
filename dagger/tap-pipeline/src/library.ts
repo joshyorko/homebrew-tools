@@ -72,6 +72,20 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "antigravity-cli",
+    kind: "http_binary_formula",
+    homebrewPath: "Formula/antigravity-cli.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "manual",
+      reason: "Google publishes Antigravity CLI through a platform manifest; update after verifying checksums.",
+    },
+    upstream: {
+      kind: "http_file",
+      url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.0.6-6458082025406464/linux-x64/cli_linux_x64.tar.gz",
+    },
+  },
+  {
     id: "fizzy-cli-master",
     kind: "source_build_go_formula",
     homebrewPath: "Formula/fizzy-cli-master.rb",
@@ -246,6 +260,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     "codex-release",
     ["Formula/codex-release.rb", "scripts/package-codex-release.mjs"],
   ],
+  ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
   [
     "fizzy-cli-master",
     ["Formula/fizzy-cli-master.rb", "scripts/package-fizzy-cli-master.mjs", "dagger/fizzy-cli-master-smoke/"],

@@ -133,6 +133,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/codex-release.rb \"$tap_dir/Formula/\"",
       ]
+    case "antigravity-cli":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/antigravity-cli.rb \"$tap_dir/Formula/\"",
+      ]
     case "fizzy-cli-master":
       return [
         "mkdir -p \"$tap_dir/Formula\"",
@@ -1228,6 +1233,11 @@ end
     const container = this.rustBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
+      .withMountedCache(
+        "/upstream/codex-rs/target",
+        dag.cacheVolume("tap-pipeline-cargo-target-codex-release"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withWorkdir("/upstream/codex-rs")
       .withExec(["cargo", "build", "--locked", "--release", "--bin", "codex"])
       .withExec([
@@ -1995,6 +2005,8 @@ end
           codexDesktopConversionCommit,
         )).version
       }
+      case "manual":
+        throw new Error(`${packageId} is manually updated: ${entry.autoUpdate.reason}`)
     }
   }
 
@@ -2524,6 +2536,30 @@ end
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
         return this.codexReleaseSmokeLog(tap, build, sha256)
+      }
+      case "antigravity-cli": {
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", tap)
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("antigravity-cli"),
+              "brew install test/tap/antigravity-cli",
+              "brew test test/tap/antigravity-cli",
+              "agy --version",
+              "agy --help",
+            ].join("\n"),
+          ])
+          .stdout()
       }
       case "fizzy-cli-master": {
         const build = await this.buildFizzyArtifact(tap, "master")

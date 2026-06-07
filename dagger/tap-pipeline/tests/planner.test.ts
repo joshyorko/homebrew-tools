@@ -35,18 +35,20 @@ test("packagesForAutoUpdateSlot rejects unknown slots", () => {
 test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
   const changed = changedCiPackagesFromPaths([
     "Casks/rcc.rb",
+    "Formula/antigravity-cli.rb",
     "Formula/voxtype.rb",
     "Formula/eitype.rb",
     "README.md",
   ])
 
-  assert.deepEqual([...changed].sort(), ["eitype", "rcc", "voxtype"])
+  assert.deepEqual([...changed].sort(), ["antigravity-cli", "eitype", "rcc", "voxtype"])
 })
 
 test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     "codex-release": "Formula/codex-release.rb",
+    "antigravity-cli": "Formula/antigravity-cli.rb",
     "fizzy-cli-master": "Formula/fizzy-cli-master.rb",
     "fizzy-popper-self-hosted": "Formula/fizzy-popper-self-hosted.rb",
     "fizzy-symphony": "Formula/fizzy-symphony.rb",

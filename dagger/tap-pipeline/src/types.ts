@@ -3,6 +3,7 @@ export type PackageKind =
   | "rpm_repack_cask"
   | "source_build_rust_formula"
   | "source_build_go_formula"
+  | "http_binary_formula"
   | "github_release_binary_cask"
   | "github_release_deb_cask"
   | "github_release_appimage_cask"
@@ -60,6 +61,10 @@ export type AutoUpdateStrategy =
       kind: "http_header_fingerprint"
       prefix?: string
       shaLength?: number
+    }
+  | {
+      kind: "manual"
+      reason: string
     }
 
 export type PackageRegistryEntry = {

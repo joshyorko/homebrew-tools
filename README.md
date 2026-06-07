@@ -73,6 +73,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/codex-release` | Install Codex CLI from Josh Yorko's tap-release branch fork; executable remains `codex` |
+| `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
 | `brew install joshyorko/tools/eitype` | Install Eitype |
@@ -196,6 +197,23 @@ codex --help
 The formula token is `codex-release` so it does not collide with upstream, but it
 installs the `codex` executable and declares a conflict with any upstream `codex`
 formula that also owns that binary.
+
+### Antigravity CLI
+
+Google Antigravity CLI packaged from the upstream Linux x64 binary artifact.
+The upstream installer downloads a manifest, verifies SHA512, copies the binary
+as `agy`, and then runs first-run shell setup. This formula keeps the Homebrew
+install path explicit: it pins the verified tarball and installs only the `agy`
+launcher.
+
+> [!NOTE]
+> This is closed-source binary packaging, not a source build.
+> ```bash
+> brew install joshyorko/tools/antigravity-cli
+> agy --help
+> ```
+
+Run `agy install` after installation if you want Antigravity's own shell setup.
 
 ### Codex Desktop (Linux DMG Conversion Runtime)
 
