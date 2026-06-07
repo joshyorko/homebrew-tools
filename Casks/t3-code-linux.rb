@@ -20,11 +20,11 @@ cask "t3-code-linux" do
   artifact "t3-code-linux.desktop",
            target: "#{Dir.home}/.local/share/applications/t3-code-linux.desktop"
   artifact "t3-code-linux.png",
-           target: "#{Dir.home}/.local/share/icons/hicolor/1024x1024/apps/t3-code-linux.png"
+           target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png"
 
   preflight do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/1024x1024/apps"
+    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
 
     appimage = "#{staged_path}/T3-Code-#{version}-#{arch}.AppImage"
     system "chmod", "+x", appimage
@@ -38,13 +38,15 @@ cask "t3-code-linux" do
     desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/t3-code-linux %U")
     desktop_contents.gsub!(
       /^Icon=.*/,
-      "Icon=#{Dir.home}/.local/share/icons/hicolor/1024x1024/apps/t3-code-linux.png"
+      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png"
     )
     File.write(desktop_file, desktop_contents)
 
-    icon_source = Dir["#{staged_path}/squashfs-root/usr/share/icons/hicolor/1024x1024/apps/*.png"]
-      .find { |path| File.file?(path) }
-    raise "No 1024x1024 icon found in extracted T3 Code AppImage" unless icon_source
+    icon_source = Dir["#{staged_path}/squashfs-root/usr/share/icons/hicolor/*/apps/*.png"]
+      .select { |path| File.file?(path) }
+      .max_by { |path| path[%r{/hicolor/(\d+)x\d+/apps/}, 1].to_i }
+    icon_source ||= Dir["#{staged_path}/squashfs-root/**/*.png"].find { |path| File.file?(path) }
+    raise "No PNG icon found in extracted T3 Code AppImage" unless icon_source
 
     FileUtils.cp(icon_source, "#{staged_path}/t3-code-linux.png")
 
@@ -80,7 +82,7 @@ cask "t3-code-linux" do
 
   zap trash: [
     "#{Dir.home}/.local/share/applications/t3-code-linux.desktop",
-    "#{Dir.home}/.local/share/icons/hicolor/1024x1024/apps/t3-code-linux.png",
+    "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png",
   ]
 
   caveats <<~EOS

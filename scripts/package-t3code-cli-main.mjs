@@ -29,6 +29,28 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+function readPnpmWorkspaceCatalog(path) {
+  if (!existsSync(path)) return {};
+
+  const catalog = {};
+  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  const catalogStart = lines.findIndex((line) => line === "catalog:");
+  if (catalogStart === -1) return catalog;
+
+  for (const line of lines.slice(catalogStart + 1)) {
+    if (/^\S/.test(line)) break;
+
+    const match = line.match(/^  (?:"([^"]+)"|([^:]+)):\s+(.+)$/);
+    if (!match) continue;
+
+    const name = match[1] ?? match[2].trim();
+    const version = match[3].trim().replace(/^"(.+)"$/, "$1");
+    catalog[name] = version;
+  }
+
+  return catalog;
+}
+
 function resolveCatalogDependencies(dependencies, catalog) {
   const resolved = {};
 
@@ -71,6 +93,7 @@ function main() {
   const outputPath = resolve(outputPathArg);
 
   const rootPackageJson = readJson(join(upstreamDir, "package.json"));
+  const pnpmWorkspaceCatalog = readPnpmWorkspaceCatalog(join(upstreamDir, "pnpm-workspace.yaml"));
   const serverPackageJson = readJson(join(upstreamDir, "apps/server/package.json"));
   const licensePath = join(upstreamDir, "LICENSE");
   const readmePath = join(upstreamDir, "README.md");
@@ -106,7 +129,10 @@ function main() {
     engines: serverPackageJson.engines,
     dependencies: resolveCatalogDependencies(
       serverPackageJson.dependencies,
-      rootPackageJson.workspaces?.catalog,
+      {
+        ...rootPackageJson.workspaces?.catalog,
+        ...pnpmWorkspaceCatalog,
+      },
     ),
   };
 

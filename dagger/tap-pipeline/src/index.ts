@@ -632,13 +632,18 @@ export class TapPipeline {
         dag.cacheVolume("tap-pipeline-npm-cache"),
         { sharing: CacheSharingMode.Locked },
       )
+      .withMountedCache(
+        "/root/.local/share/pnpm/store",
+        dag.cacheVolume("tap-pipeline-pnpm-store-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl unzip python3 make g++ jq tar && npm install -g node-gyp && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git unzip python3 make g++ jq tar && npm install -g node-gyp && corepack enable && corepack prepare pnpm@10.24.0 --activate && rm -rf /var/lib/apt/lists/*",
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
-      .withEnvVariable("PATH", "/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+      .withEnvVariable("PATH", "/root/.bun/bin:/root/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
   private codexDesktopBaseContainer(): Container {
@@ -1157,10 +1162,24 @@ end
 
     const container = this.t3BaseContainer()
       .withDirectory("/tap", tap)
-      .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /upstream",
+          "git -C /upstream init",
+          `git -C /upstream remote add origin ${JSON.stringify(entry.upstream.repo)}`,
+          `git -C /upstream fetch --depth=1 --no-tags origin ${JSON.stringify(commit)}`,
+          "git -C /upstream checkout --detach FETCH_HEAD",
+          "rm -rf /upstream/.git",
+        ].join("\n"),
+      ])
       .withWorkdir("/upstream")
-      .withExec(["bun", "install", "--frozen-lockfile"])
-      .withExec(["bun", "run", "build", "--filter=@t3tools/web", "--filter=t3"])
+      .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
+      .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])
+      .withExec(["bash", "-lc", "rm -rf apps/server/dist/client && cp -R apps/web/dist apps/server/dist/client"])
       .withExec([
         "node",
         "/tap/scripts/package-t3code-cli-main.mjs",
@@ -1409,6 +1428,39 @@ end
       container,
       version: resolvedVersion,
     }
+  }
+
+  private async codexReleaseSmokeLog(tap: Directory, build: CodexReleaseBuild, sha256: string): Promise<string> {
+    const formulaContents = await tap.file("Formula/codex-release.rb").contents()
+    const updatedFormula = formulaContents
+      .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
+      .replace(/version ".*"/, `version "${build.version}"`)
+      .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+    const smokeTap = tap.withFile("Formula/codex-release.rb", dag.file("codex-release.rb", updatedFormula))
+
+    return dag
+      .container()
+      .from(BREW_IMAGE)
+      .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+      .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+      .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+      .withDirectory("/tap", smokeTap)
+      .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "repo=$(brew --repository)",
+          "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+          ...tapStagingCommands("codex-release"),
+          "brew install test/tap/codex-release",
+          "test -x \"$(brew --prefix)/bin/codex\"",
+          "brew test test/tap/codex-release",
+          "codex --help",
+        ].join("\n"),
+      ])
+      .stdout()
   }
 
   private async buildCodexDesktopFixtureArtifact(tap: Directory): Promise<CodexDesktopBuild> {
@@ -2471,36 +2523,7 @@ end
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        const formulaContents = await tap.file("Formula/codex-release.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const smokeTap = tap.withFile("Formula/codex-release.rb", dag.file("codex-release.rb", updatedFormula))
-
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", smokeTap)
-          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("codex-release"),
-              "brew install test/tap/codex-release",
-              "test -x \"$(brew --prefix)/bin/codex\"",
-              "brew test test/tap/codex-release",
-              "codex --help",
-            ].join("\n"),
-          ])
-          .stdout()
+        return this.codexReleaseSmokeLog(tap, build, sha256)
       }
       case "fizzy-cli-master": {
         const build = await this.buildFizzyArtifact(tap, "master")
@@ -2644,7 +2667,7 @@ end
               "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
               "test -f \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
-              "test -f \"$HOME/.local/share/icons/hicolor/1024x1024/apps/t3-code-linux.png\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
             ].join("\n"),
           ])
           .stdout()
@@ -3040,8 +3063,29 @@ end
       )
     }
 
-    const ciLog = await this.ciCheck(packageId, githubToken)
     const tap = this.source
+
+    if (packageId === "codex-release") {
+      const build = await this.buildCodexReleaseArtifact(tap, "tap-release")
+      const sha256 = (
+        await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+      ).trim().split(/\s+/)[0]
+      const release = this.codexReleaseMetadata(build, sha256)
+      const ciLog = await this.codexReleaseSmokeLog(tap, build, sha256)
+      const formulaContents = await tap.file("Formula/codex-release.rb").contents()
+      const updatedFormula = formulaContents
+        .replace(/url ".*"/, `url "${String(release.download_url)}"`)
+        .replace(/version ".*"/, `version "${build.version}"`)
+        .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+
+      return dag.directory()
+        .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+        .withFile("homebrew/codex-release.rb", dag.file("codex-release.rb", updatedFormula))
+        .withFile("release.json", dag.file("release.json", json(release)))
+        .withFile("ci.log", dag.file("ci.log", ciLog))
+    }
+
+    const ciLog = await this.ciCheck(packageId, githubToken)
 
     switch (packageId) {
       case "rcc": {
@@ -3110,24 +3154,6 @@ end
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
-          .withFile("release.json", dag.file("release.json", json(release)))
-          .withFile("ci.log", dag.file("ci.log", ciLog))
-      }
-      case "codex-release": {
-        const build = await this.buildCodexReleaseArtifact(tap, "tap-release")
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const release = this.codexReleaseMetadata(build, sha256)
-        const formulaContents = await tap.file("Formula/codex-release.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-
-        return dag.directory()
-          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile("homebrew/codex-release.rb", dag.file("codex-release.rb", updatedFormula))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
