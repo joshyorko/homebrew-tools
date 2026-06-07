@@ -28,6 +28,7 @@ test("package registry covers every planned adapter kind", () => {
       "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",
+      "http_binary_formula",
       "rpm_repack_cask",
       "source_build_go_formula",
       "source_build_node_formula",
@@ -187,6 +188,23 @@ test("codex release tracks the fork tap-release branch and installs codex", () =
   assert.match(formula, /conflicts_with "codex"/)
   assert.match(formula, /bin\/"codex"/)
   assert.match(formula, /tap-release branch/)
+})
+
+test("antigravity CLI is a manual closed-source binary formula", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "antigravity-cli")
+
+  assert.ok(entry)
+  assert.equal(entry.kind, "http_binary_formula")
+  assert.equal(entry.homebrewPath, "Formula/antigravity-cli.rb")
+  assert.equal(entry.supportsPrCi, true)
+  assert.equal(entry.autoUpdate.kind, "manual")
+  assert.equal(entry.upstream.kind, "http_file")
+
+  const formula = readFileSync(new URL("../../../Formula/antigravity-cli.rb", import.meta.url), "utf8")
+
+  assert.match(formula, /class AntigravityCli < Formula/)
+  assert.match(formula, /bin\/"agy"/)
+  assert.match(formula, /license :cannot_represent/)
 })
 
 test("codex desktop is not registered for tap auto-update or release publishing", () => {
