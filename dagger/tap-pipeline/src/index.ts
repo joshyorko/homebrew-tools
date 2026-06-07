@@ -1210,6 +1210,7 @@ end
     ref: string,
     version?: string,
   ): Promise<CodexReleaseBuild> {
+    void tap
     const entry = this.packageEntry("codex-release")
 
     if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
@@ -1219,8 +1220,7 @@ end
     const resolvedGitHead = version && version.length > 0
       ? undefined
       : await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)
-    const upstreamRef = dag.git(entry.upstream.repo).ref(resolvedGitHead?.commit ?? ref)
-    const commit = await upstreamRef.commit()
+    const commit = resolvedGitHead?.commit ?? await dag.git(entry.upstream.repo).ref(ref).commit()
     const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
 
     if (!resolvedVersion) {
@@ -1229,29 +1229,21 @@ end
 
     const assetName = `codex-release-${resolvedVersion}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
+    const releaseTag = `codex-release-${resolvedVersion}`
+    const release = await this.fetchJson(
+      `${githubApiRepoUrl(entry.upstream.repo)}/releases/tags/${encodeURIComponent(releaseTag)}`,
+    ) as {
+      assets: Array<{ name: string; browser_download_url: string }>
+    }
+    const asset = release.assets.find((candidate) => candidate.name === assetName)
 
-    const container = this.rustBaseContainer()
-      .withDirectory("/tap", tap)
-      .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
-      .withMountedCache(
-        "/upstream/codex-rs/target",
-        dag.cacheVolume("tap-pipeline-cargo-target-codex-release"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withWorkdir("/upstream/codex-rs")
-      .withExec(["cargo", "build", "--locked", "--release", "--bin", "codex"])
-      .withExec([
-        "node",
-        "/tap/scripts/package-codex-release.mjs",
-        "--upstream-dir",
-        "/upstream",
-        "--binary",
-        "/upstream/codex-rs/target/release/codex",
-        "--version",
-        resolvedVersion,
-        "--output",
-        artifactPath,
-      ])
+    if (!asset) {
+      const names = release.assets.map((candidate) => candidate.name).sort().join(", ") || "none"
+      throw new Error(`Missing Codex Linux release asset ${assetName} on ${releaseTag}; found: ${names}`)
+    }
+
+    let container = this.githubApiContainer()
+    container = this.downloadAsset(container, asset.browser_download_url, artifactPath)
 
     return {
       artifactPath,

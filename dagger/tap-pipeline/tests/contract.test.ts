@@ -186,24 +186,24 @@ test("codex release tracks the fork tap-release branch and installs codex", () =
   const formula = readFileSync(new URL("../../../Formula/codex-release.rb", import.meta.url), "utf8")
 
   assert.match(formula, /conflicts_with "codex"/)
-  assert.match(formula, /bin\/"codex"/)
+  assert.match(formula, /libexec\.install Dir\["\*"\]/)
+  assert.match(formula, /exec "#\{libexec\}\/bin\/codex" "\$@"/)
   assert.match(formula, /tap-release branch/)
 })
 
-test("codex release build keeps a Dagger cargo target cache", () => {
+test("codex release bundle consumes the fork's Linux release asset instead of compiling", () => {
   const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
   const sectionMatch = source.match(/private async buildCodexReleaseArtifact[\s\S]*?private async codexReleaseSmokeLog/)
 
   assert.ok(sectionMatch)
 
   const section = sectionMatch[0]
-  const cacheIndex = section.indexOf('dag.cacheVolume("tap-pipeline-cargo-target-codex-release")')
-  const buildIndex = section.indexOf('.withExec(["cargo", "build", "--locked", "--release", "--bin", "codex"])')
 
-  assert.match(section, /"\/upstream\/codex-rs\/target"/)
-  assert.notEqual(cacheIndex, -1)
-  assert.notEqual(buildIndex, -1)
-  assert.equal(cacheIndex < buildIndex, true)
+  assert.match(section, /githubApiContainer/)
+  assert.match(section, /downloadAsset/)
+  assert.match(section, /githubApiRepoUrl\(entry\.upstream\.repo\)/)
+  assert.doesNotMatch(section, /cargo", "build"/)
+  assert.doesNotMatch(section, /tap-pipeline-cargo-target-codex-release/)
 })
 
 test("antigravity CLI is a manual closed-source binary formula", () => {

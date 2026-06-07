@@ -16,11 +16,11 @@ class CodexRelease < Formula
   conflicts_with "codex", because: "both install a codex executable"
 
   def install
-    libexec.install "codex"
+    libexec.install Dir["*"]
 
     (bin/"codex").write <<~SH
       #!/bin/bash
-      exec "#{libexec}/codex" "$@"
+      exec "#{libexec}/bin/codex" "$@"
     SH
   end
 
