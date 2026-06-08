@@ -195,8 +195,8 @@ codex --help
 ```
 
 The formula token is `codex-release` so it does not collide with upstream, but it
-installs the `codex` executable and declares a conflict with any upstream `codex`
-formula that also owns that binary.
+installs the `codex` executable. Uninstall the official `codex` cask first if it
+already owns that binary.
 
 For fast local iteration, build the Codex asset locally and install it through a
 temporary local tap:

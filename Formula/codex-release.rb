@@ -13,8 +13,6 @@ class CodexRelease < Formula
 
   depends_on :linux
 
-  conflicts_with "codex", because: "both install a codex executable"
-
   def install
     libexec.install Dir["*"]
 
@@ -31,6 +29,7 @@ class CodexRelease < Formula
 
       The unique formula name keeps it separate from any upstream `codex` package,
       but the installed executable stays `codex`.
+      Uninstall the official `codex` cask first if it already owns that executable.
     EOS
   end
 

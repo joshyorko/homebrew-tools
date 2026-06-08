@@ -118,6 +118,28 @@ source_dir="$(absolute_path "$source_dir")"
 cache_dir="$(absolute_path "$cache_dir")"
 output_dir="$(absolute_path "$output_dir")"
 
+repair_podman_userns_ownership() {
+    local path="$1"
+
+    [ -e "$path" ] || return 0
+    [ -O "$path" ] && [ -w "$path" ] && return 0
+    command -v podman >/dev/null 2>&1 || return 0
+
+    # Rootless Podman subuid ownership can leak onto bind mounts if an older
+    # builder chowned files inside the user namespace. In `podman unshare`,
+    # 0:0 maps back to the invoking host user.
+    podman unshare chown -R 0:0 "$path" 2>/dev/null || true
+}
+
+remove_path() {
+    local path="$1"
+
+    [ -e "$path" ] || return 0
+    rm -rf "$path" 2>/dev/null && return 0
+    repair_podman_userns_ownership "$path"
+    rm -rf "$path"
+}
+
 prepare_source() {
     if ! command -v git >/dev/null 2>&1; then
         echo "git is required to fetch Codex source." >&2
@@ -125,13 +147,13 @@ prepare_source() {
     fi
 
     if [ "$clean_source" -eq 1 ]; then
-        rm -rf "$source_dir"
+        remove_path "$source_dir"
     fi
 
     mkdir -p "$(dirname "$source_dir")"
 
     if [ ! -d "$source_dir/.git" ]; then
-        rm -rf "$source_dir"
+        remove_path "$source_dir"
         git clone --filter=blob:none --no-tags "$source_repo" "$source_dir"
     else
         git -C "$source_dir" remote set-url origin "$source_repo"
@@ -190,8 +212,6 @@ run_in_container() {
         --rm
         -t
         -e CODEX_RELEASE_INSIDE_CONTAINER=1
-        -e HOST_UID="$(id -u)"
-        -e HOST_GID="$(id -g)"
         -v "$source_dir:/source"
         -v "$cache_dir:/cache"
         -v "$output_dir:/output"
@@ -214,9 +234,11 @@ run_in_container() {
 
 if [ "$inside_container" != "1" ]; then
     prepare_source
+    repair_podman_userns_ownership "$cache_dir"
+    repair_podman_userns_ownership "$output_dir"
 
     if [ "$clean_cache" -eq 1 ]; then
-        rm -rf "$cache_dir"
+        remove_path "$cache_dir"
     fi
 
     if [ "$use_container" != "false" ]; then
@@ -232,7 +254,7 @@ if [ "$inside_container" != "1" ]; then
 fi
 
 if [ "$clean_cache" -eq 1 ]; then
-    rm -rf "$cache_dir"
+    remove_path "$cache_dir"
 fi
 
 mkdir -p "$cache_dir" "$output_dir"
@@ -292,10 +314,6 @@ python3 "$source_dir/scripts/build_codex_package.py" \
 sha256sum "$archive_path" | tee "$archive_path.sha256"
 cp "$CARGO_TARGET_DIR/$target/release/codex" "$output_dir/codex"
 cp "$CARGO_TARGET_DIR/$target/release/bwrap" "$output_dir/bwrap"
-
-if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ] && [ "$(id -u)" = "0" ]; then
-    chown -R "$HOST_UID:$HOST_GID" "$cache_dir" "$output_dir"
-fi
 
 cat <<EOF
 Built local Codex release asset.
