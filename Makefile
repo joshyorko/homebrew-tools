@@ -3,8 +3,24 @@ CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//'
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 CODEX_RELEASE_INSTALL_ARGS =
 
-ifneq ($(strip $(CODEX_REPO)),)
-CODEX_RELEASE_INSTALL_ARGS += --codex-repo "$(CODEX_REPO)"
+ifneq ($(strip $(CODEX_RELEASE_SOURCE_REPO)),)
+CODEX_RELEASE_INSTALL_ARGS += --source-repo "$(CODEX_RELEASE_SOURCE_REPO)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_REF)),)
+CODEX_RELEASE_INSTALL_ARGS += --ref "$(CODEX_RELEASE_REF)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_SOURCE_DIR)),)
+CODEX_RELEASE_INSTALL_ARGS += --source-dir "$(CODEX_RELEASE_SOURCE_DIR)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_CACHE_DIR)),)
+CODEX_RELEASE_INSTALL_ARGS += --cache-dir "$(CODEX_RELEASE_CACHE_DIR)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_OUTPUT_DIR)),)
+CODEX_RELEASE_INSTALL_ARGS += --output-dir "$(CODEX_RELEASE_OUTPUT_DIR)"
 endif
 
 ifneq ($(strip $(CODEX_RELEASE_ARTIFACT)),)
@@ -35,12 +51,15 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop
+.PHONY: codex codex-build codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop
 
 codex:
 	scripts/install-codex-release-local.sh $(CODEX_RELEASE_INSTALL_ARGS) -- $(CODEX_RELEASE_BUILD_ARGS)
 
-codex-release-local: codex
+codex-build:
+	CODEX_RELEASE_SKIP_INSTALL=1 scripts/install-codex-release-local.sh $(CODEX_RELEASE_INSTALL_ARGS) -- $(CODEX_RELEASE_BUILD_ARGS)
+
+codex-release-local: codex-build
 
 codex-desktop-install:
 	scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
