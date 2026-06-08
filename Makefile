@@ -1,6 +1,25 @@
 CODEX_DESKTOP_CONVERSION_REF_FILE ?= codex-desktop-conversion.ref
 CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//' -e '/^[[:space:]]*$$/d' "$(CODEX_DESKTOP_CONVERSION_REF_FILE)" 2>/dev/null | head -n 1)"; printf '%s\n' "$${ref:-self-hosted}")
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
+CODEX_RELEASE_INSTALL_ARGS =
+
+ifneq ($(strip $(CODEX_REPO)),)
+CODEX_RELEASE_INSTALL_ARGS += --codex-repo "$(CODEX_REPO)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_ARTIFACT)),)
+CODEX_RELEASE_INSTALL_ARGS += --artifact "$(CODEX_RELEASE_ARTIFACT)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_BUNDLE_DIR)),)
+CODEX_RELEASE_INSTALL_ARGS += --bundle-dir "$(CODEX_RELEASE_BUNDLE_DIR)"
+endif
+
+ifneq ($(strip $(CODEX_RELEASE_SKIP_INSTALL)),)
+CODEX_RELEASE_INSTALL_ARGS += --skip-install
+endif
+
+CODEX_RELEASE_INSTALL_ARGS += $(CODEX_RELEASE_INSTALL_EXTRA_ARGS)
 
 ifneq ($(strip $(CODEX_DESKTOP_CODEX_DMG)),)
 CODEX_DESKTOP_INSTALL_ARGS += --codex-dmg "$(CODEX_DESKTOP_CODEX_DMG)"
@@ -16,7 +35,12 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop
+.PHONY: codex codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop
+
+codex:
+	scripts/install-codex-release-local.sh $(CODEX_RELEASE_INSTALL_ARGS) -- $(CODEX_RELEASE_BUILD_ARGS)
+
+codex-release-local: codex
 
 codex-desktop-install:
 	scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
