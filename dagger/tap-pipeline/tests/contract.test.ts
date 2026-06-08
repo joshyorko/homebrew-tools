@@ -185,10 +185,11 @@ test("codex release tracks the fork tap-release branch and installs codex", () =
 
   const formula = readFileSync(new URL("../../../Formula/codex-release.rb", import.meta.url), "utf8")
 
-  assert.match(formula, /conflicts_with "codex"/)
+  assert.doesNotMatch(formula, /conflicts_with "codex"/)
   assert.match(formula, /libexec\.install Dir\["\*"\]/)
   assert.match(formula, /exec "#\{libexec\}\/bin\/codex" "\$@"/)
   assert.match(formula, /tap-release branch/)
+  assert.match(formula, /official `codex` cask/)
 })
 
 test("codex release bundle consumes the fork's Linux release asset instead of compiling", () => {
