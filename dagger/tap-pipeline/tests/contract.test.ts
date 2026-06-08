@@ -206,6 +206,25 @@ test("codex release bundle consumes the fork's Linux release asset instead of co
   assert.doesNotMatch(section, /tap-pipeline-cargo-target-codex-release/)
 })
 
+test("codex release local bundle accepts a locally built artifact", () => {
+  const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
+  const installer = readFileSync(new URL("../../../scripts/install-codex-release-local.sh", import.meta.url), "utf8")
+  const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
+  const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8")
+
+  assert.match(source, /codexReleaseLocalBundle/)
+  assert.match(source, /codexReleaseArtifact: File/)
+  assert.match(source, /buildLocalCodexReleaseArtifact/)
+  assert.match(source, /CODEX_RELEASE_LOCAL_ARTIFACT/)
+  assert.match(installer, /codex-release-local-bundle/)
+  assert.match(installer, /--codex-release-artifact=\$artifact/)
+  assert.match(installer, /CODEX_RELEASE_LOCAL_ARTIFACT="\$artifact"/)
+  assert.match(makefile, /^codex:/m)
+  assert.match(makefile, /CODEX_RELEASE_BUILD_ARGS/)
+  assert.match(readme, /CODEX_REPO=\/path\/to\/joshyorko\/codex make codex/)
+  assert.match(readme, /CODEX_RELEASE_ARTIFACT=\/path\/to\/codex-release-release/)
+})
+
 test("antigravity CLI is a manual closed-source binary formula", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "antigravity-cli")
 

@@ -198,6 +198,30 @@ The formula token is `codex-release` so it does not collide with upstream, but i
 installs the `codex` executable and declares a conflict with any upstream `codex`
 formula that also owns that binary.
 
+For fast local iteration from a repo checkout, build the Codex asset locally and
+install it through a temporary local tap:
+
+```bash
+CODEX_REPO=/path/to/joshyorko/codex make codex
+```
+
+`make codex` calls the Codex checkout's `just local-tap-release`, reuses that
+checkout's `.codex-local-build/` dependency and target caches, passes the
+resulting `dist/local-tap-release/codex-release-*.tar.gz` to the local Dagger
+tap pipeline, writes the rendered bundle under `dist/codex-release-local/`, and
+runs `brew install` or `brew reinstall` from a temporary tap. Use
+`CODEX_RELEASE_SKIP_INSTALL=1 make codex` to only build and render the local
+bundle.
+
+To install from an already-built local tarball:
+
+```bash
+CODEX_RELEASE_ARTIFACT=/path/to/codex-release-release.20260608000000.abc123.tar.gz make codex
+```
+
+Extra Codex build flags pass through with `CODEX_RELEASE_BUILD_ARGS`, for
+example `CODEX_RELEASE_BUILD_ARGS=--rebuild-image make codex`.
+
 ### Antigravity CLI
 
 Google Antigravity CLI packaged from the upstream Linux x64 binary artifact.

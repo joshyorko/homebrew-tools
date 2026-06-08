@@ -862,6 +862,64 @@ export class TapPipeline {
     })
   }
 
+  private codexReleaseLocalMetadata(build: CodexReleaseBuild, sha256: string): Record<string, unknown> {
+    return releaseMetadataForPackage("codex-release", {
+      version: build.version,
+      releaseTag: `codex-release-${build.version}`,
+      assetName: build.assetName,
+      artifactSha256: sha256,
+      downloadUrl: "file://${CODEX_RELEASE_LOCAL_ARTIFACT}",
+      releaseTitle: `Local Codex release ${build.version}`,
+      releaseNotes: `Local-only Homebrew install bundle built from joshyorko/codex@${build.commit} on this machine.`,
+      commitMessage: `Build local codex-release formula for ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/joshyorko/codex",
+        ref: "tap-release",
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
+  private async buildLocalCodexReleaseArtifact(
+    codexReleaseArtifact: File,
+    codexCommit?: string,
+  ): Promise<CodexReleaseBuild> {
+    const assetName = await codexReleaseArtifact.name()
+    const prefix = "codex-release-"
+    const suffix = ".tar.gz"
+
+    if (!assetName.startsWith(prefix) || !assetName.endsWith(suffix)) {
+      throw new Error(`Expected artifact name like codex-release-<version>.tar.gz, got: ${assetName}`)
+    }
+
+    const version = assetName.slice(prefix.length, -suffix.length)
+    const parsedCommit = version.split(".").at(-1) ?? "unknown"
+    const artifactPath = `/inputs/${assetName}`
+    const container = dag
+      .container()
+      .from(NODE_IMAGE)
+      .withFile(artifactPath, codexReleaseArtifact)
+
+    return {
+      artifactPath,
+      assetName,
+      commit: codexCommit && codexCommit.length > 0 ? codexCommit : parsedCommit,
+      container,
+      version,
+    }
+  }
+
+  private async renderCodexReleaseLocalFormula(version: string, sha256: string): Promise<string> {
+    const formulaContents = await this.source.file("Formula/codex-release.rb").contents()
+
+    return formulaContents
+      .replace(/url ".*"/, 'url "file://#{ENV.fetch("CODEX_RELEASE_LOCAL_ARTIFACT")}"')
+      .replace(/version ".*"/, `version "${version}"`)
+      .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+  }
+
   private fizzyReleaseMetadata(build: FizzyBuild, sha256: string): Record<string, unknown> {
     return releaseMetadataForPackage("fizzy-cli-master", {
       version: build.version,
@@ -3380,5 +3438,34 @@ end
       .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", caskContents))
       .withFile("release.json", dag.file("release.json", json(localMetadata)))
       .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmgFile)))
+  }
+
+  @func()
+  async codexReleaseLocalBundle(
+    codexReleaseArtifact: File,
+    codexCommit?: string,
+  ): Promise<Directory> {
+    const build = await this.buildLocalCodexReleaseArtifact(codexReleaseArtifact, codexCommit)
+    const sha256 = (
+      await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
+    ).trim().split(/\s+/)[0]
+    const formulaContents = await this.renderCodexReleaseLocalFormula(build.version, sha256)
+    const localMetadata: Record<string, unknown> = {
+      ...this.codexReleaseLocalMetadata(build, sha256),
+      distribution: "local-only",
+    }
+    const ciLog = [
+      "Local Codex release bundle.",
+      `artifact=artifacts/${build.assetName}`,
+      `formula=homebrew/codex-release.rb`,
+      `sha256=${sha256}`,
+      "",
+    ].join("\n")
+
+    return dag.directory()
+      .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+      .withFile("homebrew/codex-release.rb", dag.file("codex-release.rb", formulaContents))
+      .withFile("release.json", dag.file("release.json", json(localMetadata)))
+      .withFile("ci.log", dag.file("ci.log", ciLog))
   }
 }
