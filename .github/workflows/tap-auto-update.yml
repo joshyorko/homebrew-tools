@@ -123,12 +123,14 @@ jobs:
           echo
           echo "### Package Status"
           echo
-          jq -r '.[] | "- \(.id): current=\(.current_version) upstream=\(.upstream_version) needs_update=\(.needs_update)"' <<<"$STATUS_JSON"
+          jq -r '.[] | if .skipped then "- \(.id): current=\(.current_version) upstream=unknown needs_update=false skipped=true reason=\(.skip_reason)" else "- \(.id): current=\(.current_version) upstream=\(.upstream_version) needs_update=\(.needs_update)" end' <<<"$STATUS_JSON"
         } >> "$GITHUB_STEP_SUMMARY"
 
-        echo "package_ids_json=$PACKAGE_IDS_JSON" >> "$GITHUB_OUTPUT"
-        echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-        echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        {
+          echo "package_ids_json=$PACKAGE_IDS_JSON"
+          echo "matrix=$matrix"
+          echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)"
+        } >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve

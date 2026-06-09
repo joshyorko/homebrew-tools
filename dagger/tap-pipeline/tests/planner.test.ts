@@ -6,9 +6,11 @@ import {
   PACKAGE_REGISTRY,
   changedCiPackagesFromPaths,
   changedPackagesFromPaths,
+  isTransientUpstreamProbeError,
   listAutoUpdateSlots,
   packagesForAutoUpdateSlot,
   platformPathsChanged,
+  TransientUpstreamProbeError,
 } from "../src/library.ts"
 
 test("listAutoUpdateSlots returns the stable slot order", () => {
@@ -74,4 +76,12 @@ test("platformPathsChanged detects shared orchestration changes", () => {
   assert.equal(platformPathsChanged(["dagger/tap-pipeline/src/index.ts"]), true)
   assert.equal(platformPathsChanged(["scripts/apply-release-bundle.mjs"]), true)
   assert.equal(platformPathsChanged(["README.md"]), false)
+})
+
+test("transient upstream probe errors are explicitly marked", () => {
+  assert.equal(
+    isTransientUpstreamProbeError(new TransientUpstreamProbeError("Skipped upstream probe for package")),
+    true,
+  )
+  assert.equal(isTransientUpstreamProbeError(new Error("ordinary failure")), false)
 })
