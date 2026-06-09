@@ -10,6 +10,17 @@ type GitHeadVersionInput = {
   shaLength?: number
 }
 
+export class TransientUpstreamProbeError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "TransientUpstreamProbeError"
+  }
+}
+
+export function isTransientUpstreamProbeError(error: unknown): error is TransientUpstreamProbeError {
+  return error instanceof TransientUpstreamProbeError
+}
+
 function compactUtcTimestamp(value: string): string {
   const date = new Date(value)
 

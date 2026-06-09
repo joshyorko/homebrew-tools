@@ -7,7 +7,9 @@ import {
   parseAutoUpdateSlotId,
   packagesForAutoUpdateSlot as slotPackages,
   formatGitHeadVersion,
+  isTransientUpstreamProbeError,
   releaseMetadataForPackage,
+  TransientUpstreamProbeError,
 } from "./library.js"
 import { rewriteCaskUrl } from "./cask-render.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
@@ -351,14 +353,25 @@ type CodexDesktopDmgMetadata = {
   version: string
 }
 
+type CodexDesktopDmgProbeResult =
+  | ({ ok: true } & Omit<CodexDesktopDmgMetadata, "version">)
+  | {
+      ok: false
+      reason: string
+      sourceUrl: string
+      transient: true
+    }
+
 type AutoUpdatePackageStatus = {
   id: string
   kind: string
   homebrew_path: string
   current_version: string
-  upstream_version: string
+  upstream_version: string | null
   current_release_published: boolean
   needs_update: boolean
+  skipped?: boolean
+  skip_reason?: string
 }
 
 @object()
@@ -419,8 +432,28 @@ export class TapPipeline {
     const entries = slotPackages(parseAutoUpdateSlotId(slotId))
     const statuses = await Promise.all(entries.map(async (entry): Promise<AutoUpdatePackageStatus> => {
       const currentVersion = await this.currentPackagedVersion(entry.id)
-      const upstreamVersion = await this.resolveUpstreamVersion(entry.id, codexDesktopConversionCommit)
       const currentReleasePublished = await this.tapReleaseExists(entry.id, currentVersion)
+
+      let upstreamVersion: string
+      try {
+        upstreamVersion = await this.resolveUpstreamVersion(entry.id, codexDesktopConversionCommit)
+      } catch (error) {
+        if (isTransientUpstreamProbeError(error)) {
+          return {
+            id: entry.id,
+            kind: entry.kind,
+            homebrew_path: entry.homebrewPath,
+            current_version: currentVersion,
+            upstream_version: null,
+            current_release_published: currentReleasePublished,
+            needs_update: false,
+            skipped: true,
+            skip_reason: error.message,
+          }
+        }
+
+        throw error
+      }
 
       return {
         id: entry.id,
@@ -458,9 +491,41 @@ export class TapPipeline {
         [
           "import { createHash } from 'node:crypto'",
           "const sourceUrl = process.argv[1]",
-          "const response = await fetch(sourceUrl, { method: 'HEAD', redirect: 'follow' })",
-          "if (!response.ok) {",
-          "  throw new Error(`Failed to resolve ${sourceUrl}: ${response.status}`)",
+          "async function probe(url) {",
+          "  const attempts = [",
+          "    { method: 'HEAD', timeout: 10_000 },",
+          "    { method: 'HEAD', timeout: 20_000 },",
+          "    { method: 'GET', timeout: 20_000 },",
+          "  ]",
+          "  let lastError",
+          "  for (const attempt of attempts) {",
+          "    try {",
+          "      const response = await fetch(url, {",
+          "        method: attempt.method,",
+          "        redirect: 'follow',",
+          "        signal: AbortSignal.timeout(attempt.timeout),",
+          "      })",
+          "      if (!response.ok) {",
+          "        throw new Error(`Failed to resolve ${url}: ${response.status} ${response.statusText}`)",
+          "      }",
+          "      return response",
+          "    } catch (error) {",
+          "      lastError = error",
+          "    }",
+          "  }",
+          "  throw lastError",
+          "}",
+          "let response",
+          "try {",
+          "  response = await probe(sourceUrl)",
+          "} catch (error) {",
+          "  process.stdout.write(JSON.stringify({",
+          "    ok: false,",
+          "    transient: true,",
+          "    sourceUrl,",
+          "    reason: error instanceof Error ? `${error.name}: ${error.message}` : String(error),",
+          "  }))",
+          "  process.exit(0)",
           "}",
           "const normalizedHeader = (name, fallback) => {",
           "  const value = response.headers.get(name)",
@@ -473,6 +538,7 @@ export class TapPipeline {
           "  .update(`${lastModified}|${etag}|${contentLength}\\n`)",
           "  .digest('hex')",
           "process.stdout.write(JSON.stringify({",
+          "  ok: true,",
           "  sourceUrl,",
           "  resolvedUrl: response.url,",
           "  lastModified,",
@@ -483,10 +549,19 @@ export class TapPipeline {
         ].join("\n"),
         sourceUrl,
       ])
-      .stdout()).trim()) as Omit<CodexDesktopDmgMetadata, "version">
+      .stdout()).trim()) as CodexDesktopDmgProbeResult
+
+    if (!raw.ok) {
+      throw new TransientUpstreamProbeError(`Skipped upstream probe for ${sourceUrl}: ${raw.reason}`)
+    }
 
     return {
-      ...raw,
+      cacheSegment: raw.cacheSegment,
+      contentLength: raw.contentLength,
+      etag: raw.etag,
+      lastModified: raw.lastModified,
+      resolvedUrl: raw.resolvedUrl,
+      sourceUrl: raw.sourceUrl,
       version: codexDesktopPackageVersion(
         `dmg.${compactHttpTimestamp(raw.lastModified)}.${raw.cacheSegment.slice(0, 12)}`,
         conversionCommit,
