@@ -223,6 +223,12 @@ CODEX_RELEASE_ARTIFACT=/path/to/codex-release-release.20260608000000.abc123.tar.
 Extra Codex build flags pass through with `CODEX_RELEASE_BUILD_ARGS`, for
 example `CODEX_RELEASE_BUILD_ARGS=--rebuild-image make codex`. Override the
 source with `CODEX_RELEASE_SOURCE_REPO` and `CODEX_RELEASE_REF` when needed.
+If the Rust compiler is killed during the containerized build on a
+memory-constrained machine, lower Cargo parallelism:
+
+```bash
+CODEX_RELEASE_CARGO_JOBS=2 make codex-build
+```
 
 ### Antigravity CLI
 

@@ -22,6 +22,9 @@ Options:
   --no-container           Run in the current environment instead of a local container
   -h, --help               Show this help
 
+Environment:
+  CODEX_RELEASE_CARGO_JOBS Limit concurrent Cargo jobs for memory-constrained builds
+
 Default output:
   dist/codex-release-build/codex-release-release.<commit_timestamp>.<sha12>.tar.gz
 EOF
@@ -217,6 +220,13 @@ run_in_container() {
         -v "$output_dir:/output"
     )
 
+    if [ -n "${CODEX_RELEASE_CARGO_JOBS:-}" ]; then
+        run_args+=(
+            -e "CODEX_RELEASE_CARGO_JOBS=$CODEX_RELEASE_CARGO_JOBS"
+            -e "CARGO_BUILD_JOBS=$CODEX_RELEASE_CARGO_JOBS"
+        )
+    fi
+
     if [ "$engine" = "podman" ]; then
         run_args+=(--security-opt label=disable)
     fi
@@ -264,6 +274,9 @@ output_dir="$(cd "$output_dir" && pwd)"
 export CARGO_HOME="$cache_dir/cargo-home"
 export CARGO_TARGET_DIR="$cache_dir/cargo-target"
 export CARGO_NET_GIT_FETCH_WITH_CLI="${CARGO_NET_GIT_FETCH_WITH_CLI:-true}"
+if [ -n "${CODEX_RELEASE_CARGO_JOBS:-}" ]; then
+    export CARGO_BUILD_JOBS="$CODEX_RELEASE_CARGO_JOBS"
+fi
 export RUNNER_TEMP="$cache_dir/runner-temp"
 export TMPDIR="$cache_dir/tmp"
 mkdir -p "$CARGO_HOME/bin" "$CARGO_TARGET_DIR" "$RUNNER_TEMP" "$TMPDIR"
