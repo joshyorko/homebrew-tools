@@ -1,9 +1,9 @@
 class FizzySymphony < Formula
   desc "Fizzy-backed Symphony daemon built from joshyorko/fizzy-symphony main"
   homepage "https://github.com/joshyorko/fizzy-symphony"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-symphony-main.20260531143944.364ba85022fe/fizzy-symphony-main.20260531143944.364ba85022fe.tar.gz"
-  version "main.20260531143944.364ba85022fe"
-  sha256 "5e15894d63efcccde2cf2b675dcfbd39e41f35ac720838e261def4d7512ab982"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/fizzy-symphony-main.20260609124412.fd8d0411ba45/fizzy-symphony-main.20260609124412.fd8d0411ba45.tar.gz"
+  version "main.20260609124412.fd8d0411ba45"
+  sha256 "14d8336b603699252f5f70d44da566cbb6ecfc126279ec396947838f4b4dece3"
   license :cannot_represent
 
   livecheck do
