@@ -3,7 +3,7 @@ class Voxtype < Formula
   homepage "https://github.com/peteonrails/voxtype"
   url "https://github.com/joshyorko/homebrew-tools/releases/download/voxtype-1.0.0/voxtype-1.0.0-homebrew-x86_64-linux.tar.gz"
   version "1.0.0"
-  sha256 "62fecf2026a21ec83e97dbbe1839c4b6165ffd8eb3aa461157d161bf92c1bea3"
+  sha256 "cac87219478b58796228df6defb7464f2be7319b3a97ecdb91a0cdee4abf195d"
   license "MIT"
 
   livecheck do
