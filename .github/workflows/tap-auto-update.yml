@@ -35,7 +35,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DAGGER_VERSION: "0.21.6"
+  DAGGER_VERSION: "0.21.7"
   GH_TOKEN: ${{ github.token }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   RELEASE_RETENTION_PER_PACKAGE: "3"
