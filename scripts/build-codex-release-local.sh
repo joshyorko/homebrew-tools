@@ -218,6 +218,7 @@ run_in_container() {
         -v "$source_dir:/source"
         -v "$cache_dir:/cache"
         -v "$output_dir:/output"
+        -v "$repo_dir/scripts:/build/scripts:ro"
     )
 
     if [ -n "${CODEX_RELEASE_CARGO_JOBS:-}" ]; then
@@ -280,6 +281,10 @@ fi
 export RUNNER_TEMP="$cache_dir/runner-temp"
 export TMPDIR="$cache_dir/tmp"
 mkdir -p "$CARGO_HOME/bin" "$CARGO_TARGET_DIR" "$RUNNER_TEMP" "$TMPDIR"
+
+if [ -d "$source_dir/.git" ]; then
+    git config --global --add safe.directory "$source_dir"
+fi
 
 if command -v rustup >/dev/null 2>&1; then
     rustup target add "$target" >/dev/null

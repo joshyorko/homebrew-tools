@@ -656,6 +656,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   }
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG", "\/work\/linux-features\.json"/)
   assert.match(pipeline, /linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES/)
+  assert.match(pipeline, /linux_computer_use_ui_enabled: true/)
   assert.match(pipeline, /remote-mobile-control-enabled/)
   assert.match(pipeline, /uninstall_postflight do/)
   assert.match(pipeline, /app-server-control\/app-server-control\.sock/)

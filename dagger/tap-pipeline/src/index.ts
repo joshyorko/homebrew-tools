@@ -1758,6 +1758,7 @@ end
     const metadata: Record<string, unknown> = {
       ...packageMetadata,
       linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES,
+      linux_computer_use_ui_enabled: true,
     }
 
     if (dmgMetadata) {
