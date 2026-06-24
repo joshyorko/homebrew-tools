@@ -13,9 +13,9 @@ export type AutoUpdateSlotId =
   | "rcc-daily"
   | "action-server-daily"
   | "desktop-6h"
+  | "devpod-6h"
   | "vscode-insiders-2h"
   | "t3-daily"
-  | "codex-release-daily"
   | "t3-code-6h"
   | "fizzy-daily"
 

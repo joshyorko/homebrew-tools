@@ -11,8 +11,13 @@
   },
   {
     "id": "desktop-6h",
-    "description": "Six-hour desktop package refresh for VS Code Insiders, Voxtype, Eitype, and DevPod.",
-    "packageIds": ["vscode-insiders-linux", "voxtype", "eitype", "devpod-linux"]
+    "description": "Six-hour desktop package refresh for VS Code Insiders.",
+    "packageIds": ["vscode-insiders-linux"]
+  },
+  {
+    "id": "devpod-6h",
+    "description": "Six-hour DevPod Linux desktop refresh.",
+    "packageIds": ["devpod-linux"]
   },
   {
     "id": "vscode-insiders-2h",
@@ -23,11 +28,6 @@
     "id": "t3-daily",
     "description": "Daily T3 package refresh for the CLI main build and Linux desktop cask.",
     "packageIds": ["t3code-cli-main", "t3-code-linux"]
-  },
-  {
-    "id": "codex-release-daily",
-    "description": "Daily Codex release-channel refresh from the fork's tap-release branch.",
-    "packageIds": ["codex-release"]
   },
   {
     "id": "t3-code-6h",

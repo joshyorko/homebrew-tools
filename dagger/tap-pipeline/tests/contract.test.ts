@@ -91,16 +91,13 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
-      "codex-release",
       "devpod-linux",
-      "eitype",
       "fizzy-cli-master",
       "fizzy-popper-self-hosted",
       "fizzy-symphony",
       "rcc",
       "t3-code-linux",
       "t3code-cli-main",
-      "voxtype",
       "vscode-insiders-linux",
     ],
   )
@@ -295,13 +292,13 @@ test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () =>
   assert.match(formula, /^\s*version_scheme 1$/m)
 })
 
-test("eitype normalizes v-prefixed upstream release tags", () => {
+test("eitype accepts upstream release tags without a v prefix", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "eitype")
 
   assert.ok(entry)
   assert.equal(entry.autoUpdate.kind, "github_release_latest_tag")
 
   if (entry.autoUpdate.kind === "github_release_latest_tag") {
-    assert.equal(entry.autoUpdate.stripPrefix, "v")
+    assert.equal(entry.autoUpdate.stripPrefix, undefined)
   }
 })
