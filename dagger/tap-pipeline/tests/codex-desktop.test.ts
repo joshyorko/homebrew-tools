@@ -668,8 +668,8 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /depends_on formula: "desktop-file-utils"/)
   assert.match(pipeline, /brew install --cask test\/tap\/codex-desktop/)
   assert.match(pipeline, /patch-codex-desktop-conversion\.mjs/)
-  assert.match(pipeline, /7z2600-linux-x64\.tar\.xz/)
-  assert.match(pipeline, /tar -C \/root\/\.local\/bin -xf \/tmp\/7z-linux-x64\.tar\.xz 7zz/)
+  assert.match(pipeline, /--no-install-recommends 7zip ca-certificates/)
+  assert.doesNotMatch(pipeline, /7z2600-linux-x64\.tar\.xz/)
   assert.ok(
     pipeline.indexOf('if (packageId === "codex-desktop-linux")') <
       pipeline.indexOf("const ciLog = await this.ciCheck(packageId, githubToken)"),
