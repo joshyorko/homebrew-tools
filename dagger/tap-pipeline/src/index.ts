@@ -28,7 +28,7 @@ const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
-const CODEX_DESKTOP_LINUX_FEATURES = [
+const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = [
   "remote-mobile-control",
   "remote-control-ui",
   "open-target-discovery",
@@ -37,7 +37,11 @@ const CODEX_DESKTOP_LINUX_FEATURES = [
   "conversation-mode",
   "zed-opener",
   "copilot-reasoning-effort",
+  "record-and-replay",
 ]
+const CODEX_DESKTOP_LINUX_FEATURES = process.env.CODEX_DESKTOP_LINUX_FEATURES === undefined
+  ? DEFAULT_CODEX_DESKTOP_LINUX_FEATURES
+  : parseLinuxFeatureList(process.env.CODEX_DESKTOP_LINUX_FEATURES)
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
@@ -62,6 +66,17 @@ function parseTextLines(output: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
+}
+
+function parseLinuxFeatureList(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((feature) => feature.trim())
+    .filter((feature) => feature.length > 0)
+}
+
+function codexDesktopLinuxFeatureList(value?: string): string[] {
+  return value === undefined ? CODEX_DESKTOP_LINUX_FEATURES : parseLinuxFeatureList(value)
 }
 
 function compactHttpTimestamp(value: string): string {
@@ -1695,10 +1710,12 @@ end
     version = CODEX_DESKTOP_MANUAL_VERSION,
     dmgMetadata?: CodexDesktopDmgMetadata,
     requestedConversionCommit?: string,
+    requestedLinuxFeatures?: string,
   ): Promise<CodexDesktopBuild> {
     const assetName = `codex-desktop-linux-${version}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
     const metadataPath = "/work/codex-desktop-linux-metadata.json"
+    const linuxFeatures = codexDesktopLinuxFeatureList(requestedLinuxFeatures)
     const conversionRef = dag.git(CODEX_DESKTOP_CONVERSION_REPO).ref(
       codexDesktopConversionCommit(requestedConversionCommit),
     )
@@ -1722,7 +1739,7 @@ end
         [
           "set -euo pipefail",
           "mkdir -p /work/reports",
-          `printf '%s\\n' '${JSON.stringify({ enabled: CODEX_DESKTOP_LINUX_FEATURES })}' > /work/linux-features.json`,
+          `printf '%s\\n' '${JSON.stringify({ enabled: linuxFeatures })}' > /work/linux-features.json`,
           "node /tap/scripts/patch-codex-desktop-conversion.mjs --conversion-dir /conversion",
           "bash scripts/install-deps.sh",
           "export PATH=\"/root/.local/bin:$PATH\"",
@@ -1757,7 +1774,7 @@ end
     const packageMetadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
     const metadata: Record<string, unknown> = {
       ...packageMetadata,
-      linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES,
+      linux_features_enabled: linuxFeatures,
       linux_computer_use_ui_enabled: true,
     }
 
@@ -1787,6 +1804,7 @@ end
     tap: Directory,
     requestedConversionCommit?: string,
     dmgCacheBuster?: string,
+    requestedLinuxFeatures?: string,
   ): Promise<CodexDesktopBuild> {
     const dmgMetadata = await this.resolveCodexDesktopDmgMetadata(
       CODEX_DESKTOP_DMG_URL,
@@ -1812,6 +1830,7 @@ end
       dmgMetadata.version,
       dmgMetadata,
       requestedConversionCommit,
+      requestedLinuxFeatures,
     )
   }
 
@@ -3480,6 +3499,7 @@ end
     codexDmg?: File,
     codexDesktopConversionCommit?: string,
     codexDesktopDmgCacheBuster?: string,
+    codexDesktopLinuxFeatures?: string,
   ): Promise<Directory> {
     const build = codexDmg
       ? await this.buildCodexDesktopArtifact(
@@ -3488,11 +3508,13 @@ end
         CODEX_DESKTOP_MANUAL_VERSION,
         undefined,
         codexDesktopConversionCommit,
+        codexDesktopLinuxFeatures,
       )
       : await this.buildCodexDesktopArtifactFromUpstream(
         this.source,
         codexDesktopConversionCommit,
         codexDesktopDmgCacheBuster,
+        codexDesktopLinuxFeatures,
       )
     const sha256 = (
       await build.container.withExec(["sha256sum", build.artifactPath]).stdout()

@@ -590,11 +590,16 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(localInstaller, /CODEX_DESKTOP_CONVERSION_REF_FILE/)
   assert.match(localInstaller, /read_default_conversion_ref/)
   assert.match(localInstaller, /CODEX_DESKTOP_CONVERSION_REPO/)
+  assert.match(localInstaller, /CODEX_DESKTOP_LINUX_FEATURES/)
   assert.match(localInstaller, /Requested Codex Desktop Linux conversion ref/)
   assert.match(localInstaller, /Resolved Codex Desktop Linux conversion commit/)
+  assert.match(localInstaller, /Enabled Codex Desktop Linux features/)
   assert.match(localInstaller, /Resolved upstream Codex\.dmg metadata/)
+  assert.match(localInstaller, /--linux-feature/)
+  assert.match(localInstaller, /--linux-features/)
   assert.match(localInstaller, /git ls-remote --exit-code "\$conversion_repo"/)
   assert.match(localInstaller, /--codex-desktop-dmg-cache-buster=\$dmg_cache_buster/)
+  assert.match(localInstaller, /--codex-desktop-linux-features=\$linux_features/)
   assert.match(localInstaller, /Built Codex Desktop Linux conversion commit/)
   assert.match(localInstaller, /brew tap-new --no-git "\$temp_tap_name"/)
   assert.match(localInstaller, /brew untap --force "\$temp_tap_name"/)
@@ -615,10 +620,12 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(localUninstaller, /codex-local\\\/codex-desktop-local-/)
   assert.doesNotMatch(localUninstaller, /\.codex"/)
   assert.match(makefile, /codex-desktop-install:/)
-  assert.equal(defaultConversionRef, "self-hosted")
+  assert.equal(defaultConversionRef, "codex/record-replay-linux")
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_REF_FILE \?= codex-desktop-conversion\.ref/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_COMMIT \?= \$\(shell ref=/)
   assert.match(makefile, /\$\$\{ref:-self-hosted\}/)
+  assert.match(makefile, /CODEX_DESKTOP_LINUX_FEATURES \?=.*record-and-replay/)
+  assert.match(makefile, /--linux-features "\$\(CODEX_DESKTOP_LINUX_FEATURES\)"/)
   assert.match(makefile, /scripts\/install-codex-desktop-local\.sh \$\(CODEX_DESKTOP_INSTALL_ARGS\)/)
   assert.match(makefile, /codex-install: codex-desktop-install/)
   assert.match(makefile, /codex-desktop-uninstall:/)
@@ -628,6 +635,8 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /process\.env\.CODEX_DESKTOP_CONVERSION_REPO \|\|/)
   assert.match(pipeline, /process\.env\.CODEX_DESKTOP_CONVERSION_COMMIT \|\|/)
   assert.match(pipeline, /process\.env\.CODEX_DESKTOP_CONVERSION_COMMIT \|\| readDefaultCodexDesktopConversionRef\(\)/)
+  assert.match(pipeline, /process\.env\.CODEX_DESKTOP_LINUX_FEATURES/)
+  assert.match(pipeline, /function codexDesktopLinuxFeatureList/)
   assert.match(pipeline, /codex-desktop-conversion\.ref/)
   assert.match(pipeline, /codexDesktopDmgCacheBuster\?: string/)
   assert.match(pipeline, /CODEX_DESKTOP_DMG_CACHE_BUSTER/)
@@ -651,11 +660,12 @@ test("codex desktop is local-only and not published by tap automation", () => {
     "conversation-mode",
     "zed-opener",
     "copilot-reasoning-effort",
+    "record-and-replay",
   ]) {
     assert.match(pipeline, new RegExp(`"${feature}"`))
   }
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG", "\/work\/linux-features\.json"/)
-  assert.match(pipeline, /linux_features_enabled: CODEX_DESKTOP_LINUX_FEATURES/)
+  assert.match(pipeline, /linux_features_enabled: linuxFeatures/)
   assert.match(pipeline, /linux_computer_use_ui_enabled: true/)
   assert.match(pipeline, /remote-mobile-control-enabled/)
   assert.match(pipeline, /uninstall_postflight do/)

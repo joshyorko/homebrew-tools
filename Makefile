@@ -1,5 +1,6 @@
 CODEX_DESKTOP_CONVERSION_REF_FILE ?= codex-desktop-conversion.ref
 CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//' -e '/^[[:space:]]*$$/d' "$(CODEX_DESKTOP_CONVERSION_REF_FILE)" 2>/dev/null | head -n 1)"; printf '%s\n' "$${ref:-self-hosted}")
+CODEX_DESKTOP_LINUX_FEATURES ?= remote-mobile-control remote-control-ui open-target-discovery read-aloud read-aloud-mcp conversation-mode zed-opener copilot-reasoning-effort record-and-replay
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 CODEX_RELEASE_INSTALL_ARGS =
 
@@ -43,6 +44,10 @@ endif
 
 ifneq ($(strip $(CODEX_DESKTOP_BUNDLE_DIR)),)
 CODEX_DESKTOP_INSTALL_ARGS += --bundle-dir "$(CODEX_DESKTOP_BUNDLE_DIR)"
+endif
+
+ifneq ($(strip $(CODEX_DESKTOP_LINUX_FEATURES)),)
+CODEX_DESKTOP_INSTALL_ARGS += --linux-features "$(CODEX_DESKTOP_LINUX_FEATURES)"
 endif
 
 ifneq ($(strip $(CODEX_DESKTOP_SKIP_INSTALL)),)

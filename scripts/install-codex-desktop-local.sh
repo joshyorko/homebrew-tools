@@ -12,6 +12,8 @@ or downloaded from this tap.
 Options:
   --codex-dmg PATH              Use an already-downloaded Codex.dmg.
   --conversion-commit SHA       Use a specific joshyorko/codex-desktop-linux commit.
+  --linux-feature ID            Enable one Linux feature. May be repeated.
+  --linux-features LIST         Use comma- or space-separated Linux feature IDs.
   --bundle-dir PATH             Write the local bundle here instead of a temp dir.
   --skip-install                Build only; do not run brew install/reinstall.
   -h, --help                    Show this help.
@@ -20,6 +22,7 @@ Environment defaults:
   CODEX_DESKTOP_CONVERSION_COMMIT  Conversion ref used when --conversion-commit is omitted.
   CODEX_DESKTOP_CONVERSION_REF_FILE File containing the default conversion ref.
   CODEX_DESKTOP_CONVERSION_REPO    Conversion repository used when resolving mutable refs.
+  CODEX_DESKTOP_LINUX_FEATURES     Comma- or space-separated Linux feature IDs.
   CODEX_DESKTOP_CODEX_DMG          DMG path used when --codex-dmg is omitted.
   CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
   CODEX_DESKTOP_SKIP_INSTALL       Set to any non-empty value to imply --skip-install.
@@ -31,6 +34,7 @@ codex_dmg_url="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 conversion_repo="${CODEX_DESKTOP_CONVERSION_REPO:-https://github.com/joshyorko/codex-desktop-linux}"
 codex_dmg="${CODEX_DESKTOP_CODEX_DMG:-}"
 conversion_ref_file="${CODEX_DESKTOP_CONVERSION_REF_FILE:-$repo_dir/codex-desktop-conversion.ref}"
+linux_features="${CODEX_DESKTOP_LINUX_FEATURES:-}"
 bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-}"
 auto_bundle_dir=0
 skip_install=0
@@ -52,6 +56,12 @@ read_default_conversion_ref() {
 }
 
 conversion_commit="${CODEX_DESKTOP_CONVERSION_COMMIT:-$(read_default_conversion_ref "$conversion_ref_file")}"
+
+append_linux_feature() {
+    local feature="$1"
+
+    linux_features="${linux_features:+$linux_features }$feature"
+}
 
 if [ -n "${CODEX_DESKTOP_SKIP_INSTALL:-}" ]; then
     skip_install=1
@@ -84,6 +94,17 @@ while [ "$#" -gt 0 ]; do
         --conversion-commit)
             conversion_commit="${2:-}"
             [ -n "$conversion_commit" ] || { echo "--conversion-commit requires a SHA" >&2; exit 64; }
+            shift 2
+            ;;
+        --linux-feature)
+            feature="${2:-}"
+            [ -n "$feature" ] || { echo "--linux-feature requires an ID" >&2; exit 64; }
+            append_linux_feature "$feature"
+            shift 2
+            ;;
+        --linux-features)
+            linux_features="${2:-}"
+            [ -n "$linux_features" ] || { echo "--linux-features requires a list" >&2; exit 64; }
             shift 2
             ;;
         --bundle-dir)
@@ -186,6 +207,9 @@ fi
 if [ -n "$resolved_conversion_commit" ]; then
     dagger_args+=("--codex-desktop-conversion-commit=$resolved_conversion_commit")
 fi
+if [ -n "$linux_features" ]; then
+    dagger_args+=("--codex-desktop-linux-features=$linux_features")
+fi
 if [ -n "$dmg_cache_buster" ]; then
     dagger_args+=("--codex-desktop-dmg-cache-buster=$dmg_cache_buster")
 fi
@@ -196,6 +220,9 @@ if [ -n "$conversion_commit" ]; then
 fi
 if [ -n "$resolved_conversion_commit" ] && [ "$resolved_conversion_commit" != "$conversion_commit" ]; then
     echo "Resolved Codex Desktop Linux conversion commit: $resolved_conversion_commit"
+fi
+if [ -n "$linux_features" ]; then
+    echo "Enabled Codex Desktop Linux features: $linux_features"
 fi
 if [ -n "$dmg_cache_buster" ]; then
     echo "Resolved upstream Codex.dmg metadata: $dmg_cache_buster"
