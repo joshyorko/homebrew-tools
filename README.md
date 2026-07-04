@@ -285,9 +285,11 @@ test branch without pasting a commit SHA. Override with
 `CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
 
 The local Codex Desktop builder writes a Linux feature config during conversion.
-The default test set includes `record-and-replay`, so `make codex-desktop-install`
-builds the Record & Replay branch with that opt-in feature enabled. Override the
-feature set with `CODEX_DESKTOP_LINUX_FEATURES="record-and-replay"` or pass
+The default test set enables every shipped Codex Desktop Linux feature except
+the template feature, Thorium browser support, and frameless titlebar mode, so
+`make codex-desktop-install` builds the self-hosted branch with the full
+daily-driver feature surface enabled. Override the feature set with
+`CODEX_DESKTOP_LINUX_FEATURES="record-and-replay"` or pass
 `scripts/install-codex-desktop-local.sh --linux-feature record-and-replay`.
 
 `make codex-desktop-rebuild-relaunch` is the local daily-driver loop designed to

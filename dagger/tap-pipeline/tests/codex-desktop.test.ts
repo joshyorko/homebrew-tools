@@ -655,18 +655,30 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
   for (const feature of [
-    "remote-mobile-control",
-    "remote-control-ui",
+    "agent-workspace",
+    "api-key-service-tier",
+    "appshots",
+    "authenticated-proxy",
+    "codex-wrapper-updater",
+    "conversation-mode",
+    "copilot-reasoning-effort",
+    "node-repl-reaper",
     "open-target-discovery",
+    "persistent-status-panel",
     "read-aloud",
     "read-aloud-mcp",
-    "conversation-mode",
-    "zed-opener",
-    "copilot-reasoning-effort",
     "record-and-replay",
+    "remote-control-ui",
+    "remote-mobile-control",
+    "ui-tweaks",
+    "x11-ewmh-computer-use",
   ]) {
     assert.match(pipeline, new RegExp(`"${feature}"`))
   }
+  assert.doesNotMatch(pipeline, /"thorium-chrome-plugin"/)
+  assert.doesNotMatch(pipeline, /"frameless-titlebar"/)
+  assert.doesNotMatch(pipeline, /"example-feature"/)
+  assert.doesNotMatch(pipeline, /"zed-opener"/)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG", "\/work\/linux-features\.json"/)
   assert.match(pipeline, /linux_features_enabled: linuxFeatures/)
   assert.match(pipeline, /linux_computer_use_ui_enabled: true/)

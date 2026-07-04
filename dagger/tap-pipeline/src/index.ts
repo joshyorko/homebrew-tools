@@ -29,15 +29,23 @@ const CODEX_DESKTOP_CONVERSION_COMMIT =
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = [
-  "remote-mobile-control",
-  "remote-control-ui",
+  "agent-workspace",
+  "api-key-service-tier",
+  "appshots",
+  "authenticated-proxy",
+  "codex-wrapper-updater",
+  "conversation-mode",
+  "copilot-reasoning-effort",
+  "node-repl-reaper",
   "open-target-discovery",
+  "persistent-status-panel",
   "read-aloud",
   "read-aloud-mcp",
-  "conversation-mode",
-  "zed-opener",
-  "copilot-reasoning-effort",
   "record-and-replay",
+  "remote-control-ui",
+  "remote-mobile-control",
+  "ui-tweaks",
+  "x11-ewmh-computer-use",
 ]
 const CODEX_DESKTOP_LINUX_FEATURES = process.env.CODEX_DESKTOP_LINUX_FEATURES === undefined
   ? DEFAULT_CODEX_DESKTOP_LINUX_FEATURES
