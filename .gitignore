@@ -2,3 +2,6 @@
 .tools/
 .codex-release/
 dist/
+.codex/
+.serena/
+.tokensave/
