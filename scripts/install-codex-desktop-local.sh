@@ -25,6 +25,7 @@ Environment defaults:
   CODEX_DESKTOP_LINUX_FEATURES     Comma- or space-separated Linux feature IDs.
   CODEX_DESKTOP_CODEX_DMG          DMG path used when --codex-dmg is omitted.
   CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
+  CODEX_DESKTOP_BUNDLE_PARENT      Parent directory for generated local bundles.
   CODEX_DESKTOP_SKIP_INSTALL       Set to any non-empty value to imply --skip-install.
 EOF
 }
@@ -36,6 +37,8 @@ codex_dmg="${CODEX_DESKTOP_CODEX_DMG:-}"
 conversion_ref_file="${CODEX_DESKTOP_CONVERSION_REF_FILE:-$repo_dir/codex-desktop-conversion.ref}"
 linux_features="${CODEX_DESKTOP_LINUX_FEATURES:-}"
 bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-}"
+cache_home="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}"
+bundle_parent="${CODEX_DESKTOP_BUNDLE_PARENT:-$cache_home/codex-desktop-local-bundles}"
 auto_bundle_dir=0
 skip_install=0
 temp_tap_name=""
@@ -187,7 +190,8 @@ if [ -z "$codex_dmg" ]; then
 fi
 
 if [ -z "$bundle_dir" ]; then
-    bundle_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-desktop-local.XXXXXX")"
+    mkdir -p "$bundle_parent"
+    bundle_dir="$(mktemp -d "$bundle_parent/codex-desktop-local.XXXXXX")"
     auto_bundle_dir=1
 else
     mkdir -p "$bundle_dir"
