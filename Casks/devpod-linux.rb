@@ -4,10 +4,10 @@ cask "devpod-linux" do
   arch intel: "amd64"
   os linux: "linux"
 
-  version "0.25.2"
-  sha256 x86_64_linux: "4cc099a3ff748d5e3355b7f869b50a5455bf5f116d26123bc8e93c1fe13fa82f"
+  version "0.26.1"
+  sha256 x86_64_linux: "94b8e0ab24e5d1fb5db3d0a948c2f1046c2479c3f4a015208151b2990a445685"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/devpod-linux-0.25.2/DevPod_linux_amd64.deb"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/devpod-linux-0.26.1/DevPod_linux_amd64.deb"
   name "DevPod"
   desc "Open-source dev environments based on devcontainer.json"
   homepage "https://github.com/skevetter/devpod"
