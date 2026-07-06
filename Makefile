@@ -58,7 +58,7 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex codex-build codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: codex codex-build codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
@@ -88,8 +88,13 @@ codex-desktop-rebuild-foreground:
 codex-desktop-rebuild-dry-run:
 	scripts/rebuild-and-relaunch-codex-desktop.sh --detach --dry-run
 
+test-codex-desktop-install:
+	scripts/test-install-codex-desktop-local.sh
+
 test-codex-desktop-rebuild:
 	scripts/test-rebuild-and-relaunch-codex-desktop.sh
+
+test-codex-desktop-local: test-codex-desktop-install test-codex-desktop-rebuild
 
 codex-desktop-uninstall:
 	scripts/uninstall-codex-desktop-local.sh

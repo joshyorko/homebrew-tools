@@ -121,6 +121,12 @@ unique_live_pids() {
     done | awk '!seen[$0]++'
 }
 
+codex_desktop_cask_is_installed() {
+    local prefix
+    prefix="$(brew --prefix)"
+    [ -d "$prefix/Caskroom/codex-desktop" ]
+}
+
 wait_for_exit() {
     local pid="$1"
     local waited=0
@@ -410,7 +416,7 @@ brew ruby -- -e '
 ' "$temp_tap_dir/Casks/codex-desktop.rb" "$artifact"
 local_cask_token="$temp_tap_name/codex-desktop"
 
-if brew list --cask codex-desktop >/dev/null 2>&1; then
+if codex_desktop_cask_is_installed; then
     brew reinstall --cask --force "$local_cask_token"
 else
     brew install --cask "$local_cask_token"
