@@ -16,6 +16,8 @@ Options:
   --linux-features LIST         Use comma- or space-separated Linux feature IDs.
   --bundle-dir PATH             Write the local bundle here instead of a temp dir.
   --skip-install                Build only; do not run brew install/reinstall.
+  --stop-running                Stop a live Codex Desktop before install.
+  --allow-running               Allow installing over a live Codex Desktop.
   -h, --help                    Show this help.
 
 Environment defaults:
@@ -26,6 +28,9 @@ Environment defaults:
   CODEX_DESKTOP_CODEX_DMG          DMG path used when --codex-dmg is omitted.
   CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
   CODEX_DESKTOP_BUNDLE_PARENT      Parent directory for generated local bundles.
+  CODEX_DESKTOP_STOP_RUNNING       Stop a live Codex Desktop before install.
+  CODEX_DESKTOP_ALLOW_RUNNING_INSTALL
+                                      Allow installing over a live Codex Desktop.
   CODEX_DESKTOP_SKIP_INSTALL       Set to any non-empty value to imply --skip-install.
 EOF
 }
@@ -41,6 +46,9 @@ cache_home="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}"
 bundle_parent="${CODEX_DESKTOP_BUNDLE_PARENT:-$cache_home/codex-desktop-local-bundles}"
 auto_bundle_dir=0
 skip_install=0
+stop_running=0
+allow_running_install=0
+wait_seconds="${CODEX_DESKTOP_STOP_WAIT_SECONDS:-25}"
 temp_tap_name=""
 install_succeeded=0
 
@@ -69,6 +77,111 @@ append_linux_feature() {
 if [ -n "${CODEX_DESKTOP_SKIP_INSTALL:-}" ]; then
     skip_install=1
 fi
+if [ -n "${CODEX_DESKTOP_STOP_RUNNING:-}" ]; then
+    stop_running=1
+fi
+if [ -n "${CODEX_DESKTOP_ALLOW_RUNNING_INSTALL:-}" ]; then
+    allow_running_install=1
+fi
+
+is_live_pid() {
+    local pid="$1"
+    [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null
+}
+
+read_pid_file() {
+    local path="$1"
+    local pid=""
+    [ -f "$path" ] || return 0
+    pid="$(sed -n 's/^[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$path" 2>/dev/null | head -n 1 || true)"
+    if [ -n "$pid" ] && is_live_pid "$pid"; then
+        printf '%s\n' "$pid"
+    fi
+}
+
+discover_codex_desktop_pids() {
+    local state_root="${XDG_STATE_HOME:-$HOME/.local/state}"
+    local pid_file
+    for pid_file in \
+        "$state_root/codex-desktop/app.pid" \
+        "$state_root/codex-desktop/webview.pid"
+    do
+        read_pid_file "$pid_file"
+    done
+
+    pgrep -u "$(id -u)" -f '/Caskroom/codex-desktop/.*/share/codex-desktop/app/(start\.sh|electron|chrome_crashpad_handler|resources/node_repl|resources/node-runtime/bin/node)|/share/codex-desktop/app/(start\.sh|electron|chrome_crashpad_handler|resources/node_repl|resources/node-runtime/bin/node)' 2>/dev/null || true
+}
+
+unique_live_pids() {
+    local pid
+    while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        is_live_pid "$pid" || continue
+        printf '%s\n' "$pid"
+    done | awk '!seen[$0]++'
+}
+
+wait_for_exit() {
+    local pid="$1"
+    local waited=0
+    while is_live_pid "$pid"; do
+        [ "$waited" -lt "$wait_seconds" ] || return 1
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 0
+}
+
+stop_codex_desktop() {
+    local pids="$1"
+    local pid
+    local stubborn=()
+
+    echo "Stopping live Codex Desktop bundle-backed processes before local cask install."
+    while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        kill "$pid" 2>/dev/null || true
+    done <<<"$pids"
+
+    while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        if ! wait_for_exit "$pid"; then
+            stubborn+=("$pid")
+        fi
+    done <<<"$pids"
+
+    if [ "${#stubborn[@]}" -gt 0 ]; then
+        echo "Codex Desktop did not exit after ${wait_seconds}s; sending SIGKILL." >&2
+        kill -9 "${stubborn[@]}" 2>/dev/null || true
+    fi
+}
+
+guard_running_codex_desktop() {
+    local pids
+
+    [ "$skip_install" -eq 0 ] || return 0
+    pids="$(discover_codex_desktop_pids | unique_live_pids)"
+    [ -n "$pids" ] || return 0
+
+    if [ "$stop_running" -eq 1 ]; then
+        stop_codex_desktop "$pids"
+        return 0
+    fi
+
+    if [ "$allow_running_install" -eq 1 ]; then
+        echo "WARN: installing over live Codex Desktop bundle-backed processes:" >&2
+        printf '%s\n' "$pids" | sed 's/^/  pid /' >&2
+        return 0
+    fi
+
+    echo "Refusing to install Codex Desktop while bundle-backed processes are running:" >&2
+    printf '%s\n' "$pids" | sed 's/^/  pid /' >&2
+    echo "These may be the GUI app itself or Codex CLI/MCP helpers using the installed Desktop bundle." >&2
+    echo "Use 'make codex-desktop-rebuild-relaunch' when rebuilding from inside Codex Desktop." >&2
+    echo "From an external terminal, rerun with CODEX_DESKTOP_STOP_RUNNING=1 to stop it before install." >&2
+    echo "Set CODEX_DESKTOP_ALLOW_RUNNING_INSTALL=1 only if you deliberately want to risk stale old helper processes." >&2
+    exit 75
+}
 
 cleanup() {
     status=$?
@@ -119,6 +232,14 @@ while [ "$#" -gt 0 ]; do
             skip_install=1
             shift
             ;;
+        --stop-running)
+            stop_running=1
+            shift
+            ;;
+        --allow-running)
+            allow_running_install=1
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -140,6 +261,8 @@ if [ "$skip_install" -eq 0 ] && ! command -v brew >/dev/null 2>&1; then
     echo "brew is required unless --skip-install is set." >&2
     exit 69
 fi
+
+guard_running_codex_desktop
 
 if [ -n "$codex_dmg" ]; then
     codex_dmg="$(realpath "$codex_dmg")"
@@ -217,7 +340,6 @@ fi
 if [ -n "$dmg_cache_buster" ]; then
     dagger_args+=("--codex-desktop-dmg-cache-buster=$dmg_cache_buster")
 fi
-
 echo "Building local Codex Desktop bundle into $bundle_dir"
 if [ -n "$conversion_commit" ]; then
     echo "Requested Codex Desktop Linux conversion ref: $conversion_commit"

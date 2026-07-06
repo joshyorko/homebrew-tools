@@ -291,6 +291,11 @@ the template feature, Thorium browser support, and frameless titlebar mode, so
 daily-driver feature surface enabled. Override the feature set with
 `CODEX_DESKTOP_LINUX_FEATURES="record-and-replay"` or pass
 `scripts/install-codex-desktop-local.sh --linux-feature record-and-replay`.
+The direct install path refuses to install over live Codex Desktop
+bundle-backed processes by default so old Caskroom-backed app or CLI/MCP
+helpers are not left running after a reinstall. From an external terminal, set
+`CODEX_DESKTOP_STOP_RUNNING=1` or pass `--stop-running` to stop them first. Use
+`CODEX_DESKTOP_ALLOW_RUNNING_INSTALL=1` only for deliberate diagnostics.
 
 `make codex-desktop-rebuild-relaunch` is the local daily-driver loop designed to
 be safe when launched from inside Codex Desktop: it starts a detached worker,
