@@ -1,7 +1,7 @@
 CODEX_DESKTOP_CONVERSION_REF_FILE ?= codex-desktop-conversion.ref
 CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//' -e '/^[[:space:]]*$$/d' "$(CODEX_DESKTOP_CONVERSION_REF_FILE)" 2>/dev/null | head -n 1)"; printf '%s\n' "$${ref:-self-hosted}")
 CODEX_DESKTOP_LINUX_FEATURES_LEAN := node-repl-reaper open-target-discovery read-aloud read-aloud-mcp record-and-replay x11-ewmh-computer-use
-CODEX_DESKTOP_LINUX_FEATURES_FULL := agent-workspace api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort node-repl-reaper open-target-discovery persistent-status-panel read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use
+CODEX_DESKTOP_LINUX_FEATURES_FULL := agent-workspace api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort mcp-helper-reaper node-repl-reaper open-target-discovery persistent-status-panel read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use
 CODEX_DESKTOP_LINUX_FEATURES ?= $(CODEX_DESKTOP_LINUX_FEATURES_FULL)
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 CODEX_RELEASE_INSTALL_ARGS =
