@@ -288,7 +288,16 @@ The local Codex Desktop builder writes a Linux feature config during conversion.
 The default test set enables every shipped Codex Desktop Linux feature except
 the template feature, Thorium browser support, and frameless titlebar mode, so
 `make codex-desktop-install` builds the self-hosted branch with the full
-daily-driver feature surface enabled. Override the feature set with
+daily-driver feature surface enabled.
+
+Use the smaller troubleshooting profile explicitly when you need a lower-surface
+Desktop build:
+
+```bash
+CODEX_DESKTOP_LINUX_FEATURES=lean make codex-desktop-install
+```
+
+Override with a one-off feature list such as
 `CODEX_DESKTOP_LINUX_FEATURES="record-and-replay"` or pass
 `scripts/install-codex-desktop-local.sh --linux-feature record-and-replay`.
 The direct install path refuses to install over live Codex Desktop

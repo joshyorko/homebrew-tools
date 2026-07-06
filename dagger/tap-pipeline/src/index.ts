@@ -28,7 +28,15 @@ const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
-const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = [
+const LEAN_CODEX_DESKTOP_LINUX_FEATURES = [
+  "node-repl-reaper",
+  "open-target-discovery",
+  "read-aloud",
+  "read-aloud-mcp",
+  "record-and-replay",
+  "x11-ewmh-computer-use",
+]
+const FULL_CODEX_DESKTOP_LINUX_FEATURES = [
   "agent-workspace",
   "api-key-service-tier",
   "appshots",
@@ -47,6 +55,7 @@ const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = [
   "ui-tweaks",
   "x11-ewmh-computer-use",
 ]
+const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = FULL_CODEX_DESKTOP_LINUX_FEATURES
 const CODEX_DESKTOP_LINUX_FEATURES = process.env.CODEX_DESKTOP_LINUX_FEATURES === undefined
   ? DEFAULT_CODEX_DESKTOP_LINUX_FEATURES
   : parseLinuxFeatureList(process.env.CODEX_DESKTOP_LINUX_FEATURES)
@@ -77,6 +86,13 @@ function parseTextLines(output: string): string[] {
 }
 
 function parseLinuxFeatureList(value: string): string[] {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === "lean") {
+    return [...LEAN_CODEX_DESKTOP_LINUX_FEATURES]
+  }
+  if (normalized === "full") {
+    return [...FULL_CODEX_DESKTOP_LINUX_FEATURES]
+  }
   return value
     .split(/[\s,]+/)
     .map((feature) => feature.trim())

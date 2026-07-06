@@ -1,6 +1,8 @@
 CODEX_DESKTOP_CONVERSION_REF_FILE ?= codex-desktop-conversion.ref
 CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//' -e '/^[[:space:]]*$$/d' "$(CODEX_DESKTOP_CONVERSION_REF_FILE)" 2>/dev/null | head -n 1)"; printf '%s\n' "$${ref:-self-hosted}")
-CODEX_DESKTOP_LINUX_FEATURES ?= agent-workspace api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort node-repl-reaper open-target-discovery persistent-status-panel read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use
+CODEX_DESKTOP_LINUX_FEATURES_LEAN := node-repl-reaper open-target-discovery read-aloud read-aloud-mcp record-and-replay x11-ewmh-computer-use
+CODEX_DESKTOP_LINUX_FEATURES_FULL := agent-workspace api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort node-repl-reaper open-target-discovery persistent-status-panel read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use
+CODEX_DESKTOP_LINUX_FEATURES ?= $(CODEX_DESKTOP_LINUX_FEATURES_FULL)
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 CODEX_RELEASE_INSTALL_ARGS =
 
@@ -56,7 +58,13 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex codex-build codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop
+.PHONY: codex codex-build codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-rebuild install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+
+print-codex-desktop-linux-features-lean:
+	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
+
+print-codex-desktop-linux-features-full:
+	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_FULL)"
 
 codex:
 	scripts/install-codex-release-local.sh $(CODEX_RELEASE_INSTALL_ARGS) -- $(CODEX_RELEASE_BUILD_ARGS)

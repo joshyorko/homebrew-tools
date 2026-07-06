@@ -31,6 +31,12 @@ function symlinkSystemCommand(binDir: string, command: string): void {
   symlinkSync(target, join(binDir, command))
 }
 
+function readConstStringArray(source: string, name: string): string[] {
+  const match = source.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\]`))
+  assert.ok(match, `${name} array not found`)
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1])
+}
+
 function createConvertedAppFixture(root: string): string {
   const appDir = join(root, "codex-app")
   mkdirSync(join(appDir, "resources/node-runtime/bin"), { recursive: true })
@@ -574,6 +580,8 @@ test("codex desktop is local-only and not published by tap automation", () => {
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const packageScript = readFileSync(new URL("../../../scripts/package-codex-desktop-linux.mjs", import.meta.url), "utf8")
   const defaultConversionRef = readFileSync(new URL("../../../codex-desktop-conversion.ref", import.meta.url), "utf8").trim()
+  const leanFeatures = readConstStringArray(pipeline, "LEAN_CODEX_DESKTOP_LINUX_FEATURES")
+  const fullFeatures = readConstStringArray(pipeline, "FULL_CODEX_DESKTOP_LINUX_FEATURES")
 
   assert.doesNotMatch(workflow, /repository_dispatch:/)
   assert.doesNotMatch(workflow, /codex-desktop-linux-ready/)
@@ -638,7 +646,11 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_REF_FILE \?= codex-desktop-conversion\.ref/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_COMMIT \?= \$\(shell ref=/)
   assert.match(makefile, /\$\$\{ref:-self-hosted\}/)
-  assert.match(makefile, /CODEX_DESKTOP_LINUX_FEATURES \?=.*record-and-replay/)
+  assert.match(makefile, /CODEX_DESKTOP_LINUX_FEATURES_LEAN := .*record-and-replay/)
+  assert.match(makefile, /CODEX_DESKTOP_LINUX_FEATURES_FULL := .*remote-mobile-control/)
+  assert.match(makefile, /CODEX_DESKTOP_LINUX_FEATURES \?= \$\(CODEX_DESKTOP_LINUX_FEATURES_FULL\)/)
+  assert.match(makefile, /print-codex-desktop-linux-features-lean:/)
+  assert.match(makefile, /print-codex-desktop-linux-features-full:/)
   assert.match(makefile, /--linux-features "\$\(CODEX_DESKTOP_LINUX_FEATURES\)"/)
   assert.match(makefile, /scripts\/install-codex-desktop-local\.sh \$\(CODEX_DESKTOP_INSTALL_ARGS\)/)
   assert.match(makefile, /codex-install: codex-desktop-install/)
@@ -665,6 +677,20 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
+  assert.deepEqual(leanFeatures, [
+    "node-repl-reaper",
+    "open-target-discovery",
+    "read-aloud",
+    "read-aloud-mcp",
+    "record-and-replay",
+    "x11-ewmh-computer-use",
+  ])
+  assert.match(pipeline, /const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = FULL_CODEX_DESKTOP_LINUX_FEATURES/)
+  assert.match(pipeline, /normalized === "lean"/)
+  assert.match(pipeline, /normalized === "full"/)
+  for (const feature of leanFeatures) {
+    assert.ok(fullFeatures.includes(feature), `${feature} must be included in the full profile`)
+  }
   for (const feature of [
     "agent-workspace",
     "api-key-service-tier",
@@ -673,17 +699,14 @@ test("codex desktop is local-only and not published by tap automation", () => {
     "codex-wrapper-updater",
     "conversation-mode",
     "copilot-reasoning-effort",
-    "node-repl-reaper",
-    "open-target-discovery",
     "persistent-status-panel",
-    "read-aloud",
-    "read-aloud-mcp",
-    "record-and-replay",
     "remote-control-ui",
     "remote-mobile-control",
     "ui-tweaks",
-    "x11-ewmh-computer-use",
   ]) {
+    assert.ok(fullFeatures.includes(feature), `${feature} must remain available in the full profile`)
+  }
+  for (const feature of fullFeatures) {
     assert.match(pipeline, new RegExp(`"${feature}"`))
   }
   assert.doesNotMatch(pipeline, /"thorium-chrome-plugin"/)
