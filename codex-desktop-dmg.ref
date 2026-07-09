@@ -1,0 +1,7 @@
+# Pinned upstream Codex Desktop DMG used by local Homebrew rebuilds when no
+# explicit --codex-dmg/CODEX_DESKTOP_CODEX_DMG override is provided.
+url: https://persistent.oaistatic.com/codex-app-prod/Codex.dmg
+sha256: 30a2fe991e486f1ed6d5251679639733568d20dedc0d71c989e8200bc711c46c
+content-length: 529742395
+last-modified: Tue, 07 Jul 2026 00:21:59 GMT
+etag: 0x8DEDBBDC2BC816D

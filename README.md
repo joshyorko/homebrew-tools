@@ -293,6 +293,34 @@ make codex-desktop-rebuild-foreground
 test branch without pasting a commit SHA. Override with
 `CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
 
+The local Codex Desktop builder also uses the checked-in
+`codex-desktop-dmg.ref` by default. When you do not pass `--codex-dmg` or
+`CODEX_DESKTOP_CODEX_DMG`, the installer downloads that pinned upstream DMG
+into `~/.cache/codex-desktop-dmg/<sha256>/Codex.dmg`, verifies its SHA256 and
+content length, and then passes that local file into Dagger so rebuilds stay
+reproducible even if the upstream `Codex.dmg` URL later changes in place.
+
+Refresh the upstream DMG pin only after you have rechecked the current upstream
+artifact and metadata, then update `codex-desktop-dmg.ref` in the repo:
+
+
+```bash
+curl -fsSLo /tmp/Codex.dmg https://persistent.oaistatic.com/codex-app-prod/Codex.dmg
+sha256sum /tmp/Codex.dmg
+wc -c /tmp/Codex.dmg
+curl -fsSIL https://persistent.oaistatic.com/codex-app-prod/Codex.dmg
+```
+
+
+Override the pinned default with a local DMG whenever you need a one-off test:
+
+
+```bash
+scripts/install-codex-desktop-local.sh --codex-dmg /path/to/Codex.dmg
+CODEX_DESKTOP_CODEX_DMG=/path/to/Codex.dmg make codex-desktop-install
+```
+
+
 The local Codex Desktop builder writes a Linux feature config during conversion.
 The default test set enables every shipped Codex Desktop Linux feature except
 the template feature, Thorium browser support, and frameless titlebar mode, so
