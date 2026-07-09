@@ -2395,8 +2395,6 @@ end
       .withExec([
         "pnpm",
         "dist:desktop:linux",
-        "--build-version",
-        resolvedVersion,
         "--output-dir",
         "/tmp/t3-code-linux-dist",
       ])
