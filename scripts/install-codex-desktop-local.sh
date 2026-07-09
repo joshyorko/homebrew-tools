@@ -54,6 +54,7 @@ use_existing_bundle=0
 stop_running=0
 allow_running_install=0
 used_pinned_codex_dmg=0
+dmg_cache_buster="${CODEX_DESKTOP_DMG_CACHE_BUSTER:-}"
 wait_seconds="${CODEX_DESKTOP_STOP_WAIT_SECONDS:-25}"
 temp_tap_name=""
 install_succeeded=0
@@ -448,6 +449,10 @@ if [ "$use_existing_bundle" -eq 1 ]; then
     bundle_dir="$(realpath "$bundle_dir")"
     echo "Using existing Codex Desktop bundle from $bundle_dir"
 else
+    if [ -f "$codex_dmg_ref_file" ]; then
+        load_pinned_codex_dmg_metadata "$codex_dmg_ref_file"
+        echo "Resolved upstream Codex.dmg metadata: url=$pinned_codex_dmg_url sha256=$pinned_codex_dmg_sha256 content-length=$pinned_codex_dmg_content_length last-modified=$pinned_codex_dmg_last_modified etag=$pinned_codex_dmg_etag"
+    fi
     if [ -n "$codex_dmg" ]; then
         codex_dmg="$(realpath "$codex_dmg")"
         [ -f "$codex_dmg" ] || { echo "Codex DMG not found: $codex_dmg" >&2; exit 66; }
@@ -503,6 +508,9 @@ else
     fi
     if [ -n "$linux_features" ]; then
         dagger_args+=("--codex-desktop-linux-features=$linux_features")
+    fi
+    if [ -n "$dmg_cache_buster" ]; then
+        dagger_args+=("--codex-desktop-dmg-cache-buster=$dmg_cache_buster")
     fi
     echo "Building local Codex Desktop bundle into $bundle_dir"
     if [ -n "$conversion_commit" ]; then

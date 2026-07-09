@@ -1981,23 +1981,17 @@ function main() {
     }
 
     mkdirSync(dirname(outputPath), { recursive: true })
-    execFileSync(
-      "tar",
-      [
-        "--sort=name",
-        "--mtime=@0",
-        "--owner=0",
-        "--group=0",
-        "--numeric-owner",
-        "--use-compress-program=gzip -n",
-        "-cf",
-        outputPath,
-        "-C",
-        packageDir,
-        ".",
-      ],
-      { stdio: "inherit" },
-    )
+    const tarIsGnu = (() => {
+      try {
+        return execFileSync("tar", ["--version"], { encoding: "utf8" }).includes("GNU tar")
+      } catch {
+        return false
+      }
+    })()
+    const tarArgs = tarIsGnu
+      ? ["--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner", "--use-compress-program=gzip -n"]
+      : []
+    execFileSync("tar", [...tarArgs, tarIsGnu ? "-cf" : "-czf", outputPath, "-C", packageDir, "."], { stdio: "inherit" })
 
     console.log(outputPath)
   } finally {

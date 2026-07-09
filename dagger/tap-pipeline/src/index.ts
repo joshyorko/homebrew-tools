@@ -1170,6 +1170,20 @@ export class TapPipeline {
            target: "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
 
   preflight do
+    require "json"
+    require "shellwords"
+    require "time"
+    cli_installer_url = "https://chatgpt.com/codex/install.sh"
+    discover_codex_cli_path = lambda do
+      path = which("codex")&.to_s || ["#{Dir.home}/.local/bin/codex", "#{HOMEBREW_PREFIX}/bin/codex"].find { |candidate| File.executable?(candidate) }
+      path&.to_s
+    end
+    cli_path = discover_codex_cli_path.call
+    cli_version_raw = cli_path ? %x{#{cli_path.shellescape} --version 2>&1}.strip : ""
+    cli_version = cli_version_raw[/[0-9]+(?:\.[0-9]+)+(?:[-+][^[:space:]]+)?/] || ""
+    cli_source = "none"
+    cli_result = "failed"
+    cli_version_status = "missing"
     codex_already_installed =
       !which("codex").nil? ||
       ["#{Dir.home}/.local/bin/codex", "#{HOMEBREW_PREFIX}/bin/codex"].any? do |candidate|
@@ -1177,16 +1191,42 @@ export class TapPipeline {
       end
 
     if ENV["CODEX_DESKTOP_SKIP_CLI_INSTALL"].to_s == "1"
+      cli_source = "skipped"
+      cli_result = "skipped"
+      cli_version_status = cli_path ? "unknown" : "missing"
       opoo "Skipping Codex CLI install because CODEX_DESKTOP_SKIP_CLI_INSTALL=1"
     elsif codex_already_installed
+      cli_source = "existing"
+      cli_result = "existing"
+      cli_version_status = "unknown"
       ohai "Codex CLI already available; skipping the official installer"
     else
-      ohai "Installing the Codex CLI from https://chatgpt.com/codex/install.sh"
+      cli_source = "official-installer"
+      ohai "Installing the Codex CLI from #{cli_installer_url}"
       system_command "/bin/sh",
-                     args:         ["-c", "curl -fsSL https://chatgpt.com/codex/install.sh | sh"],
+                     args:         ["-c", "curl -fsSL #{cli_installer_url} | sh"],
                      print_stdout: true,
                      print_stderr: true
+      cli_path = discover_codex_cli_path.call
+      raise "Official Codex CLI installer completed without an executable codex command" unless cli_path && File.executable?(cli_path)
+      cli_version_raw = %x{#{cli_path.shellescape} --version 2>&1}.strip
+      cli_version = cli_version_raw[/[0-9]+(?:\.[0-9]+)+(?:[-+][^[:space:]]+)?/] || ""
+      cli_result = "installed"
+      cli_version_status = "unknown"
     end
+
+    FileUtils.mkdir_p "#{staged_path}/share/codex-desktop"
+    File.write "#{staged_path}/share/codex-desktop/cli-install-provenance.json",
+               JSON.generate({
+                 cli_path: cli_path,
+                 cli_version: cli_version,
+                 cli_version_raw: cli_version_raw,
+                 cli_version_status: cli_version_status,
+                 cli_source: cli_source,
+                 cli_result: cli_result,
+                 installer_url: cli_installer_url,
+                 timestamp: Time.now.utc.iso8601,
+               }) + "\n"
 
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
@@ -1266,8 +1306,8 @@ export class TapPipeline {
 
     The Codex CLI is installed from the official OpenAI installer during preflight:
       curl -fsSL https://chatgpt.com/codex/install.sh | sh
-    It is no longer pulled in through a Homebrew `codex` cask. Set
-    CODEX_DESKTOP_SKIP_CLI_INSTALL=1 to skip this step if you manage `codex` yourself.
+    It is no longer pulled in through a Homebrew 'codex' cask. Set
+    CODEX_DESKTOP_SKIP_CLI_INSTALL=1 to skip this step if you manage 'codex' yourself.
 
     Launch from your app grid as Codex Desktop, or run:
       codex-desktop
@@ -1680,6 +1720,7 @@ end
         "-lc",
         [
           "set -euo pipefail",
+          "tar --version | grep -q 'GNU tar'",
           "mkdir -p /work/fixture-app/resources/node-runtime/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64 /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/scripts /work/fixture-app/.codex-linux /work/fixture-app/content/webview/assets /work/reports",
           "cat > /work/fixture-app/start.sh <<'SH'",
           "#!/usr/bin/env bash",
@@ -2947,6 +2988,8 @@ end
         ).trim().split(/\s+/)[0]
         const updatedCask = this.renderCodexDesktopLocalCask(build.version, sha256)
           .replace(/^  depends_on formula: "desktop-file-utils"\n/m, "")
+          .replace('url "file://#{ENV.fetch("CODEX_DESKTOP_LOCAL_ARTIFACT")}"', `url "file:///artifacts/${build.assetName}"`)
+          .replace(/  preflight do[\s\S]*?  end\n\n  postflight do/, "  postflight do")
         const smokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
 
         return dag
@@ -2967,7 +3010,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("codex-desktop-linux"),
-              "brew install --cask test/tap/codex-desktop",
+              "CODEX_DESKTOP_SKIP_CLI_INSTALL=1 brew install --cask test/tap/codex-desktop",
               "test -x \"$(brew --prefix)/bin/codex-desktop\"",
               "printf '#!/usr/bin/env bash\\necho codex cli fixture\\n' > \"$(brew --prefix)/bin/codex\"",
               "chmod +x \"$(brew --prefix)/bin/codex\"",

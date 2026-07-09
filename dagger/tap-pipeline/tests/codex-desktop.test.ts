@@ -742,6 +742,21 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /root\/\.local\/bin:\$PATH/)
 })
 
+test("codex desktop fresh CLI install records the installed executable provenance", () => {
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+  const installSuccess = pipeline.indexOf('system_command "/bin/sh"')
+  const rediscovery = pipeline.indexOf("cli_path = discover_codex_cli_path.call", installSuccess)
+  const provenance = pipeline.indexOf("cli-install-provenance.json", installSuccess)
+
+  assert.ok(installSuccess >= 0)
+  assert.ok(rediscovery > installSuccess, "fresh install must rediscover the CLI after installer success")
+  assert.ok(provenance > rediscovery, "provenance must be written after post-install rediscovery")
+  assert.match(pipeline, /cli_version_raw = cli_path \? %x\{#\{cli_path\.shellescape\} --version 2>&1\}\.strip/)
+  assert.match(pipeline, /cli_version_status = cli_path \? "unknown" : "missing"/)
+  assert.match(pipeline, /cli_source: cli_source/)
+  assert.match(pipeline, /cli_result: cli_result/)
+})
+
 test("codex desktop conversion patch handles Electron 42 native modules", () => {
   const tmp = mkdtempSync(join(tmpdir(), "codex-desktop-patch-test-"))
   const conversionDir = join(tmp, "conversion")
