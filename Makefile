@@ -3,6 +3,8 @@ CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//'
 CODEX_DESKTOP_LINUX_FEATURES_LEAN := node-repl-reaper open-target-discovery read-aloud read-aloud-mcp record-and-replay x11-ewmh-computer-use
 CODEX_DESKTOP_LINUX_FEATURES_FULL := agent-workspace api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort mcp-helper-reaper node-repl-reaper open-target-discovery persistent-status-panel read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use
 CODEX_DESKTOP_LINUX_FEATURES ?= $(CODEX_DESKTOP_LINUX_FEATURES_FULL)
+CODEX_DESKTOP_BUNDLE_DIR ?= dist/codex-desktop-local
+CODEX_DESKTOP_BUNDLE_ARCHIVE ?= dist/codex-desktop-local.tar.gz
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 CODEX_RELEASE_INSTALL_ARGS =
 
@@ -58,7 +60,7 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex codex-build codex-release-local codex-desktop-install codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: codex codex-build codex-release-local codex-desktop-build codex-desktop-build-archive codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
@@ -74,8 +76,28 @@ codex-build:
 
 codex-release-local: codex-build
 
+codex-desktop-build:
+	CODEX_DESKTOP_SKIP_INSTALL=1 scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
+
+codex-desktop-build-archive: codex-desktop-build
+	mkdir -p "$(dir $(CODEX_DESKTOP_BUNDLE_ARCHIVE))"
+	tar -czf "$(CODEX_DESKTOP_BUNDLE_ARCHIVE)" -C "$(dir $(CODEX_DESKTOP_BUNDLE_DIR))" "$(notdir $(CODEX_DESKTOP_BUNDLE_DIR))"
+
 codex-desktop-install:
 	scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
+
+codex-desktop-install-artifact:
+	CODEX_DESKTOP_USE_EXISTING_BUNDLE=1 scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
+
+codex-desktop-install-archive:
+	test -f "$(CODEX_DESKTOP_BUNDLE_ARCHIVE)"
+	rm -rf "$(CODEX_DESKTOP_BUNDLE_DIR)"
+	mkdir -p "$(dir $(CODEX_DESKTOP_BUNDLE_DIR))"
+	tar -xzf "$(CODEX_DESKTOP_BUNDLE_ARCHIVE)" -C "$(dir $(CODEX_DESKTOP_BUNDLE_DIR))"
+	$(MAKE) codex-desktop-install-artifact
+
+crabbox-pull-codex-desktop-archive:
+	scripts/pull-crabbox-artifact.sh --id "$${CRABBOX_LEASE:-homebrew-tools}" --remote "$(CODEX_DESKTOP_BUNDLE_ARCHIVE)" --local "$(CODEX_DESKTOP_BUNDLE_ARCHIVE)"
 
 codex-install: codex-desktop-install
 

@@ -266,6 +266,18 @@ this machine, patches the extracted app for Linux Electron, rebuilds native
 modules, stages bundled resources, renders a temporary local cask, and installs
 that cask through Homebrew.
 
+The rendered cask no longer pulls in a Homebrew `codex` cask. During install it
+runs the official OpenAI installer for the Codex CLI from
+`https://github.com/openai/codex/releases`:
+
+```bash
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+```
+
+The preflight step skips this when a `codex` executable is already on `PATH`
+(or in `~/.local/bin`), and you can force it off with
+`CODEX_DESKTOP_SKIP_CLI_INSTALL=1` if you manage the Codex CLI yourself.
+
 ```bash
 brew install --HEAD joshyorko/tools/codex-desktop-linux-builder
 codex-desktop-linux-builder

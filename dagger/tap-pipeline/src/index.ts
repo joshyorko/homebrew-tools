@@ -1159,7 +1159,6 @@ export class TapPipeline {
     skip "Built locally from the official upstream Codex.dmg input."
   end
 
-  depends_on cask: "codex"
   depends_on formula: "desktop-file-utils"
 
   binary "bin/codex-desktop", target: "codex-desktop"
@@ -1171,6 +1170,24 @@ export class TapPipeline {
            target: "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
 
   preflight do
+    codex_already_installed =
+      !which("codex").nil? ||
+      ["#{Dir.home}/.local/bin/codex", "#{HOMEBREW_PREFIX}/bin/codex"].any? do |candidate|
+        File.executable?(candidate)
+      end
+
+    if ENV["CODEX_DESKTOP_SKIP_CLI_INSTALL"].to_s == "1"
+      opoo "Skipping Codex CLI install because CODEX_DESKTOP_SKIP_CLI_INSTALL=1"
+    elsif codex_already_installed
+      ohai "Codex CLI already available; skipping the official installer"
+    else
+      ohai "Installing the Codex CLI from https://chatgpt.com/codex/install.sh"
+      system_command "/bin/sh",
+                     args:         ["-c", "curl -fsSL https://chatgpt.com/codex/install.sh | sh"],
+                     print_stdout: true,
+                     print_stderr: true
+    end
+
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/256x256/apps"
@@ -1246,6 +1263,11 @@ export class TapPipeline {
   caveats <<~EOS
     This cask installs a local artifact generated on this machine from the official OpenAI DMG.
     No converted Codex Desktop app payload is distributed by the tap.
+
+    The Codex CLI is installed from the official OpenAI installer during preflight:
+      curl -fsSL https://chatgpt.com/codex/install.sh | sh
+    It is no longer pulled in through a Homebrew `codex` cask. Set
+    CODEX_DESKTOP_SKIP_CLI_INSTALL=1 to skip this step if you manage `codex` yourself.
 
     Launch from your app grid as Codex Desktop, or run:
       codex-desktop
@@ -2924,7 +2946,6 @@ end
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
         const updatedCask = this.renderCodexDesktopLocalCask(build.version, sha256)
-          .replace(/^  depends_on cask: "codex"\n/m, "")
           .replace(/^  depends_on formula: "desktop-file-utils"\n/m, "")
         const smokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
 
@@ -2934,6 +2955,7 @@ end
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withEnvVariable("CODEX_DESKTOP_SKIP_CLI_INSTALL", "1")
           .withEnvVariable("CODEX_DESKTOP_LOCAL_ARTIFACT", `/artifacts/${build.assetName}`)
           .withDirectory("/tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
