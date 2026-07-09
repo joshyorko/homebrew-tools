@@ -133,9 +133,11 @@ devpod provider list-available
 
 ### T3 Code (Linux Cask)
 
-T3 Code packaged for Linux Homebrew as a separate cask around the upstream AppImage.
-This intentionally uses a Linux-specific token so it does not collide with the official
-`homebrew/cask` `t3-code` package.
+T3 Code desktop packaged for Linux Homebrew as a separate cask. The tap builds
+the Linux AppImage from upstream `pingdotgg/t3code` `main` with Dagger, uploads
+that immutable artifact to this tap's releases, then renders the cask around it.
+The Linux-specific token avoids colliding with the official `homebrew/cask`
+`t3-code` package.
 
 > [!NOTE]
 > Use the full tap path to make the distinction explicit:
@@ -146,6 +148,13 @@ This intentionally uses a Linux-specific token so it does not collide with the o
 ```bash
 brew install --cask joshyorko/tools/t3-code-linux
 t3-code-linux
+```
+
+Build and smoke-test the desktop cask path:
+
+```bash
+dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3-code-linux
+dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3-code-linux
 ```
 
 ### T3 Code CLI (Main Formula)

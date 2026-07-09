@@ -239,17 +239,20 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   },
   {
     id: "t3-code-linux",
-    kind: "github_release_appimage_cask",
+    kind: "source_build_node_appimage_cask",
     homebrewPath: "Casks/t3-code-linux.rb",
     supportsPrCi: true,
     autoUpdate: {
-      kind: "github_release_latest_tag",
-      stripPrefix: "v",
+      kind: "git_head_sha",
+      ref: "main",
+      prefix: "main.",
+      shaLength: 12,
+      includeCommitDate: true,
     },
     upstream: {
-      kind: "github_release",
+      kind: "git",
       repo: "https://github.com/pingdotgg/t3code",
-      assetPrefix: "T3-Code-",
+      ref: "main",
     },
   },
 ]

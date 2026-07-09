@@ -3,6 +3,7 @@ export type PackageKind =
   | "rpm_repack_cask"
   | "source_build_rust_formula"
   | "source_build_go_formula"
+  | "source_build_node_appimage_cask"
   | "http_binary_formula"
   | "github_release_binary_cask"
   | "github_release_deb_cask"

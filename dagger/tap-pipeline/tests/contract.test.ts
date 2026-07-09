@@ -25,12 +25,12 @@ test("package registry covers every planned adapter kind", () => {
   assert.deepEqual(
     [...kinds].sort(),
     [
-      "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",
       "http_binary_formula",
       "rpm_repack_cask",
       "source_build_go_formula",
+      "source_build_node_appimage_cask",
       "source_build_node_formula",
       "source_build_rust_formula",
     ],
@@ -166,6 +166,28 @@ test("t3code CLI main uses timestamped main snapshots instead of smoke labels", 
     assert.equal(entry.autoUpdate.prefix, "main.")
     assert.equal(entry.autoUpdate.includeCommitDate, true)
   }
+})
+
+test("t3-code-linux builds the desktop AppImage from upstream main", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "t3-code-linux")
+
+  assert.ok(entry)
+  assert.equal(entry.kind, "source_build_node_appimage_cask")
+  assert.equal(entry.homebrewPath, "Casks/t3-code-linux.rb")
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+  assert.equal(entry.upstream.kind, "git")
+
+  if (entry.autoUpdate.kind === "git_head_sha") {
+    assert.equal(entry.autoUpdate.ref, "main")
+    assert.equal(entry.autoUpdate.prefix, "main.")
+    assert.equal(entry.autoUpdate.includeCommitDate, true)
+  }
+
+  const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
+
+  assert.match(source, /pnpm",\s*"dist:desktop:linux"/)
+  assert.match(source, /T3-Code-\$\{resolvedVersion\}-x86_64\.AppImage/)
+  assert.doesNotMatch(source, /repos\/pingdotgg\/t3code\/releases\/latest/)
 })
 
 test("codex release tracks the fork tap-release branch and installs codex", () => {

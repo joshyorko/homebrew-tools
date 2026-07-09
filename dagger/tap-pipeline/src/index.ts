@@ -366,10 +366,12 @@ type DevpodBuild = {
 }
 
 type T3CodeBuild = {
+  artifactPath: string
+  assetName: string
+  commit: string
   version: string
-  upstreamTag: string
   container: Container
-  asset: DownloadedAsset
+  sha256: string
 }
 
 type CodexDesktopBuild = {
@@ -759,7 +761,7 @@ export class TapPipeline {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git unzip python3 make g++ jq tar && npm install -g node-gyp && corepack enable && corepack prepare pnpm@10.24.0 --activate && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl fakeroot g++ git imagemagick jq make python3 rpm tar unzip xz-utils && npm install -g node-gyp && corepack enable && corepack prepare pnpm@11.10.0 --activate && rm -rf /var/lib/apt/lists/*",
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
       .withEnvVariable("PATH", "/root/.bun/bin:/root/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
@@ -1104,18 +1106,18 @@ export class TapPipeline {
     return releaseMetadataForPackage("t3-code-linux", {
       version: build.version,
       releaseTag: `t3-code-linux-${build.version}`,
-      assetName: build.asset.assetName,
-      artifactSha256: build.asset.sha256,
-      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3-code-linux-${build.version}/${build.asset.assetName}`,
+      assetName: build.assetName,
+      artifactSha256: build.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3-code-linux-${build.version}/${build.assetName}`,
       releaseTitle: `T3 Code Linux ${build.version}`,
-      releaseNotes: `Release bundle mirrored from pingdotgg/t3code ${build.upstreamTag}`,
-      commitMessage: `Update t3-code-linux cask to v${build.version}`,
+      releaseNotes: `Linux desktop AppImage built from pingdotgg/t3code@${build.commit}`,
+      commitMessage: `Update t3-code-linux cask to ${build.version}`,
       upstream: {
-        kind: "github_release",
+        kind: "git",
         repo: "https://github.com/pingdotgg/t3code",
-        assetPrefix: "T3-Code-",
+        ref: "main",
         version: build.version,
-        commit: build.upstreamTag,
+        commit: build.commit,
       },
     })
   }
@@ -2352,31 +2354,72 @@ end
     }
   }
 
-  private async buildT3CodeArtifact(): Promise<T3CodeBuild> {
-    const release = await this.fetchJson("https://api.github.com/repos/pingdotgg/t3code/releases/latest") as {
-      tag_name: string
-      assets: Array<{ name: string; browser_download_url: string }>
-    }
-    const asset = release.assets.find((candidate) => /^T3-Code-.*-x86_64\.AppImage$/.test(candidate.name))
+  private async buildT3CodeArtifact(tap: Directory, ref: string, version?: string): Promise<T3CodeBuild> {
+    const entry = this.packageEntry("t3-code-linux")
 
-    if (!asset) {
-      throw new Error("T3 Code release is missing the x86_64 AppImage asset")
+    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+      throw new Error("Expected t3-code-linux to use a git-head auto-update strategy")
     }
 
-    const version = release.tag_name.replace(/^v/, "")
-    let container = this.githubApiContainer()
-    container = this.downloadAsset(container, asset.browser_download_url, `/tmp/${asset.name}`)
+    const resolvedGitHead = version && version.length > 0
+      ? undefined
+      : await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)
+    const upstreamRef = dag.git(entry.upstream.repo).ref(resolvedGitHead?.commit ?? ref)
+    const commit = await upstreamRef.commit()
+    const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
+
+    if (!resolvedVersion) {
+      throw new Error("Failed to resolve t3-code-linux version")
+    }
+
+    const assetName = `T3-Code-${resolvedVersion}-x86_64.AppImage`
+    const artifactPath = `/tmp/${assetName}`
+
+    const container = this.t3BaseContainer()
+      .withDirectory("/tap", tap)
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /upstream",
+          "git -C /upstream init",
+          `git -C /upstream remote add origin ${JSON.stringify(entry.upstream.repo)}`,
+          `git -C /upstream fetch --depth=1 --no-tags origin ${JSON.stringify(commit)}`,
+          "git -C /upstream checkout --detach FETCH_HEAD",
+          "rm -rf /upstream/.git",
+        ].join("\n"),
+      ])
+      .withWorkdir("/upstream")
+      .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withExec([
+        "pnpm",
+        "dist:desktop:linux",
+        "--build-version",
+        resolvedVersion,
+        "--output-dir",
+        "/tmp/t3-code-linux-dist",
+      ])
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "appimage=$(find /tmp/t3-code-linux-dist -maxdepth 1 -type f -name 'T3-Code-*.AppImage' -print -quit)",
+          "test -n \"$appimage\"",
+          `cp "$appimage" ${JSON.stringify(artifactPath)}`,
+          `chmod +x ${JSON.stringify(artifactPath)}`,
+        ].join("\n"),
+      ])
+    const sha256 = await this.sha256For(container, artifactPath)
 
     return {
-      version,
-      upstreamTag: release.tag_name,
+      artifactPath,
+      assetName,
+      commit,
       container,
-      asset: {
-        assetName: asset.name,
-        artifactPath: `/tmp/${asset.name}`,
-        sha256: await this.sha256For(container, `/tmp/${asset.name}`),
-        sourceUrl: asset.browser_download_url,
-      },
+      sha256,
+      version: resolvedVersion,
     }
   }
 
@@ -2842,13 +2885,13 @@ end
           .stdout()
       }
       case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact()
+        const build = await this.buildT3CodeArtifact(tap, "main")
         const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
         const updatedCask = this.renderT3CodeCask(
           caskContents,
-          `file:///artifacts/${build.asset.assetName}`,
+          `file:///artifacts/${build.assetName}`,
           build.version,
-          build.asset.sha256,
+          build.sha256,
         )
         const smokeTap = tap.withFile("Casks/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
 
@@ -2859,7 +2902,7 @@ end
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
           .withDirectory("/tap", smokeTap)
-          .withFile(`/artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
             "bash",
             "-lc",
@@ -3218,7 +3261,7 @@ end
         return json(this.fizzySymphonyReleaseMetadata(build, sha256))
       }
       case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact()
+        const build = await this.buildT3CodeArtifact(tap, "main")
         return json(this.t3CodeReleaseMetadata(build))
       }
       case "codex-desktop-linux": {
@@ -3423,19 +3466,19 @@ end
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact()
+        const build = await this.buildT3CodeArtifact(tap, "main")
         const releaseTag = `t3-code-linux-${build.version}`
         const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
         const updatedCask = this.renderT3CodeCask(
           caskContents,
-          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.asset.assetName}`,
+          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`,
           build.version,
-          build.asset.sha256,
+          build.sha256,
         )
         const release = this.t3CodeReleaseMetadata(build)
 
         return dag.directory()
-          .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
