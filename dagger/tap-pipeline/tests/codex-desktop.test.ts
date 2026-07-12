@@ -674,7 +674,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /\.conv\.\$\{compactVersionSegment\(codexDesktopConversionCommit\(conversionCommit\)\)\}/)
   assert.match(packageScript, /process\.env\.CODEX_DESKTOP_CONVERSION_REPO \|\|/)
   assert.match(packageScript, /process\.env\.CODEX_DESKTOP_CONVERSION_COMMIT \|\|/)
-  assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/)
+  assert.match(pipeline, /https:\/\/persistent\.oaistatic\.com\/codex-app-prod\/ChatGPT\.dmg/)
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
   assert.deepEqual(leanFeatures, [

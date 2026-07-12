@@ -26,7 +26,7 @@ const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
 const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
-const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
+const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 const LEAN_CODEX_DESKTOP_LINUX_FEATURES = [
   "node-repl-reaper",

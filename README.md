@@ -261,7 +261,7 @@ Run `agy install` after installation if you want Antigravity's own shell setup.
 Codex Desktop Linux support is local-only in this tap. The tap no longer
 publishes converted Codex Desktop app payloads as GitHub release assets. The
 local builder downloads the official
-`https://persistent.oaistatic.com/codex-app-prod/Codex.dmg`, converts that DMG on
+`https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg`, converts that DMG on
 this machine, patches the extracted app for Linux Electron, rebuilds native
 modules, stages bundled resources, renders a temporary local cask, and installs
 that cask through Homebrew.
@@ -317,10 +317,10 @@ artifact and metadata, then update `codex-desktop-dmg.ref` in the repo:
 
 
 ```bash
-curl -fsSLo /tmp/Codex.dmg https://persistent.oaistatic.com/codex-app-prod/Codex.dmg
+curl -fsSLo /tmp/Codex.dmg https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg
 sha256sum /tmp/Codex.dmg
 wc -c /tmp/Codex.dmg
-curl -fsSIL https://persistent.oaistatic.com/codex-app-prod/Codex.dmg
+curl -fsSIL https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg
 ```
 
 
