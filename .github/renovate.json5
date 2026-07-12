@@ -55,6 +55,18 @@
       "matchFileNames": [
         "dagger/**/package.json"
       ]
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "dagger/**/package.json"
+      ],
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "allowedVersions": "<6"
     }
   ]
 }
