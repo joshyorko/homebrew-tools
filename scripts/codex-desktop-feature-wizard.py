@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import html
 import json
 import os
 from pathlib import Path
@@ -68,6 +69,10 @@ def feature_category(feature_id: str) -> str:
         if feature_id in feature_ids:
             return category
     return "Other"
+
+
+def markup_text(value: str) -> str:
+    return html.escape(value, quote=False)
 
 
 def _read_json(path: Path, label: str):
@@ -512,7 +517,7 @@ def run_gtk_wizard(
             return page
 
         def add_category(self, preferences, category):
-            group = Adw.PreferencesGroup(title=category)
+            group = Adw.PreferencesGroup(title=markup_text(category))
             self.groups[category] = group
             for feature in features.values():
                 if feature.category != category:
@@ -529,7 +534,10 @@ def run_gtk_wizard(
                 subtitle = feature.description
                 if suffixes:
                     subtitle = f"{subtitle} · {' · '.join(suffixes)}" if subtitle else " · ".join(suffixes)
-                row = Adw.SwitchRow(title=feature.title, subtitle=subtitle)
+                row = Adw.SwitchRow(
+                    title=markup_text(feature.title),
+                    subtitle=markup_text(subtitle),
+                )
                 row.set_name(feature.id)
                 row.connect("notify::active", self.on_feature_toggled, feature.id)
                 self.rows[feature.id] = row
@@ -589,7 +597,7 @@ def run_gtk_wizard(
             page.append(self.review_summary)
             note = Adw.StatusPage(
                 title="Your running app stays untouched",
-                description="Build & install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
+                description="Build &amp; install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
                 icon_name="security-high-symbolic",
             )
             note.set_vexpand(True)

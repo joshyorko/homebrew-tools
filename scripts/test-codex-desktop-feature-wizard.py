@@ -170,6 +170,9 @@ class FeatureWizardModelTests(unittest.TestCase):
     def test_empty_selection_uses_explicit_none_sentinel(self):
         self.assertEqual(WIZARD.selection_argument(set()), "none")
 
+    def test_markup_text_escapes_ampersands(self):
+        self.assertEqual(WIZARD.markup_text("Record & Replay"), "Record &amp; Replay")
+
     def test_install_result_is_stable(self):
         result = self.root / "result.json"
 
