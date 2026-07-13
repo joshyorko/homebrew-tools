@@ -264,11 +264,65 @@ def selection_argument(selected: set[str]) -> str:
     return ",".join(sorted(selected)) if selected else "none"
 
 
-def write_result(result_path: Path, action: str, selected: set[str]) -> None:
+def build_result_summary(decision: dict, evidence_dir: Path) -> dict:
+    verdict = decision.get("verdict", "inconclusive")
+    titles = {
+        "accepted": "Newest upstream DMG accepted",
+        "accepted_with_warnings": "Accepted with warnings",
+        "rejected": "Newest upstream DMG rejected",
+        "inconclusive": "DMG compatibility check inconclusive",
+    }
+    if verdict not in titles:
+        verdict = "inconclusive"
+
+    if verdict == "rejected":
+        findings = decision.get("blockers", [])
+    else:
+        findings = decision.get("warnings", [])
+    reasons = []
+    if isinstance(findings, list):
+        for finding in findings:
+            if isinstance(finding, dict):
+                reason = finding.get("reason") or finding.get("name")
+                if reason:
+                    reasons.append(str(reason))
+            elif finding:
+                reasons.append(str(finding))
+
+    defaults = {
+        "accepted": "Compatibility checks passed. The selected build may be installed.",
+        "accepted_with_warnings": "Compatibility checks passed with non-blocking warnings.",
+        "rejected": "The working app was preserved because required compatibility checks failed.",
+        "inconclusive": "The working app was preserved because compatibility could not be proven.",
+    }
+    description = "\n".join(reasons) if reasons else defaults[verdict]
+    return {
+        "verdict": verdict,
+        "title": titles[verdict],
+        "description": description,
+        "reportPath": Path(evidence_dir) / "upstream-dmg-decision.json",
+    }
+
+
+def write_result(
+    result_path: Path,
+    action: str,
+    selected: set[str],
+    dmg_source: str = "pinned",
+) -> None:
     if action not in {"save", "install", "cancel"}:
         raise ValueError(f"Unknown setup action: {action}")
+    if dmg_source not in {"pinned", "latest"}:
+        raise ValueError(f"Unknown DMG source: {dmg_source}")
     features = [] if action == "cancel" else sorted(selected)
-    _write_json_atomic(Path(result_path), {"action": action, "features": features})
+    _write_json_atomic(
+        Path(result_path),
+        {
+            "action": action,
+            "dmgSource": dmg_source,
+            "features": features,
+        },
+    )
 
 
 def complete_action(
@@ -276,10 +330,11 @@ def complete_action(
     config_path: Path,
     result_path: Path,
     selected: set[str],
+    dmg_source: str = "pinned",
 ) -> None:
     if action in {"save", "install"}:
         save_selection(config_path, selected)
-    write_result(result_path, action, selected)
+    write_result(result_path, action, selected, dmg_source)
 
 
 def parse_feature_words(value: str) -> set[str]:
@@ -289,11 +344,16 @@ def parse_feature_words(value: str) -> set[str]:
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Configure Codex Desktop Linux features for Homebrew")
     parser.add_argument("--features-root", type=Path)
-    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--full-profile", default="")
     parser.add_argument("--lean-profile", default="")
     parser.add_argument("--result", type=Path)
     parser.add_argument("--conversion-commit", default="unknown")
+    parser.add_argument("--pinned-dmg-sha256", default="unknown")
+    parser.add_argument("--pinned-dmg-content-length", default="unknown")
+    parser.add_argument("--pinned-dmg-last-modified", default="unknown")
+    parser.add_argument("--pinned-dmg-etag", default="unknown")
+    parser.add_argument("--show-result", type=Path)
     parser.add_argument("--print-enabled", action="store_true")
     return parser.parse_args(argv)
 
@@ -312,6 +372,83 @@ def gtk_available() -> bool:
     except (ImportError, ValueError):
         return False
     return True
+
+
+def run_gtk_result(summary: dict) -> int:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
+    from gi.repository import Adw, Gio, Gtk
+
+    class ResultApplication(Adw.Application):
+        def __init__(self):
+            super().__init__(application_id="dev.joshyorko.CodexDesktopBuildResult")
+
+        def do_activate(self):
+            window = Adw.ApplicationWindow(application=self)
+            window.set_title("Codex Desktop compatibility result")
+            window.set_default_size(700, 520)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            box.set_margin_top(24)
+            box.set_margin_bottom(20)
+            box.set_margin_start(28)
+            box.set_margin_end(28)
+            icons = {
+                "accepted": "emblem-ok-symbolic",
+                "accepted_with_warnings": "dialog-warning-symbolic",
+                "rejected": "dialog-error-symbolic",
+                "inconclusive": "dialog-question-symbolic",
+            }
+            status = Adw.StatusPage(
+                title=markup_text(summary["title"]),
+                description=markup_text(summary["description"]),
+                icon_name=icons[summary["verdict"]],
+            )
+            status.set_vexpand(True)
+            box.append(status)
+            report = Gtk.Label(
+                label=f"Evidence: {summary['reportPath']}",
+                xalign=0,
+                wrap=True,
+                selectable=True,
+            )
+            report.add_css_class("dim-label")
+            box.append(report)
+            actions = Gtk.Box(spacing=8)
+            actions.append(Gtk.Box(hexpand=True))
+            open_report = Gtk.Button(label="Open report")
+            open_report.connect(
+                "clicked",
+                lambda _button: Gio.AppInfo.launch_default_for_uri(
+                    summary["reportPath"].as_uri(),
+                    None,
+                ),
+            )
+            close = Gtk.Button(label="Close")
+            close.add_css_class("suggested-action")
+            close.connect("clicked", lambda _button: self.quit())
+            actions.append(open_report)
+            actions.append(close)
+            box.append(actions)
+            window.set_content(box)
+            window.present()
+
+    return ResultApplication().run([])
+
+
+def show_build_result(result_path: Path) -> int:
+    result_path = Path(result_path).resolve()
+    decision = _read_json(result_path, "upstream DMG decision")
+    if not isinstance(decision, dict):
+        raise ValueError(f"Upstream DMG decision {result_path} must be a JSON object")
+    summary = build_result_summary(decision, result_path.parent)
+    if graphical_session_available() and gtk_available():
+        return run_gtk_result(summary)
+    print(summary["title"])
+    print(summary["description"])
+    print(f"Evidence: {summary['reportPath']}")
+    return 0
 
 
 def _validated_profile(
@@ -385,13 +522,21 @@ def run_terminal_wizard(
         raise ValueError(f"Unknown profile choice: {profile}")
 
     print(f"\nSelected {len(selected)} feature(s): {selection_argument(selected)}")
+    print("Build source: [p]inned tested DMG  [l]atest upstream DMG")
+    source = input("Choose build source [p]: ").strip().lower() or "p"
+    if source in {"p", "pinned"}:
+        dmg_source = "pinned"
+    elif source in {"l", "latest"}:
+        dmg_source = "latest"
+    else:
+        raise ValueError(f"Unknown DMG source choice: {source}")
     action = input("[s]ave only, [i]build & install, or [q]uit [s]: ").strip().lower() or "s"
     if action in {"i", "install"}:
-        complete_action("install", args.config, args.result, selected)
+        complete_action("install", args.config, args.result, selected, dmg_source)
     elif action in {"s", "save"}:
-        complete_action("save", args.config, args.result, selected)
+        complete_action("save", args.config, args.result, selected, dmg_source)
     elif action in {"q", "quit"}:
-        complete_action("cancel", args.config, args.result, selected)
+        complete_action("cancel", args.config, args.result, selected, dmg_source)
     else:
         raise ValueError(f"Unknown setup action: {action}")
     return 0
@@ -414,6 +559,7 @@ def run_gtk_wizard(
         def __init__(self):
             super().__init__(application_id="dev.joshyorko.CodexDesktopSetup")
             self.selected = set(initial_selected)
+            self.dmg_source = "pinned"
             self.completed = False
             self.rows: dict[str, Adw.SwitchRow] = {}
             self.groups: dict[str, Adw.PreferencesGroup] = {}
@@ -595,6 +741,34 @@ def run_gtk_wizard(
             page.append(title)
             self.review_summary = Gtk.Label(xalign=0, wrap=True, selectable=True)
             page.append(self.review_summary)
+            source_group = Adw.PreferencesGroup(title="Build source")
+            pinned_fingerprint = args.pinned_dmg_sha256
+            if len(pinned_fingerprint) > 16:
+                pinned_fingerprint = f"{pinned_fingerprint[:16]}…"
+            pinned = Adw.ActionRow(
+                title="Tested pinned DMG",
+                subtitle=(
+                    f"Recommended · SHA256 {pinned_fingerprint} · "
+                    f"{args.pinned_dmg_last_modified}"
+                ),
+            )
+            pinned_choice = Gtk.CheckButton()
+            pinned_choice.set_active(True)
+            pinned.add_suffix(pinned_choice)
+            pinned.set_activatable_widget(pinned_choice)
+            latest = Adw.ActionRow(
+                title="Newest upstream DMG",
+                subtitle="One-off build · downloads current OpenAI DMG and runs drift acceptance",
+            )
+            latest_choice = Gtk.CheckButton()
+            latest_choice.set_group(pinned_choice)
+            latest.add_suffix(latest_choice)
+            latest.set_activatable_widget(latest_choice)
+            pinned_choice.connect("toggled", self.on_dmg_source_toggled, "pinned")
+            latest_choice.connect("toggled", self.on_dmg_source_toggled, "latest")
+            source_group.add(pinned)
+            source_group.add(latest)
+            page.append(source_group)
             note = Adw.StatusPage(
                 title="Your running app stays untouched",
                 description="Build &amp; install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
@@ -617,17 +791,29 @@ def run_gtk_wizard(
             page.append(actions)
             return page
 
+        def on_dmg_source_toggled(self, button, dmg_source):
+            if button.get_active():
+                self.dmg_source = dmg_source
+
         def show_review(self, _button):
             titles = [features[item].title for item in sorted(self.selected)]
             feature_text = "\n".join(f"• {title}" for title in titles) if titles else "No optional features"
             self.review_summary.set_label(
                 f"Conversion commit\n{args.conversion_commit}\n\n"
+                f"DMG source\n"
+                f"{'Tested pinned DMG' if self.dmg_source == 'pinned' else 'Newest upstream DMG'}\n\n"
                 f"Enabled features ({len(self.selected)})\n{feature_text}"
             )
             self.stack.set_visible_child_name("review")
 
         def finish(self, action):
-            complete_action(action, args.config, args.result, self.selected)
+            complete_action(
+                action,
+                args.config,
+                args.result,
+                self.selected,
+                self.dmg_source,
+            )
             self.completed = True
             self.quit()
 
@@ -653,6 +839,10 @@ def run_wizard(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv if argv is not None else sys.argv[1:])
+    if args.show_result is not None:
+        return show_build_result(args.show_result)
+    if args.config is None:
+        raise ValueError("--config is required")
     if args.print_enabled:
         if not args.config.exists():
             return 0

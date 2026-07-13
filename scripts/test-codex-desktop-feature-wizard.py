@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("codex-desktop-feature-wizard.py")
@@ -182,9 +185,77 @@ class FeatureWizardModelTests(unittest.TestCase):
             json.loads(result.read_text()),
             {
                 "action": "install",
+                "dmgSource": "pinned",
                 "features": ["pet-overlay", "read-aloud"],
             },
         )
+
+    def test_install_result_accepts_latest_dmg_source(self):
+        result = self.root / "result.json"
+
+        WIZARD.write_result(result, "install", {"read-aloud"}, "latest")
+
+        self.assertEqual(json.loads(result.read_text())["dmgSource"], "latest")
+
+    def test_result_rejects_unknown_dmg_source(self):
+        with self.assertRaisesRegex(ValueError, "Unknown DMG source"):
+            WIZARD.write_result(
+                self.root / "result.json",
+                "install",
+                set(),
+                "surprise",
+            )
+
+    def test_result_summary_exposes_drift_blocker_and_report(self):
+        evidence_dir = self.root / "evidence"
+        summary = WIZARD.build_result_summary(
+            {
+                "verdict": "rejected",
+                "blockers": [
+                    {
+                        "name": "feature:appshots:availability",
+                        "reason": "availability gate moved",
+                    }
+                ],
+            },
+            evidence_dir,
+        )
+
+        self.assertEqual(summary["title"], "Newest upstream DMG rejected")
+        self.assertIn("availability gate moved", summary["description"])
+        self.assertEqual(
+            summary["reportPath"],
+            evidence_dir / "upstream-dmg-decision.json",
+        )
+
+    def test_result_summary_marks_accepted_with_warnings(self):
+        summary = WIZARD.build_result_summary(
+            {
+                "verdict": "accepted_with_warnings",
+                "warnings": [{"reason": "optional core diagnostic moved"}],
+            },
+            self.root,
+        )
+
+        self.assertEqual(summary["title"], "Accepted with warnings")
+        self.assertIn("optional core diagnostic moved", summary["description"])
+
+    def test_headless_result_view_prints_verdict_and_report(self):
+        evidence_dir = self.root / "evidence"
+        evidence_dir.mkdir()
+        result = evidence_dir / "upstream-dmg-decision.json"
+        result.write_text(json.dumps({"verdict": "accepted"}) + "\n")
+        output = io.StringIO()
+
+        with (
+            mock.patch.object(WIZARD, "graphical_session_available", return_value=False),
+            redirect_stdout(output),
+        ):
+            status = WIZARD.show_build_result(result)
+
+        self.assertEqual(status, 0)
+        self.assertIn("Newest upstream DMG accepted", output.getvalue())
+        self.assertIn(str(result), output.getvalue())
 
     def test_cancel_preserves_saved_selection(self):
         config = self.root / "features.json"
@@ -194,7 +265,10 @@ class FeatureWizardModelTests(unittest.TestCase):
         WIZARD.complete_action("cancel", config, result, {"pet-overlay"})
 
         self.assertEqual(json.loads(config.read_text()), {"enabled": ["read-aloud"]})
-        self.assertEqual(json.loads(result.read_text()), {"action": "cancel", "features": []})
+        self.assertEqual(
+            json.loads(result.read_text()),
+            {"action": "cancel", "dmgSource": "pinned", "features": []},
+        )
 
     def test_save_action_persists_selection(self):
         config = self.root / "features.json"
@@ -205,7 +279,7 @@ class FeatureWizardModelTests(unittest.TestCase):
         self.assertEqual(json.loads(config.read_text()), {"enabled": ["pet-overlay"]})
         self.assertEqual(
             json.loads(result.read_text()),
-            {"action": "save", "features": ["pet-overlay"]},
+            {"action": "save", "dmgSource": "pinned", "features": ["pet-overlay"]},
         )
 
 
