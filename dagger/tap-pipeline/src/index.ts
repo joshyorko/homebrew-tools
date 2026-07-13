@@ -100,6 +100,9 @@ function parseLinuxFeatureList(value: string): string[] {
   if (normalized === "full") {
     return [...FULL_CODEX_DESKTOP_LINUX_FEATURES]
   }
+  if (normalized === "none") {
+    return []
+  }
   return value
     .split(/[\s,]+/)
     .map((feature) => feature.trim())

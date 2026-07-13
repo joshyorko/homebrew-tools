@@ -737,6 +737,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = FULL_CODEX_DESKTOP_LINUX_FEATURES/)
   assert.match(pipeline, /normalized === "lean"/)
   assert.match(pipeline, /normalized === "full"/)
+  assert.match(pipeline, /normalized === "none"/)
   assert.deepEqual(fullFeatures, expectedFullFeatures)
   assert.deepEqual(makeFullFeatures, expectedFullFeatures)
   for (const feature of leanFeatures) {
