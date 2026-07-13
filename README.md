@@ -335,7 +335,7 @@ CODEX_DESKTOP_CODEX_DMG=/path/to/Codex.dmg make codex-desktop-install
 
 The local Codex Desktop builder writes a Linux feature config during conversion.
 The default test set enables every shipped Codex Desktop Linux feature except
-the template feature, Thorium browser support, and frameless titlebar mode, so
+the template feature and Thorium browser support, so
 `make codex-desktop-install` builds the self-hosted branch with the full
 daily-driver feature surface enabled.
 
