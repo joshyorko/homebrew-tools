@@ -10,9 +10,20 @@ fake_bin="$tmp_dir/bin"
 fake_checkout="$tmp_dir/codex-desktop-linux"
 fake_config_home="$tmp_dir/config"
 fake_cache_home="$tmp_dir/cache"
+fake_state_home="$tmp_dir/state"
 git_log="$tmp_dir/git.log"
 install_log="$tmp_dir/install.log"
-mkdir -p "$fake_bin" "$fake_checkout/linux-features/read-aloud" "$fake_config_home" "$fake_cache_home"
+result_view_log="$tmp_dir/result-view.log"
+dmg_ref="$tmp_dir/codex-desktop-dmg.ref"
+mkdir -p "$fake_bin" "$fake_checkout/linux-features/read-aloud" "$fake_config_home" "$fake_cache_home" "$fake_state_home"
+
+cat >"$dmg_ref" <<'REF'
+url: https://example.invalid/Codex.dmg
+sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+content-length: 123
+last-modified: Mon, 13 Jul 2026 06:53:09 GMT
+etag: fixture-etag
+REF
 
 cat >"$fake_checkout/linux-features/read-aloud/feature.json" <<'JSON'
 {"id":"read-aloud","title":"Read Aloud","defaultEnabled":false}
@@ -39,16 +50,38 @@ from pathlib import Path
 import sys
 
 arguments = sys.argv[1:]
+if "--show-result" in arguments:
+    Path(os.environ["FAKE_RESULT_VIEW_LOG"]).write_text(
+        arguments[arguments.index("--show-result") + 1] + "\n"
+    )
+    raise SystemExit(0)
 result = Path(arguments[arguments.index("--result") + 1])
 features = [item for item in os.environ.get("FAKE_FEATURES", "").split(",") if item]
 result.parent.mkdir(parents=True, exist_ok=True)
-result.write_text(json.dumps({"action": os.environ["FAKE_ACTION"], "features": features}) + "\n")
+result.write_text(
+    json.dumps(
+        {
+            "action": os.environ["FAKE_ACTION"],
+            "dmgSource": os.environ.get("FAKE_DMG_SOURCE", "pinned"),
+            "features": features,
+        }
+    )
+    + "\n"
+)
 PY
 
 cat >"$tmp_dir/fake-installer.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >"$FAKE_INSTALL_LOG"
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--result-file" ]; then
+        mkdir -p "$(dirname "$2")"
+        printf '{"verdict":"accepted"}\n' >"$2"
+        break
+    fi
+    shift
+done
 SH
 
 chmod +x "$fake_bin/git" "$tmp_dir/fake-wizard.py" "$tmp_dir/fake-installer.sh"
@@ -67,15 +100,21 @@ assert_contains() {
 run_setup() {
     local action="$1"
     local features="$2"
+    local dmg_source="${3:-pinned}"
     rm -f "$install_log"
+    rm -f "$result_view_log"
     FAKE_ACTION="$action" \
     FAKE_FEATURES="$features" \
+    FAKE_DMG_SOURCE="$dmg_source" \
     FAKE_COMMIT="0123456789abcdef0123456789abcdef01234567" \
     FAKE_GIT_LOG="$git_log" \
     FAKE_INSTALL_LOG="$install_log" \
+    FAKE_RESULT_VIEW_LOG="$result_view_log" \
     PATH="$fake_bin:$PATH" \
     XDG_CONFIG_HOME="$fake_config_home" \
     XDG_CACHE_HOME="$fake_cache_home" \
+    XDG_STATE_HOME="$fake_state_home" \
+    CODEX_DESKTOP_DMG_REF_FILE="$dmg_ref" \
     CODEX_DESKTOP_CONVERSION_CHECKOUT="$fake_checkout" \
     CODEX_DESKTOP_FEATURE_WIZARD="$tmp_dir/fake-wizard.py" \
     CODEX_DESKTOP_INSTALLER="$tmp_dir/fake-installer.sh" \
@@ -95,10 +134,18 @@ run_setup install "read-aloud,pet-overlay"
 install_args="$(<"$install_log")"
 assert_contains "$install_args" "--conversion-commit 0123456789abcdef0123456789abcdef01234567"
 assert_contains "$install_args" "--linux-features pet-overlay,read-aloud"
+assert_contains "$install_args" "--dmg-source pinned"
 
 run_setup install ""
 install_args="$(<"$install_log")"
 assert_contains "$install_args" "--linux-features none"
+
+run_setup install "read-aloud" latest
+install_args="$(<"$install_log")"
+assert_contains "$install_args" "--dmg-source latest"
+assert_contains "$install_args" "--result-file"
+[ -s "$result_view_log" ] || fail "latest build must display the compatibility result"
+assert_contains "$(<"$result_view_log")" "upstream-dmg-decision.json"
 
 git_calls="$(<"$git_log")"
 assert_contains "$git_calls" "ls-remote --exit-code"
