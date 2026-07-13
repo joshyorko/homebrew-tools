@@ -291,6 +291,7 @@ From a repo checkout, the same builder is available directly:
 
 ```bash
 scripts/install-codex-desktop-local.sh
+make codex-desktop-setup
 make codex-desktop-install
 make codex-install
 make codex-desktop-uninstall
@@ -299,6 +300,14 @@ make codex-desktop-rebuild-dry-run
 make codex-desktop-rebuild-relaunch
 make codex-desktop-rebuild-foreground
 ```
+
+For normal interactive use, start with `make codex-desktop-setup`. It opens a
+native GTK/libadwaita window on supported Linux desktops with Daily driver,
+Minimal, and Custom profiles; searchable feature switches; dependency and
+conflict guidance; and a final choice to save or build and install. The saved
+selection lives under `${XDG_CONFIG_HOME:-~/.config}/homebrew-tools/` and is
+used automatically by later `make codex-desktop-install` runs. A concise
+terminal picker is used when no graphical session is available.
 
 `make codex-desktop-install` and `make codex-install` use the checked-in
 `codex-desktop-conversion.ref` by default, so local rebuilds follow the current
@@ -334,10 +343,10 @@ CODEX_DESKTOP_CODEX_DMG=/path/to/Codex.dmg make codex-desktop-install
 
 
 The local Codex Desktop builder writes a Linux feature config during conversion.
-The default test set enables every shipped Codex Desktop Linux feature except
-the template feature and Thorium browser support, so
-`make codex-desktop-install` builds the self-hosted branch with the full
-daily-driver feature surface enabled.
+Before the guided wizard has saved a selection, the default test set enables
+every shipped Codex Desktop Linux feature except the template feature and
+Thorium browser support. Afterward, `make codex-desktop-install` reuses the
+wizard selection automatically.
 
 Use the smaller troubleshooting profile explicitly when you need a lower-surface
 Desktop build:
