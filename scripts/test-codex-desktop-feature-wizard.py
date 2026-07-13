@@ -170,6 +170,41 @@ class FeatureWizardModelTests(unittest.TestCase):
     def test_empty_selection_uses_explicit_none_sentinel(self):
         self.assertEqual(WIZARD.selection_argument(set()), "none")
 
+    def test_install_result_is_stable(self):
+        result = self.root / "result.json"
+
+        WIZARD.write_result(result, "install", {"read-aloud", "pet-overlay"})
+
+        self.assertEqual(
+            json.loads(result.read_text()),
+            {
+                "action": "install",
+                "features": ["pet-overlay", "read-aloud"],
+            },
+        )
+
+    def test_cancel_preserves_saved_selection(self):
+        config = self.root / "features.json"
+        result = self.root / "result.json"
+        WIZARD.save_selection(config, {"read-aloud"})
+
+        WIZARD.complete_action("cancel", config, result, {"pet-overlay"})
+
+        self.assertEqual(json.loads(config.read_text()), {"enabled": ["read-aloud"]})
+        self.assertEqual(json.loads(result.read_text()), {"action": "cancel", "features": []})
+
+    def test_save_action_persists_selection(self):
+        config = self.root / "features.json"
+        result = self.root / "result.json"
+
+        WIZARD.complete_action("save", config, result, {"pet-overlay"})
+
+        self.assertEqual(json.loads(config.read_text()), {"enabled": ["pet-overlay"]})
+        self.assertEqual(
+            json.loads(result.read_text()),
+            {"action": "save", "features": ["pet-overlay"]},
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

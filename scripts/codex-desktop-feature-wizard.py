@@ -244,15 +244,37 @@ def toggle_feature(
 
 
 def save_selection(config_path: Path, selected: set[str]) -> None:
-    path = Path(config_path)
+    _write_json_atomic(Path(config_path), {"enabled": sorted(selected)})
+
+
+def _write_json_atomic(path: Path, data: dict) -> None:
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(path.suffix + ".tmp")
-    temporary_path.write_text(json.dumps({"enabled": sorted(selected)}, indent=2) + "\n")
+    temporary_path.write_text(json.dumps(data, indent=2) + "\n")
     os.replace(temporary_path, path)
 
 
 def selection_argument(selected: set[str]) -> str:
     return ",".join(sorted(selected)) if selected else "none"
+
+
+def write_result(result_path: Path, action: str, selected: set[str]) -> None:
+    if action not in {"save", "install", "cancel"}:
+        raise ValueError(f"Unknown setup action: {action}")
+    features = [] if action == "cancel" else sorted(selected)
+    _write_json_atomic(Path(result_path), {"action": action, "features": features})
+
+
+def complete_action(
+    action: str,
+    config_path: Path,
+    result_path: Path,
+    selected: set[str],
+) -> None:
+    if action in {"save", "install"}:
+        save_selection(config_path, selected)
+    write_result(result_path, action, selected)
 
 
 def parse_feature_words(value: str) -> set[str]:
@@ -266,8 +288,359 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--full-profile", default="")
     parser.add_argument("--lean-profile", default="")
     parser.add_argument("--result", type=Path)
+    parser.add_argument("--conversion-commit", default="unknown")
     parser.add_argument("--print-enabled", action="store_true")
     return parser.parse_args(argv)
+
+
+def graphical_session_available() -> bool:
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def gtk_available() -> bool:
+    try:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw, Gtk  # noqa: F401
+    except (ImportError, ValueError):
+        return False
+    return True
+
+
+def _validated_profile(
+    features: dict[str, Feature],
+    requested: set[str],
+) -> set[str]:
+    selected: set[str] = set()
+    for feature_id in sorted(requested):
+        if feature_id not in features:
+            continue
+        updated, notice = toggle_feature(features, selected, feature_id, True)
+        if updated == selected and "conflicts" in notice:
+            raise ValueError(notice)
+        selected = updated
+    return selected
+
+
+def _terminal_custom_selection(
+    raw: str,
+    features: dict[str, Feature],
+) -> set[str]:
+    requested: set[str] = set()
+    feature_ids = list(features)
+    for item in re.split(r"[\s,]+", raw.strip()):
+        if not item:
+            continue
+        if item.isdigit():
+            index = int(item) - 1
+            if index < 0 or index >= len(feature_ids):
+                raise ValueError(f"Feature number {item} is out of range 1-{len(feature_ids)}")
+            requested.add(feature_ids[index])
+        elif item in features:
+            requested.add(item)
+        else:
+            raise ValueError(f"Unknown Linux feature selector: {item}")
+    return _validated_profile(features, requested)
+
+
+def run_terminal_wizard(
+    args: argparse.Namespace,
+    features: dict[str, Feature],
+    selected: set[str],
+    full_profile: set[str],
+    lean_profile: set[str],
+) -> int:
+    if not sys.stdin.isatty():
+        complete_action("cancel", args.config, args.result, selected)
+        print("Codex Desktop setup needs an interactive terminal or graphical session.", file=sys.stderr)
+        return 2
+
+    print("\nCodex Desktop Homebrew setup")
+    print(f"Conversion: {args.conversion_commit}")
+    print(f"Saved selection: {len(selected)} feature(s)\n")
+    print("Profiles: [k]eep saved  [d]aily driver  [m]inimal  [c]ustom  [q]uit")
+    profile = input("Choose profile [k]: ").strip().lower() or "k"
+    if profile in {"q", "quit"}:
+        complete_action("cancel", args.config, args.result, selected)
+        return 0
+    if profile in {"d", "daily", "full"}:
+        selected = _validated_profile(features, full_profile)
+    elif profile in {"m", "minimal", "lean"}:
+        selected = _validated_profile(features, lean_profile)
+    elif profile in {"c", "custom"}:
+        for index, feature in enumerate(features.values(), start=1):
+            marker = "x" if feature.id in selected else " "
+            print(f"{index:2}. [{marker}] {feature.title} ({feature.id})")
+        raw = input("Feature ids or numbers (comma-separated, blank keeps saved): ").strip()
+        if raw:
+            selected = _terminal_custom_selection(raw, features)
+    elif profile not in {"k", "keep"}:
+        raise ValueError(f"Unknown profile choice: {profile}")
+
+    print(f"\nSelected {len(selected)} feature(s): {selection_argument(selected)}")
+    action = input("[s]ave only, [i]build & install, or [q]uit [s]: ").strip().lower() or "s"
+    if action in {"i", "install"}:
+        complete_action("install", args.config, args.result, selected)
+    elif action in {"s", "save"}:
+        complete_action("save", args.config, args.result, selected)
+    elif action in {"q", "quit"}:
+        complete_action("cancel", args.config, args.result, selected)
+    else:
+        raise ValueError(f"Unknown setup action: {action}")
+    return 0
+
+
+def run_gtk_wizard(
+    args: argparse.Namespace,
+    features: dict[str, Feature],
+    initial_selected: set[str],
+    full_profile: set[str],
+    lean_profile: set[str],
+) -> int:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
+    from gi.repository import Adw, Gio, Gtk
+
+    class WizardApplication(Adw.Application):
+        def __init__(self):
+            super().__init__(application_id="dev.joshyorko.CodexDesktopSetup")
+            self.selected = set(initial_selected)
+            self.completed = False
+            self.rows: dict[str, Adw.SwitchRow] = {}
+            self.groups: dict[str, Adw.PreferencesGroup] = {}
+            self.updating = False
+
+        def do_activate(self):
+            self.window = Adw.ApplicationWindow(application=self)
+            self.window.set_title("Codex Desktop Setup")
+            self.window.set_default_size(900, 720)
+            self.window.connect("close-request", self.on_close)
+
+            toolbar = Adw.ToolbarView()
+            header = Adw.HeaderBar()
+            header.set_title_widget(
+                Adw.WindowTitle(
+                    title="Codex Desktop Setup",
+                    subtitle=f"Homebrew build · {args.conversion_commit[:12]}",
+                )
+            )
+            toolbar.add_top_bar(header)
+
+            self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+            self.toast_overlay = Adw.ToastOverlay(child=self.stack)
+            toolbar.set_content(self.toast_overlay)
+            self.stack.add_named(self.build_features_page(), "features")
+            self.stack.add_named(self.build_review_page(), "review")
+            self.window.set_content(toolbar)
+            self.window.present()
+
+        def build_features_page(self):
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+            page.set_margin_top(20)
+            page.set_margin_bottom(16)
+            page.set_margin_start(28)
+            page.set_margin_end(28)
+
+            title = Gtk.Label(label="Choose what Codex Desktop includes", xalign=0)
+            title.add_css_class("title-1")
+            page.append(title)
+            subtitle = Gtk.Label(
+                label="Pick a profile or tune individual Linux features. Requirements are handled automatically.",
+                xalign=0,
+                wrap=True,
+            )
+            subtitle.add_css_class("dim-label")
+            page.append(subtitle)
+
+            profile_box = Gtk.Box(spacing=8)
+            daily = Gtk.ToggleButton(label="Daily driver")
+            minimal = Gtk.ToggleButton(label="Minimal")
+            custom = Gtk.ToggleButton(label="Custom")
+            minimal.set_group(daily)
+            custom.set_group(daily)
+            profile_box.append(daily)
+            profile_box.append(minimal)
+            profile_box.append(custom)
+            profile_box.append(Gtk.Box(hexpand=True))
+            self.count_label = Gtk.Label(xalign=1)
+            self.count_label.add_css_class("dim-label")
+            profile_box.append(self.count_label)
+            page.append(profile_box)
+
+            daily.connect("toggled", self.on_profile, "daily", full_profile)
+            minimal.connect("toggled", self.on_profile, "minimal", lean_profile)
+            custom.connect("toggled", self.on_profile, "custom", None)
+            self.custom_button = custom
+            if self.selected == _validated_profile(features, full_profile):
+                daily.set_active(True)
+            elif self.selected == _validated_profile(features, lean_profile):
+                minimal.set_active(True)
+            else:
+                custom.set_active(True)
+
+            search = Gtk.SearchEntry(placeholder_text="Search features")
+            search.connect("search-changed", self.on_search)
+            page.append(search)
+
+            preferences = Adw.PreferencesPage()
+            for category in CATEGORY_FEATURES:
+                self.add_category(preferences, category)
+            self.add_category(preferences, "Other")
+
+            scroller = Gtk.ScrolledWindow(vexpand=True, child=preferences)
+            scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            page.append(scroller)
+
+            actions = Gtk.Box(spacing=8)
+            cancel = Gtk.Button(label="Cancel")
+            cancel.connect("clicked", lambda _button: self.finish("cancel"))
+            save = Gtk.Button(label="Save for later")
+            save.connect("clicked", lambda _button: self.finish("save"))
+            review = Gtk.Button(label="Review")
+            review.add_css_class("suggested-action")
+            review.connect("clicked", self.show_review)
+            actions.append(cancel)
+            actions.append(Gtk.Box(hexpand=True))
+            actions.append(save)
+            actions.append(review)
+            page.append(actions)
+            self.refresh_rows()
+            return page
+
+        def add_category(self, preferences, category):
+            group = Adw.PreferencesGroup(title=category)
+            self.groups[category] = group
+            for feature in features.values():
+                if feature.category != category:
+                    continue
+                suffixes = []
+                if feature.requires:
+                    suffixes.append(
+                        "Requires " + ", ".join(features[item].title for item in feature.requires)
+                    )
+                if feature.conflicts:
+                    suffixes.append(
+                        "Conflicts with " + ", ".join(features[item].title for item in feature.conflicts)
+                    )
+                subtitle = feature.description
+                if suffixes:
+                    subtitle = f"{subtitle} · {' · '.join(suffixes)}" if subtitle else " · ".join(suffixes)
+                row = Adw.SwitchRow(title=feature.title, subtitle=subtitle)
+                row.set_name(feature.id)
+                row.connect("notify::active", self.on_feature_toggled, feature.id)
+                self.rows[feature.id] = row
+                group.add(row)
+            if any(feature.category == category for feature in features.values()):
+                preferences.add(group)
+
+        def on_profile(self, button, profile_name, profile_ids):
+            if not button.get_active() or self.updating or profile_ids is None:
+                return
+            self.selected = _validated_profile(features, set(profile_ids))
+            self.refresh_rows()
+            self.toast_overlay.add_toast(Adw.Toast(title=f"{profile_name.title()} profile selected"))
+
+        def on_feature_toggled(self, row, _parameter, feature_id):
+            if self.updating:
+                return
+            updated, notice = toggle_feature(features, self.selected, feature_id, row.get_active())
+            self.selected = updated
+            self.custom_button.set_active(True)
+            self.refresh_rows()
+            if notice:
+                self.toast_overlay.add_toast(Adw.Toast(title=notice))
+
+        def refresh_rows(self):
+            self.updating = True
+            try:
+                for feature_id, row in self.rows.items():
+                    row.set_active(feature_id in self.selected)
+                self.count_label.set_label(f"{len(self.selected)} selected")
+            finally:
+                self.updating = False
+
+        def on_search(self, entry):
+            query = entry.get_text().strip().lower()
+            for category, group in self.groups.items():
+                visible = False
+                for feature in features.values():
+                    if feature.category != category:
+                        continue
+                    haystack = f"{feature.id} {feature.title} {feature.description}".lower()
+                    matches = not query or query in haystack
+                    self.rows[feature.id].set_visible(matches)
+                    visible = visible or matches
+                group.set_visible(visible)
+
+        def build_review_page(self):
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+            page.set_margin_top(32)
+            page.set_margin_bottom(24)
+            page.set_margin_start(40)
+            page.set_margin_end(40)
+            title = Gtk.Label(label="Review your Homebrew build", xalign=0)
+            title.add_css_class("title-1")
+            page.append(title)
+            self.review_summary = Gtk.Label(xalign=0, wrap=True, selectable=True)
+            page.append(self.review_summary)
+            note = Adw.StatusPage(
+                title="Your running app stays untouched",
+                description="Build & install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
+                icon_name="security-high-symbolic",
+            )
+            note.set_vexpand(True)
+            page.append(note)
+            actions = Gtk.Box(spacing=8)
+            back = Gtk.Button(label="Back")
+            back.connect("clicked", lambda _button: self.stack.set_visible_child_name("features"))
+            save = Gtk.Button(label="Save only")
+            save.connect("clicked", lambda _button: self.finish("save"))
+            install = Gtk.Button(label="Build & install")
+            install.add_css_class("suggested-action")
+            install.connect("clicked", lambda _button: self.finish("install"))
+            actions.append(back)
+            actions.append(Gtk.Box(hexpand=True))
+            actions.append(save)
+            actions.append(install)
+            page.append(actions)
+            return page
+
+        def show_review(self, _button):
+            titles = [features[item].title for item in sorted(self.selected)]
+            feature_text = "\n".join(f"• {title}" for title in titles) if titles else "No optional features"
+            self.review_summary.set_label(
+                f"Conversion commit\n{args.conversion_commit}\n\n"
+                f"Enabled features ({len(self.selected)})\n{feature_text}"
+            )
+            self.stack.set_visible_child_name("review")
+
+        def finish(self, action):
+            complete_action(action, args.config, args.result, self.selected)
+            self.completed = True
+            self.quit()
+
+        def on_close(self, _window):
+            if not self.completed:
+                complete_action("cancel", args.config, args.result, self.selected)
+                self.completed = True
+            return False
+
+    application = WizardApplication()
+    return application.run([])
+
+
+def run_wizard(args: argparse.Namespace) -> int:
+    features = discover_features(args.features_root)
+    full_profile = parse_feature_words(args.full_profile)
+    lean_profile = parse_feature_words(args.lean_profile)
+    selected = load_selection(args.config, features, full_profile)
+    if graphical_session_available() and gtk_available():
+        return run_gtk_wizard(args, features, selected, full_profile, lean_profile)
+    return run_terminal_wizard(args, features, selected, full_profile, lean_profile)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,7 +656,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.features_root is None or args.result is None:
         raise ValueError("--features-root and --result are required for interactive setup")
-    raise NotImplementedError("Interactive wizard is implemented in the next task")
+    return run_wizard(args)
 
 
 if __name__ == "__main__":
