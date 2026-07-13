@@ -37,6 +37,12 @@ function readConstStringArray(source: string, name: string): string[] {
   return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1])
 }
 
+function readMakeVariableWords(source: string, name: string): string[] {
+  const match = source.match(new RegExp(`^${name}\\s*:?=\\s*(.+)$`, "m"))
+  assert.ok(match, `${name} Make variable not found`)
+  return match[1].trim().split(/\s+/)
+}
+
 function createConvertedAppFixture(root: string): string {
   const appDir = join(root, "codex-app")
   mkdirSync(join(appDir, "resources/node-runtime/bin"), { recursive: true })
@@ -582,6 +588,33 @@ test("codex desktop is local-only and not published by tap automation", () => {
   const defaultConversionRef = readFileSync(new URL("../../../codex-desktop-conversion.ref", import.meta.url), "utf8").trim()
   const leanFeatures = readConstStringArray(pipeline, "LEAN_CODEX_DESKTOP_LINUX_FEATURES")
   const fullFeatures = readConstStringArray(pipeline, "FULL_CODEX_DESKTOP_LINUX_FEATURES")
+  const makeFullFeatures = readMakeVariableWords(makefile, "CODEX_DESKTOP_LINUX_FEATURES_FULL")
+  const expectedFullFeatures = [
+    "agent-workspace",
+    "api-key-model-visibility",
+    "api-key-service-tier",
+    "appshots",
+    "authenticated-proxy",
+    "codex-wrapper-updater",
+    "conversation-mode",
+    "copilot-reasoning-effort",
+    "frameless-titlebar",
+    "global-dictation",
+    "mcp-helper-reaper",
+    "node-repl-reaper",
+    "omarchy-theme",
+    "open-target-discovery",
+    "persistent-status-panel",
+    "pet-overlay",
+    "project-task-sort",
+    "read-aloud",
+    "read-aloud-mcp",
+    "record-and-replay",
+    "remote-control-ui",
+    "remote-mobile-control",
+    "ui-tweaks",
+    "x11-ewmh-computer-use",
+  ]
 
   assert.doesNotMatch(workflow, /repository_dispatch:/)
   assert.doesNotMatch(workflow, /codex-desktop-linux-ready/)
@@ -642,7 +675,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(localUninstaller, /codex-local\\\/codex-desktop-local-/)
   assert.doesNotMatch(localUninstaller, /\.codex"/)
   assert.match(makefile, /codex-desktop-install:/)
-  assert.equal(defaultConversionRef, "f1355b3fac1d24d96e3f3841b2d44c0dbd1a4a42")
+  assert.equal(defaultConversionRef, "patchraptor-main")
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_REF_FILE \?= codex-desktop-conversion\.ref/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_COMMIT \?= \$\(shell ref=/)
   assert.match(makefile, /\$\$\{ref:-self-hosted\}/)
@@ -688,6 +721,8 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = FULL_CODEX_DESKTOP_LINUX_FEATURES/)
   assert.match(pipeline, /normalized === "lean"/)
   assert.match(pipeline, /normalized === "full"/)
+  assert.deepEqual(fullFeatures, expectedFullFeatures)
+  assert.deepEqual(makeFullFeatures, expectedFullFeatures)
   for (const feature of leanFeatures) {
     assert.ok(fullFeatures.includes(feature), `${feature} must be included in the full profile`)
   }
@@ -710,7 +745,6 @@ test("codex desktop is local-only and not published by tap automation", () => {
     assert.match(pipeline, new RegExp(`"${feature}"`))
   }
   assert.doesNotMatch(pipeline, /"thorium-chrome-plugin"/)
-  assert.doesNotMatch(pipeline, /"frameless-titlebar"/)
   assert.doesNotMatch(pipeline, /"example-feature"/)
   assert.doesNotMatch(pipeline, /"zed-opener"/)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG", "\/work\/linux-features\.json"/)
