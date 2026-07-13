@@ -54,6 +54,24 @@ process refusal. Closing or cancelling the wizard starts no build and preserves
 the last saved selection. Ref-resolution, cache, manifest, and config failures
 are shown before any Dagger work begins.
 
+## DMG source and drift evidence
+
+The review page includes a **Build source** group with two mutually exclusive
+choices:
+
+- **Tested pinned DMG** is selected by default and displays the immutable
+  fingerprint from `codex-desktop-dmg.ref`.
+- **Newest upstream DMG** is an explicit one-off choice. It lets Dagger resolve
+  and download the current OpenAI DMG, then runs the conversion repository's
+  normal upstream acceptance profile with the user's selected Linux features.
+
+Selecting the newest DMG never edits `codex-desktop-dmg.ref`. The installer
+persists the acceptance decision and available patch/rebuild reports under the
+user's XDG state directory. `accepted` and `accepted_with_warnings` may
+install; `rejected` and `inconclusive` preserve the working app and return a
+non-zero status. The wizard displays the verdict, warnings or blockers, and the
+local evidence path after the build attempt.
+
 ## Validation
 
 - Headless Python tests cover profiles, search data, requirements, conflicts,
@@ -62,5 +80,9 @@ are shown before any Dagger work begins.
   ref pinning, save-only behavior, install forwarding, cancellation, and no
   accidental build.
 - Dagger tests prove `none` maps to an empty list and explicit overrides win.
+- Source-selection tests prove pinned is the default, latest reaches the
+  unpinned Dagger path, and rejected/inconclusive attempts cannot install.
+- Result-view tests cover accepted, warning, rejected, and inconclusive
+  evidence summaries without requiring a real DMG.
 - GTK syntax/import checks and the existing Homebrew Codex Desktop suites run
   before merge.
