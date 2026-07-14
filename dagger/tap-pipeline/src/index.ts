@@ -385,6 +385,7 @@ type T3CodeBuild = {
 }
 
 type CodexDesktopBuild = {
+  ok: true
   artifactPath: string
   assetName: string
   container: Container
@@ -393,6 +394,16 @@ type CodexDesktopBuild = {
   metadataPath: string
   version: string
 }
+
+type CodexDesktopBuildFailure = {
+  ok: false
+  container: Container
+  conversionCommit: string
+  exitCode: number
+  version: string
+}
+
+type CodexDesktopBuildAttempt = CodexDesktopBuild | CodexDesktopBuildFailure
 
 type CodexDesktopDmgMetadata = {
   cacheSegment: string
@@ -1793,6 +1804,7 @@ end
     const metadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
 
     return {
+      ok: true,
       artifactPath,
       assetName,
       container,
@@ -1810,7 +1822,7 @@ end
     dmgMetadata?: CodexDesktopDmgMetadata,
     requestedConversionCommit?: string,
     requestedLinuxFeatures?: string,
-  ): Promise<CodexDesktopBuild> {
+  ): Promise<CodexDesktopBuildAttempt> {
     const assetName = `codex-desktop-linux-${version}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
     const metadataPath = "/work/codex-desktop-linux-metadata.json"
@@ -1819,7 +1831,7 @@ end
       codexDesktopConversionCommit(requestedConversionCommit),
     )
     const conversionCommit = await conversionRef.commit()
-    const container = this.codexDesktopBaseContainer()
+    const installContainer = this.codexDesktopBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/conversion", conversionRef.tree({ discardGitDir: true }))
       .withFile("/inputs/Codex.dmg", codexDmg)
@@ -1832,44 +1844,65 @@ end
       .withEnvVariable("CODEX_MANAGED_NODE_CACHE_DIR", "/root/.cache/codex-desktop/node-runtime")
       .withEnvVariable("CODEX_PATCH_REPORT_JSON", "/work/reports/patch-report.json")
       .withEnvVariable("CODEX_REBUILD_REPORT_JSON", "/work/reports/rebuild-report.json")
+      .withEnvVariable("CODEX_ACCEPTANCE_DECISION_JSON", "/work/reports/upstream-dmg-decision.json")
       .withExec([
         "bash",
         "-lc",
         [
-          "set -euo pipefail",
-          "mkdir -p /work/reports",
-          `printf '%s\\n' '${JSON.stringify({ enabled: linuxFeatures })}' > /work/linux-features.json`,
-          "node /tap/scripts/patch-codex-desktop-conversion.mjs --conversion-dir /conversion",
-          "bash scripts/install-deps.sh",
-          "export PATH=\"/root/.local/bin:$PATH\"",
-          "command -v 7zz",
-          "./install.sh --fresh /inputs/Codex.dmg",
+          "set +e",
+          "(",
+          "  set -euo pipefail",
+          "  mkdir -p /work/reports",
+          `  printf '%s\\n' '${JSON.stringify({ enabled: linuxFeatures })}' > /work/linux-features.json`,
+          "  node /tap/scripts/patch-codex-desktop-conversion.mjs --conversion-dir /conversion",
+          "  bash scripts/install-deps.sh",
+          "  export PATH=\"/root/.local/bin:$PATH\"",
+          "  command -v 7zz",
+          "  ./install.sh --fresh /inputs/Codex.dmg",
+          ")",
+          "install_status=$?",
+          "printf '%s\\n' \"$install_status\" > /work/reports/install-exit-code",
+          "exit 0",
         ].join("\n"),
       ])
-      .withExec([
-        "node",
-        "/tap/scripts/package-codex-desktop-linux.mjs",
-        "--app-dir",
-        "/work/codex-app",
-        "--version",
-        version,
-        "--conversion-repo",
-        CODEX_DESKTOP_CONVERSION_REPO,
-        "--conversion-commit",
+
+    const exitCode = Number(
+      (await installContainer.file("/work/reports/install-exit-code").contents()).trim(),
+    )
+    if (exitCode !== 0) {
+      return {
+        ok: false,
+        container: installContainer,
         conversionCommit,
-        "--codex-dmg",
-        "/inputs/Codex.dmg",
-        "--rebuild-report",
-        "/work/reports/rebuild-report.json",
-        "--patch-report",
-        "/work/reports/patch-report.json",
-        "--metadata-output",
-        metadataPath,
-        "--computer-use-ui-enabled",
-        "true",
-        "--output",
-        artifactPath,
-      ])
+        exitCode,
+        version,
+      }
+    }
+
+    const container = installContainer.withExec([
+      "node",
+      "/tap/scripts/package-codex-desktop-linux.mjs",
+      "--app-dir",
+      "/work/codex-app",
+      "--version",
+      version,
+      "--conversion-repo",
+      CODEX_DESKTOP_CONVERSION_REPO,
+      "--conversion-commit",
+      conversionCommit,
+      "--codex-dmg",
+      "/inputs/Codex.dmg",
+      "--rebuild-report",
+      "/work/reports/rebuild-report.json",
+      "--patch-report",
+      "/work/reports/patch-report.json",
+      "--metadata-output",
+      metadataPath,
+      "--computer-use-ui-enabled",
+      "true",
+      "--output",
+      artifactPath,
+    ])
     const packageMetadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
     const metadata: Record<string, unknown> = {
       ...packageMetadata,
@@ -1889,6 +1922,7 @@ end
     }
 
     return {
+      ok: true,
       artifactPath,
       assetName,
       container,
@@ -1904,7 +1938,7 @@ end
     requestedConversionCommit?: string,
     dmgCacheBuster?: string,
     requestedLinuxFeatures?: string,
-  ): Promise<CodexDesktopBuild> {
+  ): Promise<CodexDesktopBuildAttempt> {
     const dmgMetadata = await this.resolveCodexDesktopDmgMetadata(
       CODEX_DESKTOP_DMG_URL,
       requestedConversionCommit,
@@ -3656,6 +3690,39 @@ end
         codexDesktopDmgCacheBuster,
         codexDesktopLinuxFeatures,
       )
+
+    let decision: Record<string, unknown> = {
+      verdict: "inconclusive",
+      blockers: [],
+      warnings: [],
+      inconclusiveReasons: [
+        `Conversion exited before an acceptance decision was exported (exit ${build.ok ? 0 : build.exitCode})`,
+      ],
+    }
+    try {
+      decision = JSON.parse(
+        await build.container.file("/work/reports/upstream-dmg-decision.json").contents(),
+      ) as Record<string, unknown>
+    } catch {}
+
+    let output = dag.directory()
+      .withFile("result.json", dag.file("result.json", json(decision)))
+    for (const [source, target] of [
+      ["/work/reports/upstream-dmg-decision.json", "reports/upstream-dmg-decision.json"],
+      ["/work/reports/patch-report.json", "reports/patch-report.json"],
+      ["/work/reports/rebuild-report.json", "reports/rebuild-report.json"],
+      ["/work/reports/install-exit-code", "reports/install-exit-code"],
+    ]) {
+      try {
+        await build.container.file(source).contents()
+        output = output.withFile(target, build.container.file(source))
+      } catch {}
+    }
+
+    if (!build.ok) {
+      return output
+    }
+
     const sha256 = (
       await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
     ).trim().split(/\s+/)[0]
@@ -3671,7 +3738,7 @@ end
       codex_dmg_bytes: dmgReport.codex_dmg_bytes,
     }
 
-    return dag.directory()
+    return output
       .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
       .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", caskContents))
       .withFile("release.json", dag.file("release.json", json(localMetadata)))

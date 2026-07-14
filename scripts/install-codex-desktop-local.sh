@@ -11,6 +11,8 @@ or downloaded from this tap.
 
 Options:
   --codex-dmg PATH              Use an already-downloaded local Codex.dmg.
+  --dmg-source MODE             Use pinned (default) or latest upstream DMG.
+  --result-file PATH            Copy the acceptance decision and reports here.
   --conversion-commit SHA       Use a specific joshyorko/codex-desktop-linux commit.
   --linux-feature ID            Enable one Linux feature. May be repeated.
   --linux-features LIST         Use comma- or space-separated Linux feature IDs.
@@ -27,6 +29,7 @@ Environment defaults:
   CODEX_DESKTOP_CONVERSION_REPO    Conversion repository used when resolving mutable refs.
   CODEX_DESKTOP_LINUX_FEATURES     Comma- or space-separated Linux feature IDs.
   CODEX_DESKTOP_CODEX_DMG          Local DMG path used when --codex-dmg is omitted.
+  CODEX_DESKTOP_DMG_SOURCE         pinned (default) or latest.
   CODEX_DESKTOP_DMG_REF_FILE       File containing the pinned upstream DMG metadata.
   CODEX_DESKTOP_BUNDLE_DIR         Bundle directory used when --bundle-dir is omitted.
   CODEX_DESKTOP_BUNDLE_PARENT      Parent directory for generated local bundles.
@@ -42,6 +45,8 @@ EOF
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 conversion_repo="${CODEX_DESKTOP_CONVERSION_REPO:-https://github.com/joshyorko/codex-desktop-linux}"
 codex_dmg="${CODEX_DESKTOP_CODEX_DMG:-}"
+dmg_source="${CODEX_DESKTOP_DMG_SOURCE:-pinned}"
+result_file="${CODEX_DESKTOP_RESULT_FILE:-}"
 conversion_ref_file="${CODEX_DESKTOP_CONVERSION_REF_FILE:-$repo_dir/codex-desktop-conversion.ref}"
 codex_dmg_ref_file="${CODEX_DESKTOP_DMG_REF_FILE:-$repo_dir/codex-desktop-dmg.ref}"
 linux_features="${CODEX_DESKTOP_LINUX_FEATURES:-}"
@@ -377,6 +382,16 @@ while [ "$#" -gt 0 ]; do
             [ -n "$codex_dmg" ] || { echo "--codex-dmg requires a path" >&2; exit 64; }
             shift 2
             ;;
+        --dmg-source)
+            dmg_source="${2:-}"
+            [ -n "$dmg_source" ] || { echo "--dmg-source requires pinned or latest" >&2; exit 64; }
+            shift 2
+            ;;
+        --result-file)
+            result_file="${2:-}"
+            [ -n "$result_file" ] || { echo "--result-file requires a path" >&2; exit 64; }
+            shift 2
+            ;;
         --conversion-commit)
             conversion_commit="${2:-}"
             [ -n "$conversion_commit" ] || { echo "--conversion-commit requires a SHA" >&2; exit 64; }
@@ -425,6 +440,19 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+case "$dmg_source" in
+    pinned|latest) ;;
+    *)
+        echo "Invalid DMG source '$dmg_source'; expected pinned or latest." >&2
+        exit 64
+        ;;
+esac
+
+if [ "$dmg_source" = "latest" ] && [ -n "$codex_dmg" ]; then
+    echo "--dmg-source latest cannot be combined with --codex-dmg." >&2
+    exit 64
+fi
 
 if [ "$use_existing_bundle" -eq 1 ] && [ -z "$bundle_dir" ]; then
     echo "--use-existing-bundle requires --bundle-dir or CODEX_DESKTOP_BUNDLE_DIR." >&2
@@ -479,7 +507,7 @@ else
         fi
     fi
 
-    if [ -z "$codex_dmg" ]; then
+    if [ -z "$codex_dmg" ] && [ "$dmg_source" = "pinned" ]; then
         codex_dmg="$(ensure_pinned_codex_dmg "$codex_dmg_ref_file" | tail -n 1)"
         used_pinned_codex_dmg=1
     fi
@@ -524,8 +552,62 @@ else
     fi
     if [ "$used_pinned_codex_dmg" -eq 1 ]; then
         echo "Pinned Codex.dmg ref: $codex_dmg_ref_file"
+    elif [ "$dmg_source" = "latest" ]; then
+        echo "DMG source: latest upstream"
+    else
+        echo "DMG source: explicit local file"
     fi
+    set +e
     (cd "$repo_dir" && dagger "${dagger_args[@]}")
+    dagger_status=$?
+    set -e
+    if [ "$dagger_status" -ne 0 ]; then
+        if [ -n "$result_file" ]; then
+            mkdir -p "$(dirname "$result_file")"
+            printf '{"verdict":"inconclusive","blockers":[],"warnings":[],"inconclusiveReasons":["Dagger build failed before acceptance evidence could be exported"]}\n' >"$result_file"
+        fi
+        echo "Codex Desktop build failed before an installable candidate was produced." >&2
+        exit "$dagger_status"
+    fi
+fi
+
+bundle_result_file="$bundle_dir/result.json"
+if [ "$use_existing_bundle" -eq 0 ]; then
+    if [ ! -f "$bundle_result_file" ]; then
+        if [ -n "$result_file" ]; then
+            mkdir -p "$(dirname "$result_file")"
+            printf '{"verdict":"inconclusive","blockers":[],"warnings":[],"inconclusiveReasons":["Acceptance decision was not exported"]}\n' >"$result_file"
+        fi
+        echo "Codex Desktop bundle did not export an acceptance decision." >&2
+        exit 70
+    fi
+
+    if [ -n "$result_file" ]; then
+        evidence_dir="$(dirname "$result_file")"
+        mkdir -p "$evidence_dir"
+        cp "$bundle_result_file" "$result_file"
+        if [ -d "$bundle_dir/reports" ]; then
+            cp -a "$bundle_dir/reports/." "$evidence_dir/"
+        fi
+    fi
+
+    acceptance_verdict="$(
+        sed -n 's/.*"verdict"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$bundle_result_file" |
+            head -n 1
+    )"
+    echo "Upstream DMG acceptance verdict: ${acceptance_verdict:-inconclusive}"
+    case "$acceptance_verdict" in
+        accepted|accepted_with_warnings) ;;
+        rejected|inconclusive|"")
+            echo "Candidate was not installed (verdict: ${acceptance_verdict:-inconclusive})." >&2
+            [ -n "$result_file" ] && echo "Evidence: $result_file" >&2
+            exit 70
+            ;;
+        *)
+            echo "Unknown upstream DMG acceptance verdict: $acceptance_verdict" >&2
+            exit 70
+            ;;
+    esac
 fi
 
 artifact="$(find "$bundle_dir/artifacts" -maxdepth 1 -type f -name 'codex-desktop-linux-*.tar.gz' | sort | tail -n 1)"

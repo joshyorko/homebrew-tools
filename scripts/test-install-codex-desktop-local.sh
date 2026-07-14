@@ -61,6 +61,22 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$out_dir" ] || { echo "missing dagger -o output dir" >&2; exit 64; }
+verdict="${FAKE_DAGGER_VERDICT:-accepted}"
+mkdir -p "$out_dir/reports"
+if [ "$verdict" = "rejected" ]; then
+    decision='{"verdict":"rejected","blockers":[{"name":"feature:test","reason":"fixture drift"}]}'
+else
+    decision='{"verdict":"accepted","blockers":[],"warnings":[]}'
+fi
+printf '%s\n' "$decision" >"$out_dir/result.json"
+printf '%s\n' "$decision" >"$out_dir/reports/upstream-dmg-decision.json"
+printf '{"patches":[]}\n' >"$out_dir/reports/patch-report.json"
+printf '{"status":"success"}\n' >"$out_dir/reports/rebuild-report.json"
+
+if [ "$verdict" = "rejected" ]; then
+    exit 0
+fi
+
 mkdir -p "$out_dir/artifacts" "$out_dir/homebrew"
 printf 'fake artifact\n' >"$out_dir/artifacts/codex-desktop-linux-test.tar.gz"
 cat >"$out_dir/homebrew/codex-desktop.rb" <<'CASK'
@@ -292,10 +308,76 @@ brew_log="$(cat "$fake_log")"
 explicit_dagger_log="$(cat "$fake_dagger_log")"
 
 assert_contains "$output" "Local artifact:"
+assert_not_contains "$output" "DMG source: latest upstream"
 assert_contains "$brew_log" "brew reinstall --cask --force codex-local/"
 assert_not_contains "$brew_log" "brew list --cask codex-desktop"
 assert_contains "$explicit_dagger_log" "--codex-dmg=$tmp_dir/Codex.dmg"
 [ ! -s "$fake_curl_log" ] || fail "explicit --codex-dmg should not trigger pinned Codex.dmg download"
+
+: >"$fake_log"
+: >"$fake_dagger_log"
+latest_result="$tmp_dir/latest-result/upstream-dmg-decision.json"
+
+set +e
+latest_output="$(
+    PATH="$fake_bin:$PATH" \
+    HOME="$fake_home" \
+    XDG_STATE_HOME="$fake_home/.local/state" \
+    FAKE_BREW_LOG="$fake_log" \
+    FAKE_CURL_LOG="$fake_curl_log" \
+    FAKE_DAGGER_LOG="$fake_dagger_log" \
+    FAKE_BREW_PREFIX="$fake_prefix" \
+    FAKE_BREW_TAPS="$fake_taps" \
+    CODEX_DESKTOP_BUNDLE_DIR="$tmp_dir/latest-bundle" \
+    "$script" \
+        --dmg-source latest \
+        --result-file "$latest_result" \
+        --conversion-commit 0123456789abcdef0123456789abcdef01234567 \
+        2>&1
+)"
+latest_status=$?
+set -e
+
+if [ "$latest_status" -ne 0 ]; then
+    printf '%s\n' "$latest_output" >&2
+    fail "accepted latest upstream DMG should install"
+fi
+
+latest_dagger_log="$(cat "$fake_dagger_log")"
+assert_not_contains "$latest_dagger_log" "--codex-dmg="
+assert_contains "$latest_output" "DMG source: latest upstream"
+[ -f "$latest_result" ] || fail "latest build must persist its acceptance decision"
+assert_contains "$(<"$latest_result")" '"verdict":"accepted"'
+
+: >"$fake_log"
+: >"$fake_dagger_log"
+rejected_result="$tmp_dir/rejected-result/upstream-dmg-decision.json"
+
+set +e
+rejected_output="$(
+    PATH="$fake_bin:$PATH" \
+    HOME="$fake_home" \
+    XDG_STATE_HOME="$fake_home/.local/state" \
+    FAKE_BREW_LOG="$fake_log" \
+    FAKE_CURL_LOG="$fake_curl_log" \
+    FAKE_DAGGER_LOG="$fake_dagger_log" \
+    FAKE_DAGGER_VERDICT=rejected \
+    FAKE_BREW_PREFIX="$fake_prefix" \
+    FAKE_BREW_TAPS="$fake_taps" \
+    CODEX_DESKTOP_BUNDLE_DIR="$tmp_dir/rejected-bundle" \
+    "$script" \
+        --dmg-source latest \
+        --result-file "$rejected_result" \
+        --conversion-commit 0123456789abcdef0123456789abcdef01234567 \
+        2>&1
+)"
+rejected_status=$?
+set -e
+
+[ "$rejected_status" -ne 0 ] || fail "rejected latest upstream DMG must not install"
+[ -f "$rejected_result" ] || fail "rejected build must persist its acceptance decision"
+assert_contains "$rejected_output" "verdict: rejected"
+assert_not_contains "$(<"$fake_log")" "brew reinstall"
 
 existing_bundle="$tmp_dir/existing-bundle"
 mkdir -p "$existing_bundle/artifacts" "$existing_bundle/homebrew"
