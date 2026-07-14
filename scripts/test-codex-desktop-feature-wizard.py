@@ -206,6 +206,72 @@ class FeatureWizardModelTests(unittest.TestCase):
                 "surprise",
             )
 
+    def test_latest_dmg_summary_identifies_matching_tested_pin(self):
+        summary = WIZARD.build_latest_dmg_summary(
+            pinned={
+                "sha256": "c243c94f8de6a51f5530ffe1f8d0c1588733d890ac692e34aaca06d95ba637ca",
+                "contentLength": "615738501",
+                "lastModified": "Mon, 13 Jul 2026 06:53:09 GMT",
+                "etag": "0x8DEE0AB667193CC",
+            },
+            latest={
+                "probeStatus": "available",
+                "contentLength": "615738501",
+                "lastModified": "Mon, 13 Jul 2026 06:53:09 GMT",
+                "etag": "0x8DEE0AB667193CC",
+            },
+        )
+
+        self.assertEqual(summary["status"], "Matches tested pin")
+        self.assertTrue(summary["subtitle"].startswith("Matches tested pin\n"))
+        self.assertIn("SHA256 c243c94f8de6a51f…", summary["subtitle"])
+        self.assertIn("587.2 MiB", summary["subtitle"])
+        self.assertIn("Mon, 13 Jul 2026 06:53:09 GMT", summary["subtitle"])
+        self.assertIn("ETag 0x8DEE0AB667193CC", summary["subtitle"])
+
+    def test_latest_dmg_summary_flags_different_upstream_artifact(self):
+        summary = WIZARD.build_latest_dmg_summary(
+            pinned={
+                "sha256": "a" * 64,
+                "contentLength": "615738501",
+                "lastModified": "Mon, 13 Jul 2026 06:53:09 GMT",
+                "etag": "tested-etag",
+            },
+            latest={
+                "probeStatus": "available",
+                "contentLength": "620000000",
+                "lastModified": "Tue, 14 Jul 2026 12:00:00 GMT",
+                "etag": "new-etag",
+            },
+        )
+
+        self.assertEqual(summary["status"], "Different upstream artifact detected")
+        self.assertNotIn("SHA256", summary["subtitle"])
+        self.assertIn("591.3 MiB", summary["subtitle"])
+        self.assertIn("ETag new-etag", summary["subtitle"])
+
+    def test_latest_dmg_summary_reports_unavailable_probe(self):
+        summary = WIZARD.build_latest_dmg_summary(
+            pinned={
+                "sha256": "a" * 64,
+                "contentLength": "615738501",
+                "lastModified": "Mon, 13 Jul 2026 06:53:09 GMT",
+                "etag": "tested-etag",
+            },
+            latest={
+                "probeStatus": "unavailable",
+                "contentLength": "unknown",
+                "lastModified": "unknown",
+                "etag": "unknown",
+            },
+        )
+
+        self.assertEqual(summary["status"], "Unable to check newest upstream DMG")
+        self.assertTrue(
+            summary["subtitle"].startswith("Unable to check newest upstream DMG\n")
+        )
+        self.assertIn("No download has started", summary["subtitle"])
+
     def test_result_summary_exposes_drift_blocker_and_report(self):
         evidence_dir = self.root / "evidence"
         summary = WIZARD.build_result_summary(

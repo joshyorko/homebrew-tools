@@ -264,6 +264,84 @@ def selection_argument(selected: set[str]) -> str:
     return ",".join(sorted(selected)) if selected else "none"
 
 
+def _known_metadata(value: object) -> bool:
+    return bool(value) and str(value).strip().lower() != "unknown"
+
+
+def _format_byte_size(value: object) -> str | None:
+    try:
+        size = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    if size < 0:
+        return None
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    amount = float(size)
+    unit = units[0]
+    for candidate in units:
+        unit = candidate
+        if amount < 1024 or candidate == units[-1]:
+            break
+        amount /= 1024
+    if unit == "B":
+        return f"{size} B"
+    return f"{amount:.1f} {unit}"
+
+
+def build_latest_dmg_summary(pinned: dict, latest: dict) -> dict[str, str]:
+    identity_fields = ("contentLength", "lastModified", "etag")
+    probe_available = latest.get("probeStatus") == "available" and all(
+        _known_metadata(latest.get(field)) for field in identity_fields
+    )
+    if not probe_available:
+        status = "Unable to check newest upstream DMG"
+        return {
+            "status": status,
+            "subtitle": (
+                f"{status}\nNo download has started; selecting this still runs drift acceptance"
+            ),
+        }
+
+    matches_pin = all(
+        _known_metadata(pinned.get(field))
+        and str(latest[field]).strip() == str(pinned[field]).strip()
+        for field in identity_fields
+    )
+    status = "Matches tested pin" if matches_pin else "Different upstream artifact detected"
+    details: list[str] = []
+    if matches_pin and _known_metadata(pinned.get("sha256")):
+        fingerprint = str(pinned["sha256"]).strip()
+        if len(fingerprint) > 16:
+            fingerprint = f"{fingerprint[:16]}…"
+        details.append(f"SHA256 {fingerprint}")
+    formatted_size = _format_byte_size(latest["contentLength"])
+    if formatted_size:
+        details.append(formatted_size)
+    details.append(str(latest["lastModified"]).strip())
+    details.append(f"ETag {str(latest['etag']).strip()}")
+    return {
+        "status": status,
+        "subtitle": f"{status}\n{' · '.join(details)}",
+    }
+
+
+def build_latest_dmg_summary_from_args(args: argparse.Namespace) -> dict[str, str]:
+    return build_latest_dmg_summary(
+        pinned={
+            "sha256": args.pinned_dmg_sha256,
+            "contentLength": args.pinned_dmg_content_length,
+            "lastModified": args.pinned_dmg_last_modified,
+            "etag": args.pinned_dmg_etag,
+        },
+        latest={
+            "probeStatus": args.latest_dmg_probe_status,
+            "contentLength": args.latest_dmg_content_length,
+            "lastModified": args.latest_dmg_last_modified,
+            "etag": args.latest_dmg_etag,
+        },
+    )
+
+
 def build_result_summary(decision: dict, evidence_dir: Path) -> dict:
     verdict = decision.get("verdict", "inconclusive")
     titles = {
@@ -353,6 +431,10 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--pinned-dmg-content-length", default="unknown")
     parser.add_argument("--pinned-dmg-last-modified", default="unknown")
     parser.add_argument("--pinned-dmg-etag", default="unknown")
+    parser.add_argument("--latest-dmg-probe-status", default="unavailable")
+    parser.add_argument("--latest-dmg-content-length", default="unknown")
+    parser.add_argument("--latest-dmg-last-modified", default="unknown")
+    parser.add_argument("--latest-dmg-etag", default="unknown")
     parser.add_argument("--show-result", type=Path)
     parser.add_argument("--print-enabled", action="store_true")
     return parser.parse_args(argv)
@@ -522,6 +604,8 @@ def run_terminal_wizard(
         raise ValueError(f"Unknown profile choice: {profile}")
 
     print(f"\nSelected {len(selected)} feature(s): {selection_argument(selected)}")
+    latest_dmg_summary = build_latest_dmg_summary_from_args(args)
+    print(f"Newest upstream DMG: {latest_dmg_summary['subtitle']}")
     print("Build source: [p]inned tested DMG  [l]atest upstream DMG")
     source = input("Choose build source [p]: ").strip().lower() or "p"
     if source in {"p", "pinned"}:
@@ -756,10 +840,13 @@ def run_gtk_wizard(
             pinned_choice.set_active(True)
             pinned.add_suffix(pinned_choice)
             pinned.set_activatable_widget(pinned_choice)
+            latest_dmg_summary = build_latest_dmg_summary_from_args(args)
             latest = Adw.ActionRow(
                 title="Newest upstream DMG",
-                subtitle="One-off build · downloads current OpenAI DMG and runs drift acceptance",
+                subtitle=latest_dmg_summary["subtitle"],
             )
+            latest.set_subtitle_lines(2)
+            latest.set_subtitle_selectable(True)
             latest_choice = Gtk.CheckButton()
             latest_choice.set_group(pinned_choice)
             latest.add_suffix(latest_choice)

@@ -312,8 +312,11 @@ terminal picker is used when no graphical session is available.
 The review screen also chooses the DMG source. **Tested pinned DMG** is the
 default for repeatable feature work. **Newest upstream DMG** is a one-off build
 that downloads the current OpenAI artifact and runs the selected feature set
-through the shared upstream acceptance gate. It does not rewrite the checked-in
-pin. Rejected or inconclusive candidates never reach Homebrew installation.
+through the shared upstream acceptance gate. Before the wizard opens, a bounded
+HEAD request identifies whether the current upstream artifact matches the tested
+pin and displays its size, Last-Modified value, and ETag without downloading the
+DMG. It does not rewrite the checked-in pin. Rejected or inconclusive candidates
+never reach Homebrew installation.
 After a latest-DMG attempt, the wizard displays the verdict and the local
 evidence path under
 `${XDG_STATE_HOME:-~/.local/state}/homebrew-tools/codex-desktop/reports/`.

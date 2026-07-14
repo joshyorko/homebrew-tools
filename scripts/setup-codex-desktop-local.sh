@@ -69,6 +69,25 @@ read_ref_value() {
     ' "$ref_file"
 }
 
+read_http_header() {
+    local headers="$1"
+    local wanted_key="$2"
+    printf '%s\n' "$headers" | awk -v wanted_key="$wanted_key" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            key = line
+            sub(/:.*/, "", key)
+            if (tolower(key) == tolower(wanted_key)) {
+                value = substr(line, index(line, ":") + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                result = value
+            }
+        }
+        END { print result }
+    '
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --conversion-ref)
@@ -141,6 +160,29 @@ pinned_dmg_sha256="$(read_ref_value "$codex_dmg_ref_file" sha256)"
 pinned_dmg_content_length="$(read_ref_value "$codex_dmg_ref_file" content-length)"
 pinned_dmg_last_modified="$(read_ref_value "$codex_dmg_ref_file" last-modified)"
 pinned_dmg_etag="$(read_ref_value "$codex_dmg_ref_file" etag)"
+pinned_dmg_url="$(read_ref_value "$codex_dmg_ref_file" url)"
+latest_dmg_probe_status="unavailable"
+latest_dmg_content_length="unknown"
+latest_dmg_last_modified="unknown"
+latest_dmg_etag="unknown"
+if [ -n "$pinned_dmg_url" ] && command -v curl >/dev/null 2>&1; then
+    latest_dmg_headers=""
+    if latest_dmg_headers="$(
+        curl -fsSIL \
+            --connect-timeout 2 \
+            --max-time 5 \
+            "$pinned_dmg_url" 2>/dev/null
+    )"; then
+        latest_dmg_content_length="$(read_http_header "$latest_dmg_headers" content-length)"
+        latest_dmg_last_modified="$(read_http_header "$latest_dmg_headers" last-modified)"
+        latest_dmg_etag="$(read_http_header "$latest_dmg_headers" etag)"
+        if [ -n "$latest_dmg_content_length" ] \
+            && [ -n "$latest_dmg_last_modified" ] \
+            && [ -n "$latest_dmg_etag" ]; then
+            latest_dmg_probe_status="available"
+        fi
+    fi
+fi
 
 "$python_bin" "$wizard" \
     --features-root "$features_root" \
@@ -152,6 +194,10 @@ pinned_dmg_etag="$(read_ref_value "$codex_dmg_ref_file" etag)"
     --pinned-dmg-content-length "${pinned_dmg_content_length:-unknown}" \
     --pinned-dmg-last-modified "${pinned_dmg_last_modified:-unknown}" \
     --pinned-dmg-etag "${pinned_dmg_etag:-unknown}" \
+    --latest-dmg-probe-status "$latest_dmg_probe_status" \
+    --latest-dmg-content-length "${latest_dmg_content_length:-unknown}" \
+    --latest-dmg-last-modified "${latest_dmg_last_modified:-unknown}" \
+    --latest-dmg-etag "${latest_dmg_etag:-unknown}" \
     --result "$result_file"
 
 [ -f "$result_file" ] || {
