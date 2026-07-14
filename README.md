@@ -309,6 +309,17 @@ selection lives under `${XDG_CONFIG_HOME:-~/.config}/homebrew-tools/` and is
 used automatically by later `make codex-desktop-install` runs. A concise
 terminal picker is used when no graphical session is available.
 
+The review screen also chooses the DMG source. **Tested pinned DMG** is the
+default for repeatable feature work. **Newest upstream DMG** is a one-off build
+that downloads the current OpenAI artifact and runs the selected feature set
+through the shared upstream acceptance gate. It does not rewrite the checked-in
+pin. Rejected or inconclusive candidates never reach Homebrew installation.
+After a latest-DMG attempt, the wizard displays the verdict and the local
+evidence path under
+`${XDG_STATE_HOME:-~/.local/state}/homebrew-tools/codex-desktop/reports/`.
+That directory contains the acceptance decision and any exported patch and
+rebuild reports.
+
 `make codex-desktop-install` and `make codex-install` use the checked-in
 `codex-desktop-conversion.ref` by default, so local rebuilds follow the current
 test branch without pasting a commit SHA. Override with
