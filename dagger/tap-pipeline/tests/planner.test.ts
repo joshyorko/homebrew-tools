@@ -51,6 +51,8 @@ test("every PR-enabled package has a changed-path trigger", () => {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     "codex-release": "Formula/codex-release.rb",
     "antigravity-cli": "Formula/antigravity-cli.rb",
+    devsy: "Formula/devsy.rb",
+    "devsy-desktop": "Casks/devsy-desktop.rb",
     "fizzy-cli-master": "Formula/fizzy-cli-master.rb",
     "fizzy-popper-self-hosted": "Formula/fizzy-popper-self-hosted.rb",
     "fizzy-symphony": "Formula/fizzy-symphony.rb",

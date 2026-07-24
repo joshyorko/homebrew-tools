@@ -25,6 +25,7 @@ test("package registry covers every planned adapter kind", () => {
   assert.deepEqual(
     [...kinds].sort(),
     [
+      "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",
       "http_binary_formula",
@@ -92,6 +93,8 @@ test("auto-update slots cover the expected package set", () => {
     [
       "action-server",
       "devpod-linux",
+      "devsy",
+      "devsy-desktop",
       "fizzy-cli-master",
       "fizzy-popper-self-hosted",
       "fizzy-symphony",
@@ -273,6 +276,81 @@ test("antigravity CLI is a manual closed-source binary formula", () => {
   assert.match(formula, /class AntigravityCli < Formula/)
   assert.match(formula, /bin\/"agy"/)
   assert.match(formula, /license :cannot_represent/)
+})
+
+test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {
+  const cliEntry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "devsy")
+  const desktopEntry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "devsy-desktop")
+
+  assert.ok(cliEntry)
+  assert.equal(cliEntry.kind, "http_binary_formula")
+  assert.equal(cliEntry.homebrewPath, "Formula/devsy.rb")
+  assert.equal(cliEntry.supportsPrCi, true)
+  assert.equal(cliEntry.autoUpdate.kind, "github_release_latest_tag")
+  assert.equal(cliEntry.upstream.kind, "github_release")
+
+  assert.ok(desktopEntry)
+  assert.equal(desktopEntry.kind, "github_release_appimage_cask")
+  assert.equal(desktopEntry.homebrewPath, "Casks/devsy-desktop.rb")
+  assert.equal(desktopEntry.supportsPrCi, true)
+  assert.equal(desktopEntry.autoUpdate.kind, "github_release_latest_tag")
+  assert.equal(desktopEntry.upstream.kind, "github_release")
+
+  const formula = readFileSync(new URL("../../../Formula/devsy.rb", import.meta.url), "utf8")
+  const cask = readFileSync(new URL("../../../Casks/devsy-desktop.rb", import.meta.url), "utf8")
+  const pipeline = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
+  const renderer = readFileSync(new URL("../src/devsy-render.ts", import.meta.url), "utf8")
+  const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8")
+  const formulaVersion = formula.match(/^\s*version "(\d+\.\d+\.\d+)"$/m)?.[1]
+  const caskVersion = cask.match(/^\s*version "(\d+\.\d+\.\d+)"$/m)?.[1]
+  const formulaUrls = [...formula.matchAll(/^\s*url "([^"]+)"$/gm)].map((match) => match[1])
+  const formulaDigests = [...formula.matchAll(/^\s*sha256 "([a-f0-9]{64})"$/gm)].map((match) => match[1])
+  const caskUrl = cask.match(/^\s*url "([^"]+)"$/m)?.[1]
+  const caskDigest = cask.match(/^\s*sha256 x86_64_linux: "([a-f0-9]{64})"$/m)?.[1]
+
+  assert.match(formula, /class Devsy < Formula/)
+  assert.match(formulaVersion ?? "", /^\d+\.\d+\.\d+$/)
+  assert.match(formula, /license "MPL-2\.0"/)
+  assert.equal(formulaUrls.length, 2)
+  assert.match(formulaUrls[0], new RegExp(`/(?:v|devsy-)${formulaVersion}/devsy-linux-amd64$`))
+  assert.match(formulaUrls[1], new RegExp(`/(?:v|devsy-)${formulaVersion}/devsy-linux-arm64$`))
+  assert.equal(formulaDigests.length, 2)
+  assert.notEqual(formulaDigests[0], formulaDigests[1])
+  assert.match(formula, /bin\.install binary => "devsy"/)
+  assert.match(formula, /ENV\["DEVSY_HOME"\] = testpath/)
+  assert.match(formula, /shell_output\("#\{bin\}\/devsy --version"\)/)
+  assert.doesNotMatch(formula, /devsy version/)
+  assert.doesNotMatch(formula, /self update/)
+
+  assert.match(cask, /cask "devsy-desktop"/)
+  assert.match(cask, /arch intel: "x86_64"/)
+  assert.match(cask, /depends_on arch: :x86_64/)
+  assert.doesNotMatch(cask, /arch arm/)
+  assert.equal(caskVersion, formulaVersion)
+  assert.match(caskUrl ?? "", new RegExp(`/(?:v|devsy-desktop-)${caskVersion}/Devsy_linux_x86_64\\.AppImage$`))
+  assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
+  assert.match(cask, /target: "devsy-desktop"/)
+  assert.match(cask, /x-scheme-handler\/devsy/)
+  assert.doesNotMatch(cask, /target: "devsy"/)
+  assert.doesNotMatch(cask, /binary .*resources\/bin\/devsy/)
+  assert.doesNotMatch(cask, /--no-sandbox/)
+  assert.doesNotMatch(cask, /\bflatpak\b/i)
+  assert.doesNotMatch(cask, /\brpm\b/i)
+
+  assert.match(pipeline, /case "devsy"/)
+  assert.match(pipeline, /case "devsy-desktop"/)
+  assert.match(renderer, /GitHub digest mismatch for/)
+  assert.match(pipeline, /Devsy_linux_x86_64\.AppImage/)
+  assert.match(renderer, /devsy-linux-amd64/)
+  assert.match(renderer, /devsy-linux-arm64/)
+  assert.match(pipeline, /! grep -q -- '--no-sandbox'/)
+  assert.match(pipeline, /libappindicator\.so\.1/)
+
+  assert.match(readme, /flatpak install --user \.\/Devsy\.flatpak/)
+  assert.doesNotMatch(readme, /Devsy-\d+\.\d+\.\d+\.flatpak/)
+  assert.match(readme, /never auto-detects Bluefin/)
+  assert.match(readme, /intentionally unsupported on arm64/)
+  assert.match(readme, /updater alone[\s\S]*latest/)
 })
 
 test("codex desktop is not registered for tap auto-update or release publishing", () => {

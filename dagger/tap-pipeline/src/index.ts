@@ -12,6 +12,14 @@ import {
   TransientUpstreamProbeError,
 } from "./library.js"
 import { rewriteCaskUrl } from "./cask-render.js"
+import {
+  DevsyRelease,
+  DevsyReleaseAsset,
+  renderDevsyDesktopCask,
+  renderDevsyFormula,
+  resolveStableDevsyRelease,
+  verifyDevsyGithubDigest,
+} from "./devsy-render.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 
 const TAP_DIR = "/tap"
@@ -188,6 +196,17 @@ function tapStagingCommands(packageId: string): string[] {
       return [
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/antigravity-cli.rb \"$tap_dir/Formula/\"",
+      ]
+    case "devsy":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/devsy.rb \"$tap_dir/Formula/\"",
+      ]
+    case "devsy-desktop":
+      return [
+        "mkdir -p \"$tap_dir/Casks\" \"$tap_dir/Formula\"",
+        "cp /tap/Casks/devsy-desktop.rb \"$tap_dir/Casks/\"",
+        "cp /tap/Formula/devsy.rb \"$tap_dir/Formula/\"",
       ]
     case "fizzy-cli-master":
       return [
@@ -371,6 +390,23 @@ type ActionServerBuild = {
 type DevpodBuild = {
   version: string
   upstreamTag: string
+  container: Container
+  asset: DownloadedAsset
+}
+
+type DevsyCliBuild = {
+  version: string
+  upstreamTag: string
+  upstreamCommit: string
+  container: Container
+  amd64: DownloadedAsset
+  arm64: DownloadedAsset
+}
+
+type DevsyDesktopBuild = {
+  version: string
+  upstreamTag: string
+  upstreamCommit: string
   container: Container
   asset: DownloadedAsset
 }
@@ -719,6 +755,10 @@ export class TapPipeline {
         return `action-server-${version}`
       case "devpod-linux":
         return `devpod-linux-${version}`
+      case "devsy":
+        return `devsy-${version}`
+      case "devsy-desktop":
+        return `devsy-desktop-${version}`
       case "t3code-cli-main":
         return `t3code-cli-main-${version}`
       case "codex-release":
@@ -955,6 +995,52 @@ export class TapPipeline {
         assetName: build.asset.assetName,
         version: build.version,
         commit: build.upstreamTag,
+      },
+    })
+  }
+
+  private devsyCliReleaseMetadata(build: DevsyCliBuild): Record<string, unknown> {
+    return {
+      ...releaseMetadataForPackage("devsy", {
+        version: build.version,
+        releaseTag: `devsy-${build.version}`,
+        assetName: build.amd64.assetName,
+        artifactSha256: build.amd64.sha256,
+        downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/devsy-${build.version}/${build.amd64.assetName}`,
+        releaseTitle: `Devsy CLI ${build.version}`,
+        releaseNotes: `Verified CLI binaries mirrored from devsy-org/devsy ${build.upstreamTag} (${build.upstreamCommit})`,
+        commitMessage: `Update devsy formula to v${build.version}`,
+        upstream: {
+          kind: "github_release",
+          repo: "https://github.com/devsy-org/devsy",
+          assetPrefix: "devsy-linux-",
+          version: build.version,
+          commit: build.upstreamCommit,
+        },
+      }),
+      artifacts: [
+        { name: build.amd64.assetName, sha256: build.amd64.sha256 },
+        { name: build.arm64.assetName, sha256: build.arm64.sha256 },
+      ],
+    }
+  }
+
+  private devsyDesktopReleaseMetadata(build: DevsyDesktopBuild): Record<string, unknown> {
+    return releaseMetadataForPackage("devsy-desktop", {
+      version: build.version,
+      releaseTag: `devsy-desktop-${build.version}`,
+      assetName: build.asset.assetName,
+      artifactSha256: build.asset.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/devsy-desktop-${build.version}/${build.asset.assetName}`,
+      releaseTitle: `Devsy Desktop ${build.version}`,
+      releaseNotes: `Verified Linux AppImage mirrored from devsy-org/devsy ${build.upstreamTag} (${build.upstreamCommit})`,
+      commitMessage: `Update devsy-desktop cask to v${build.version}`,
+      upstream: {
+        kind: "github_release",
+        repo: "https://github.com/devsy-org/devsy",
+        assetName: build.asset.assetName,
+        version: build.version,
+        commit: build.upstreamCommit,
       },
     })
   }
@@ -2461,6 +2547,92 @@ end
     }
   }
 
+  private async resolveDevsyRelease(): Promise<DevsyRelease & { commit: string }> {
+    const release = await this.fetchJson("https://api.github.com/repos/devsy-org/devsy/releases/latest") as DevsyRelease
+
+    resolveStableDevsyRelease(release)
+
+    const ref = await this.fetchJson(
+      `https://api.github.com/repos/devsy-org/devsy/git/ref/tags/${encodeURIComponent(release.tag_name)}`,
+    ) as {
+      object: {
+        sha: string
+        type: "commit" | "tag"
+        url: string
+      }
+    }
+    let commit = ref.object.sha
+
+    if (ref.object.type === "tag") {
+      const tag = await this.fetchJson(ref.object.url) as { object: { sha: string } }
+      commit = tag.object.sha
+    }
+
+    return { ...release, commit }
+  }
+
+  private verifyGithubDigest(asset: DevsyReleaseAsset, sha256: string): void {
+    verifyDevsyGithubDigest(asset, sha256)
+  }
+
+  private async buildDevsyCliArtifacts(): Promise<DevsyCliBuild> {
+    const release = await this.resolveDevsyRelease()
+    const resolved = resolveStableDevsyRelease(release)
+    const amd64Asset = resolved.amd64
+    const arm64Asset = resolved.arm64
+
+    let container = this.githubApiContainer()
+    container = this.downloadAsset(container, amd64Asset.browser_download_url, `/tmp/${amd64Asset.name}`)
+    container = this.downloadAsset(container, arm64Asset.browser_download_url, `/tmp/${arm64Asset.name}`)
+    const amd64Sha256 = await this.sha256For(container, `/tmp/${amd64Asset.name}`)
+    const arm64Sha256 = await this.sha256For(container, `/tmp/${arm64Asset.name}`)
+    this.verifyGithubDigest(amd64Asset, amd64Sha256)
+    this.verifyGithubDigest(arm64Asset, arm64Sha256)
+
+    return {
+      version: resolved.version,
+      upstreamTag: resolved.upstreamTag,
+      upstreamCommit: release.commit,
+      container,
+      amd64: {
+        assetName: amd64Asset.name,
+        artifactPath: `/tmp/${amd64Asset.name}`,
+        sha256: amd64Sha256,
+        sourceUrl: amd64Asset.browser_download_url,
+      },
+      arm64: {
+        assetName: arm64Asset.name,
+        artifactPath: `/tmp/${arm64Asset.name}`,
+        sha256: arm64Sha256,
+        sourceUrl: arm64Asset.browser_download_url,
+      },
+    }
+  }
+
+  private async buildDevsyDesktopArtifact(): Promise<DevsyDesktopBuild> {
+    const release = await this.resolveDevsyRelease()
+    const resolved = resolveStableDevsyRelease(release)
+    const appImageAsset = resolved.desktop
+
+    let container = this.githubApiContainer()
+    container = this.downloadAsset(container, appImageAsset.browser_download_url, `/tmp/${appImageAsset.name}`)
+    const sha256 = await this.sha256For(container, `/tmp/${appImageAsset.name}`)
+    this.verifyGithubDigest(appImageAsset, sha256)
+
+    return {
+      version: resolved.version,
+      upstreamTag: resolved.upstreamTag,
+      upstreamCommit: release.commit,
+      container,
+      asset: {
+        assetName: appImageAsset.name,
+        artifactPath: `/tmp/${appImageAsset.name}`,
+        sha256,
+        sourceUrl: appImageAsset.browser_download_url,
+      },
+    }
+  }
+
   private async buildT3CodeArtifact(tap: Directory, ref: string, version?: string): Promise<T3CodeBuild> {
     const entry = this.packageEntry("t3-code-linux")
 
@@ -2661,6 +2833,29 @@ end
       /livecheck do\n(?:.*\n)*?\s+end\n/m,
       "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
     )
+  }
+
+  private renderDevsyFormula(
+    baseContents: string,
+    build: DevsyCliBuild,
+    urls: { amd64: string; arm64: string },
+  ): string {
+    return renderDevsyFormula(baseContents, {
+      version: build.version,
+      amd64Sha256: build.amd64.sha256,
+      arm64Sha256: build.arm64.sha256,
+      amd64Url: urls.amd64,
+      arm64Url: urls.arm64,
+    })
+  }
+
+  private renderDevsyDesktopCask(
+    baseContents: string,
+    downloadUrl: string,
+    version: string,
+    sha256: string,
+  ): string {
+    return renderDevsyDesktopCask(baseContents, { version, sha256, downloadUrl }, rewriteCaskUrl)
   }
 
   private renderT3CodeCask(baseContents: string, downloadUrl: string, version: string, sha256: string): string {
@@ -2874,6 +3069,110 @@ end
               "brew test test/tap/antigravity-cli",
               "agy --version",
               "agy --help",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "devsy": {
+        const build = await this.buildDevsyCliArtifacts()
+        const formulaContents = await tap.file("Formula/devsy.rb").contents()
+        const updatedFormula = this.renderDevsyFormula(formulaContents, build, {
+          amd64: `file:///artifacts/${build.amd64.assetName}`,
+          arm64: `file:///artifacts/${build.arm64.assetName}`,
+        })
+        const smokeTap = tap.withFile("Formula/devsy.rb", dag.file("devsy.rb", updatedFormula))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
+          .withFile(`/artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("devsy"),
+              "brew audit --formula test/tap/devsy",
+              "brew install test/tap/devsy",
+              "brew test --verbose test/tap/devsy",
+              "devsy_home=/tmp/devsy-ci-home",
+              "mkdir -p \"$devsy_home\"",
+              `test "$(DEVSY_HOME="$devsy_home" devsy --version)" = "v${build.version}"`,
+              "test -z \"$(find \"$devsy_home\" -type f -print -quit)\"",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "devsy-desktop": {
+        const desktopBuild = await this.buildDevsyDesktopArtifact()
+        const cliBuild = await this.buildDevsyCliArtifacts()
+        const caskContents = await tap.file("Casks/devsy-desktop.rb").contents()
+        const formulaContents = await tap.file("Formula/devsy.rb").contents()
+        const updatedCask = this.renderDevsyDesktopCask(
+          caskContents,
+          `file:///artifacts/${desktopBuild.asset.assetName}`,
+          desktopBuild.version,
+          desktopBuild.asset.sha256,
+        )
+        const updatedFormula = this.renderDevsyFormula(formulaContents, cliBuild, {
+          amd64: `file:///artifacts/${cliBuild.amd64.assetName}`,
+          arm64: `file:///artifacts/${cliBuild.arm64.assetName}`,
+        })
+        const smokeTap = tap
+          .withFile("Casks/devsy-desktop.rb", dag.file("devsy-desktop.rb", updatedCask))
+          .withFile("Formula/devsy.rb", dag.file("devsy.rb", updatedFormula))
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(
+            `/artifacts/${desktopBuild.asset.assetName}`,
+            desktopBuild.container.file(desktopBuild.asset.artifactPath),
+          )
+          .withFile(
+            `/artifacts/${cliBuild.amd64.assetName}`,
+            cliBuild.container.file(cliBuild.amd64.artifactPath),
+          )
+          .withFile(
+            `/artifacts/${cliBuild.arm64.assetName}`,
+            cliBuild.container.file(cliBuild.arm64.artifactPath),
+          )
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("devsy-desktop"),
+              "brew audit --formula test/tap/devsy",
+              "brew audit --cask test/tap/devsy-desktop",
+              "brew install test/tap/devsy",
+              "brew install --cask test/tap/devsy-desktop",
+              `test "$(devsy --version)" = "v${desktopBuild.version}"`,
+              `test "$(readlink -f "$(brew --prefix)/bin/devsy")" = "$(brew --cellar)/devsy/${desktopBuild.version}/bin/devsy"`,
+              "test -x \"$(brew --prefix)/bin/devsy-desktop\"",
+              "! grep -q -- '--no-sandbox' \"$(brew --prefix)/bin/devsy-desktop\"",
+              "test -f \"$HOME/.local/share/applications/devsy-desktop.desktop\"",
+              "grep -q 'Exec=.*/bin/devsy-desktop %U' \"$HOME/.local/share/applications/devsy-desktop.desktop\"",
+              "grep -q 'x-scheme-handler/devsy' \"$HOME/.local/share/applications/devsy-desktop.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/128x128/apps/devsy-desktop.png\"",
+              "embedded_cli=$(find \"$(brew --prefix)/Caskroom/devsy-desktop\" -path '*/squashfs-root/resources/bin/devsy' -type f -print -quit)",
+              "test -n \"$embedded_cli\"",
+              `test "$(sha256sum "$embedded_cli" | awk '{print $1}')" = "${cliBuild.amd64.sha256}"`,
+              "test -n \"$(find \"$(brew --prefix)/Caskroom/devsy-desktop\" -path '*/squashfs-root/usr/lib/libappindicator.so.1' -type f -print -quit)\"",
+              "test -n \"$(find \"$(brew --prefix)/Caskroom/devsy-desktop\" -name 'Devsy_linux_x86_64.AppImage' -type f -perm -111 -print -quit)\"",
             ].join("\n"),
           ])
           .stdout()
@@ -3332,6 +3631,14 @@ end
         const build = await this.buildDevpodArtifact()
         return json(this.devpodReleaseMetadata(build))
       }
+      case "devsy": {
+        const build = await this.buildDevsyCliArtifacts()
+        return json(this.devsyCliReleaseMetadata(build))
+      }
+      case "devsy-desktop": {
+        const build = await this.buildDevsyDesktopArtifact()
+        return json(this.devsyDesktopReleaseMetadata(build))
+      }
       case "t3code-cli-main": {
         const build = await this.buildT3Artifact(tap, "main")
         const sha256 = (
@@ -3491,6 +3798,41 @@ end
         return dag.directory()
           .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
           .withFile("homebrew/devpod-linux.rb", dag.file("devpod-linux.rb", updatedCask))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "devsy": {
+        const build = await this.buildDevsyCliArtifacts()
+        const releaseTag = `devsy-${build.version}`
+        const formulaContents = await tap.file("Formula/devsy.rb").contents()
+        const updatedFormula = this.renderDevsyFormula(formulaContents, build, {
+          amd64: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.amd64.assetName}`,
+          arm64: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.arm64.assetName}`,
+        })
+        const release = this.devsyCliReleaseMetadata(build)
+
+        return dag.directory()
+          .withFile(`artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
+          .withFile(`artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
+          .withFile("homebrew/devsy.rb", dag.file("devsy.rb", updatedFormula))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "devsy-desktop": {
+        const build = await this.buildDevsyDesktopArtifact()
+        const releaseTag = `devsy-desktop-${build.version}`
+        const caskContents = await tap.file("Casks/devsy-desktop.rb").contents()
+        const updatedCask = this.renderDevsyDesktopCask(
+          caskContents,
+          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.asset.assetName}`,
+          build.version,
+          build.asset.sha256,
+        )
+        const release = this.devsyDesktopReleaseMetadata(build)
+
+        return dag.directory()
+          .withFile(`artifacts/${build.asset.assetName}`, build.container.file(build.asset.artifactPath))
+          .withFile("homebrew/devsy-desktop.rb", dag.file("devsy-desktop.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
