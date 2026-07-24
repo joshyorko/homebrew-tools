@@ -74,6 +74,8 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/codex-release` | Install Codex CLI from Josh Yorko's tap-release branch fork; executable remains `codex` |
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
+| `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
+| `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
 | `brew install joshyorko/tools/eitype` | Install Eitype |
@@ -255,6 +257,72 @@ launcher.
 > ```
 
 Run `agy install` after installation if you want Antigravity's own shell setup.
+
+### Devsy CLI and Desktop
+
+Devsy is packaged as two required, co-installable Homebrew identities from the same
+pinned stable upstream release:
+
+- `devsy` is the CLI formula. Homebrew deterministically selects the verified raw
+  Linux amd64 or arm64 binary for the current CPU and exposes `devsy`.
+- `devsy-desktop` is the first-class Linux x86_64 AppImage cask. It exposes only
+  `devsy-desktop`, a desktop entry, an icon, and the `devsy://` protocol handler.
+  It is intentionally unsupported on arm64 and fails there instead of substituting
+  Flatpak, RPM, or another package manager.
+
+```bash
+brew install joshyorko/tools/devsy
+devsy --version
+
+brew install --cask joshyorko/tools/devsy-desktop
+devsy-desktop
+```
+
+The pinned AppImage contains its own byte-identical amd64 CLI at
+`resources/bin/devsy` for internal Desktop use. The cask deliberately does not link
+that embedded binary into Homebrew's `bin`, so it does not replace or shadow the
+formula-owned `devsy` command. Both packages are MPL-2.0 upstream artifacts.
+
+On Bluefin and Fedora bootc systems, the Homebrew AppImage cask and upstream Flatpak
+bundle are parallel first-class Desktop choices. Homebrew provides tap-controlled
+updates and direct host-tool access; Flatpak provides its own isolated lifecycle and
+upstream host-reexec wrapper. The operator's command always selects the channel; this
+tap never ranks one as the default, never auto-detects Bluefin, and never invokes or
+owns Flatpak. RPM is appropriate when deliberately baked into a custom bootc image,
+not for ad hoc host layering.
+
+To explicitly select the upstream-owned Flatpak channel, choose an exact stable tag
+from the [Devsy releases](https://github.com/devsy-org/devsy/releases), then download
+and verify that release's GitHub-published digest before installing it:
+
+```bash
+DEVSY_TAG=vX.Y.Z
+curl -fL -o Devsy.flatpak \
+  "https://github.com/devsy-org/devsy/releases/download/${DEVSY_TAG}/Devsy.flatpak"
+curl -fsSL "https://api.github.com/repos/devsy-org/devsy/releases/tags/${DEVSY_TAG}" \
+  | jq -r '.assets[] | select(.name == "Devsy.flatpak") | .digest + "  Devsy.flatpak"' \
+  | sed 's/^sha256://' \
+  | sha256sum -c -
+flatpak install --user ./Devsy.flatpak
+```
+
+The AppImage bundles `libnotify.so.4`, `libXss.so.1`, `libXtst.so.6`,
+`libappindicator.so.1`, and its StatusNotifier implementation. FUSE, GTK3, NSS,
+AT-SPI, and `xdg-utils` remain host runtime requirements. Bluefin runtime validation
+confirmed a Wayland window, active StatusNotifier tray item and menu, protocol launch,
+sandboxed Electron renderer, formula/cask coexistence, and a clean exit. The embedded
+AppIndicator support means this package must not inherit DevPod's separate
+AppIndicator runtime formula.
+
+The `devsy-daily` updater alone resolves GitHub's time-dependent `latest`
+non-prerelease release. Each published formula and cask is then pinned to an exact
+version, tag commit, asset name, and SHA-256, mirrored through an immutable tap release,
+and updated independently.
+
+```bash
+dagger -m ./dagger/tap-pipeline call ci-check --package-id=devsy
+dagger -m ./dagger/tap-pipeline call ci-check --package-id=devsy-desktop
+```
 
 ### Codex Desktop (Linux DMG Conversion Runtime)
 
@@ -641,6 +709,8 @@ Add to your `Brewfile`:
 ```ruby
 tap "joshyorko/tools"
 cask "rcc"
+brew "devsy"
+cask "devsy-desktop"
 ```
 
 Or with the full path:

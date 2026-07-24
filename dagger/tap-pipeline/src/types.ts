@@ -18,6 +18,7 @@ export type AutoUpdateSlotId =
   | "vscode-insiders-2h"
   | "t3-daily"
   | "t3-code-6h"
+  | "devsy-daily"
   | "fizzy-daily"
 
 export type UpstreamSource =

@@ -34,6 +34,21 @@ Match the existing style: 2-space indentation in Ruby, JavaScript, and TypeScrip
 ## Testing Guidelines
 Every version bump or packaging change should include a local `brew install` or `brew test`, plus the relevant Dagger smoke test for artifact-based packages. Keep smoke coverage focused on the real install path: package artifact, install through Linuxbrew, verify binaries, and check desktop integration files when applicable.
 
+When an upstream Desktop artifact embeds a CLI that is also packaged as a formula, extract
+the artifact and verify the embedded binary before choosing install identities. Keep the
+formula-owned CLI and cask-owned launcher names distinct, do not link the embedded CLI from
+the cask, and make the package CI install both artifacts together to prove their Homebrew
+paths coexist.
+
+For Devsy on Bluefin or Fedora bootc, keep channel selection explicit and deterministic:
+Homebrew owns the CLI path, while the Homebrew AppImage cask and upstream Flatpak bundle are
+parallel first-class Desktop choices with different package-manager lifecycles. Never rank
+one Desktop channel as the Bluefin default, auto-detect the host to switch package managers,
+or make a cask invoke or own Flatpak. Recommend RPM only when it is deliberately baked into
+a custom bootc image, not for ad hoc host layering.
+The Devsy AppImage embeds AppIndicator/StatusNotifier and libnotify support, so do not add
+the DevPod AppIndicator runtime formula without new runtime evidence.
+
 ## Commit & Pull Request Guidelines
 Follow the existing history: short imperative subjects like `Update devpod-linux cask to v0.17.0` or `Package VS Code Insiders from the Linux RPM (#12)`. PRs should explain what changed, link the upstream release or source commit, and note any updated SHA256 values. Include command output for `dagger ... smoke-test` or `brew audit` in the PR description. Add screenshots only when launcher, icon, or protocol-handler behavior changes.
 

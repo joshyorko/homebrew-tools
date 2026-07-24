@@ -97,6 +97,36 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "devsy",
+    kind: "http_binary_formula",
+    homebrewPath: "Formula/devsy.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "v",
+    },
+    upstream: {
+      kind: "github_release",
+      repo: "https://github.com/devsy-org/devsy",
+      assetPrefix: "devsy-linux-",
+    },
+  },
+  {
+    id: "devsy-desktop",
+    kind: "github_release_appimage_cask",
+    homebrewPath: "Casks/devsy-desktop.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "v",
+    },
+    upstream: {
+      kind: "github_release",
+      repo: "https://github.com/devsy-org/devsy",
+      assetName: "Devsy_linux_x86_64.AppImage",
+    },
+  },
+  {
     id: "fizzy-cli-master",
     kind: "source_build_go_formula",
     homebrewPath: "Formula/fizzy-cli-master.rb",
@@ -274,6 +304,8 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     ["Formula/codex-release.rb", "scripts/package-codex-release.mjs"],
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
+  ["devsy", ["Formula/devsy.rb"]],
+  ["devsy-desktop", ["Casks/devsy-desktop.rb"]],
   [
     "fizzy-cli-master",
     ["Formula/fizzy-cli-master.rb", "scripts/package-fizzy-cli-master.mjs", "dagger/fizzy-cli-master-smoke/"],
