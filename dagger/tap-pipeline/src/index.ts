@@ -21,6 +21,7 @@ import {
   verifyDevsyGithubDigest,
 } from "./devsy-render.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
+import { renderAssetDownloadScript } from "./asset-download.js"
 
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
@@ -2381,19 +2382,7 @@ end
       "node",
       "--input-type=module",
       "-e",
-      [
-        "import { writeFile } from 'node:fs/promises'",
-        "const [url, path] = process.argv.slice(1)",
-        "const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'tap-pipeline' }",
-        "if (process.env.GH_TOKEN) {",
-        "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
-        "}",
-        "const response = await fetch(url, { headers })",
-        "if (!response.ok) {",
-        "  throw new Error(`Failed to download ${url}: ${response.status}`)",
-        "}",
-        "await writeFile(path, Buffer.from(await response.arrayBuffer()))",
-      ].join("\n"),
+      renderAssetDownloadScript(),
       url,
       path,
     ])
