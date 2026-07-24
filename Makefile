@@ -62,7 +62,7 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex codex-build codex-release-local codex-desktop-build codex-desktop-build-archive codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: codex codex-build codex-release-local codex-desktop-build codex-desktop-build-archive codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-release-install test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
@@ -117,6 +117,9 @@ codex-desktop-rebuild-dry-run:
 
 test-codex-desktop-install:
 	scripts/test-install-codex-desktop-local.sh
+
+test-codex-release-install:
+	scripts/test-install-codex-release-local.sh
 
 test-codex-desktop-setup:
 	python3 scripts/test-codex-desktop-feature-wizard.py

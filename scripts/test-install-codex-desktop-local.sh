@@ -192,14 +192,22 @@ PY
         ;;
     reinstall)
         [ "${2:-}" = "--cask" ] || exit 64
+        mkdir -p "$prefix/Caskroom/codex-desktop"
         ;;
     install)
         if [ -d "$prefix/Caskroom/codex-desktop" ]; then
             echo "install called even though codex-desktop is already installed" >&2
             exit 42
         fi
+        mkdir -p "$prefix/Caskroom/codex-desktop"
         ;;
     untap)
+        if [ "${2:-}" = "--force" ]; then
+            rm -rf "$prefix/Caskroom/codex-desktop"
+        elif [ "${HOMEBREW_DEVELOPER:-}" != "1" ]; then
+            echo "refusing to untap an installed cask without developer mode" >&2
+            exit 1
+        fi
         ;;
     *)
         echo "unexpected brew command: $*" >&2
@@ -274,6 +282,7 @@ assert_contains "$pinned_curl_log" "curl -fsSL --retry 3 -o"
 assert_contains "$pinned_curl_log" "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
 assert_contains "$pinned_brew_log" "brew reinstall --cask --force codex-local/"
 cmp -s "$pinned_cache_file" "$pinned_dmg_source" || fail "pinned Codex.dmg cache should be refreshed with verified contents"
+[ -d "$fake_prefix/Caskroom/codex-desktop" ] || fail "temporary tap cleanup must preserve the installed Codex Desktop cask"
 
 : >"$fake_log"
 : >"$fake_dagger_log"

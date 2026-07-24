@@ -363,7 +363,7 @@ cleanup() {
     trap - EXIT
 
     if [ -n "$temp_tap_name" ]; then
-        brew untap --force "$temp_tap_name" >/dev/null 2>&1 || true
+        HOMEBREW_DEVELOPER=1 brew untap "$temp_tap_name" >/dev/null 2>&1 || true
     fi
 
     if [ "$status" -eq 0 ] && [ "$install_succeeded" -eq 1 ] && [ "$auto_bundle_dir" -eq 1 ]; then
