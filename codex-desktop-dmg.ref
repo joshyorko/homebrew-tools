@@ -2,6 +2,6 @@
 # explicit --codex-dmg/CODEX_DESKTOP_CODEX_DMG override is provided.
 url: https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg
 sha256: ae864e2def7db56d0bb77a876a5cbe4e4c2f554ccc654cec921b946892583c0a
-content-length: 618752284
-last-modified: Wed, 22 Jul 2026 09:19:37 GMT
-etag: 0x8DEE7D259F0CEBB
+content-length: 593861752
+last-modified: Fri, 24 Jul 2026 20:48:03 GMT
+etag: 0x8DEE9C4DB44D751
