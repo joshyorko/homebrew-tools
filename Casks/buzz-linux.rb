@@ -47,7 +47,7 @@ cask "buzz-linux" do
       #!/bin/bash
       gst_inspect="${GST_INSPECT_1_0:-$(command -v gst-inspect-1.0 2>/dev/null || true)}"
       if [[ -n "$gst_inspect" ]]; then
-        gst_app_plugin="$("$gst_inspect" appsink 2>/dev/null | awk -F': ' '/^[[:space:]]*Filename[[:space:]]*:/ { print $2; exit }')"
+        gst_app_plugin="$("$gst_inspect" appsink 2>/dev/null | awk '/^[[:space:]]*Filename[[:space:]]+/ { print $2; exit }')"
         if [[ -n "$gst_app_plugin" ]]; then
           gst_plugin_dir="$(dirname "$gst_app_plugin")"
           export GST_PLUGIN_PATH_1_0="${GST_PLUGIN_PATH_1_0:-$gst_plugin_dir}"
@@ -74,6 +74,13 @@ cask "buzz-linux" do
       mkdir -p "$cache_root"
       export GST_REGISTRY_1_0="${GST_REGISTRY_1_0:-$cache_root/gstreamer-registry.bin}"
       export GST_REGISTRY="${GST_REGISTRY:-$GST_REGISTRY_1_0}"
+
+      if [[ "${BUZZ_PRINT_RUNTIME_ENV:-}" == "1" ]]; then
+        printf 'GST_PLUGIN_PATH_1_0=%s\n' "${GST_PLUGIN_PATH_1_0:-}"
+        printf 'GST_PLUGIN_SCANNER_1_0=%s\n' "${GST_PLUGIN_SCANNER_1_0:-}"
+        printf 'GST_REGISTRY_1_0=%s\n' "${GST_REGISTRY_1_0:-}"
+        exit 0
+      fi
 
       exec "#{appimage}" "$@"
     SH
