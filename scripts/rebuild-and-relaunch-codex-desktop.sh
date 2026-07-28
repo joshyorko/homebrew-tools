@@ -101,17 +101,6 @@ unique_live_pids() {
     done | awk '!seen[$0]++'
 }
 
-wait_for_exit() {
-    local pid="$1"
-    local waited=0
-    while is_live_pid "$pid"; do
-        [ "$waited" -lt "$wait_seconds" ] || return 1
-        sleep 1
-        waited=$((waited + 1))
-    done
-    return 0
-}
-
 stop_codex_desktop() {
     log "== stop Codex Desktop =="
 
@@ -137,10 +126,20 @@ stop_codex_desktop() {
     local stubborn=()
     while IFS= read -r pid; do
         [ -n "$pid" ] || continue
-        if ! wait_for_exit "$pid"; then
-            stubborn+=("$pid")
-        fi
+        is_live_pid "$pid" && stubborn+=("$pid")
     done <<<"$pids"
+
+    local waited=0
+    while [ "${#stubborn[@]}" -gt 0 ] && [ "$waited" -lt "$wait_seconds" ]; do
+        sleep 1
+        waited=$((waited + 1))
+
+        local remaining=()
+        for pid in "${stubborn[@]}"; do
+            is_live_pid "$pid" && remaining+=("$pid")
+        done
+        stubborn=("${remaining[@]}")
+    done
 
     if [ "${#stubborn[@]}" -gt 0 ]; then
         log "Codex Desktop did not exit after ${wait_seconds}s; sending SIGKILL."
