@@ -1,0 +1,106 @@
+name: Buzz Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the tested artifact and update the cask"
+        required: true
+        type: boolean
+        default: false
+      upstream_version:
+        description: "Buzz upstream version"
+        required: true
+        type: string
+        default: "0.5.0"
+      package_revision:
+        description: "Tap package revision"
+        required: true
+        type: string
+        default: "1"
+      source_repository:
+        description: "Git source repository"
+        required: true
+        type: string
+        default: "https://github.com/block/buzz.git"
+      source_ref:
+        description: "Exact 40-character source commit"
+        required: true
+        type: string
+        default: "cacebaf5d5fe876b68ec563e68a3b84c60620779"
+
+permissions:
+  contents: write
+
+env:
+  DAGGER_VERSION: "0.21.7"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Smoke-test portable artifact
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/buzz-linux-smoke
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          smoke-test
+          --tap=.
+          --source-repository="${{ inputs.source_repository }}"
+          --source-ref="${{ inputs.source_ref }}"
+          --version="${{ inputs.upstream_version }}"
+          --revision="${{ inputs.package_revision }}"
+
+    - name: Export portable artifact
+      if: inputs.publish
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/buzz-linux-smoke
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        call: >-
+          -o "$RUNNER_TEMP/buzz-linux-${{ inputs.upstream_version }}-${{ inputs.package_revision }}-x86_64.AppImage"
+          package-artifact
+          --tap=.
+          --source-repository="${{ inputs.source_repository }}"
+          --source-ref="${{ inputs.source_ref }}"
+          --version="${{ inputs.upstream_version }}"
+          --revision="${{ inputs.package_revision }}"
+
+    - name: Publish release and update cask
+      if: inputs.publish
+      env:
+        VERSION: ${{ inputs.upstream_version }}
+        REVISION: ${{ inputs.package_revision }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        asset="$RUNNER_TEMP/buzz-linux-$VERSION-$REVISION-x86_64.AppImage"
+        release_tag="buzz-linux-$VERSION-$REVISION"
+        checksum="$(sha256sum "$asset" | awk '{print $1}')"
+
+        gh release create "$release_tag" "$asset" \
+          --title "Buzz Linux $VERSION-$REVISION" \
+          --notes "Portable x86_64 Linux build compiled from the pinned Buzz $VERSION source commit."
+
+        sed -i -E "s/version \".*\"/version \"$VERSION,$REVISION\"/" Casks/buzz-linux.rb
+        sed -i -E "s/sha256 x86_64_linux: \".*\"/sha256 x86_64_linux: \"$checksum\"/" Casks/buzz-linux.rb
+        sed -i -E "s#url \".*\"#url \"https://github.com/$GITHUB_REPOSITORY/releases/download/$release_tag/$(basename "$asset")\"#" Casks/buzz-linux.rb
+
+        if git diff --quiet -- Casks/buzz-linux.rb; then
+          exit 0
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add Casks/buzz-linux.rb
+        git commit -m "Update buzz-linux cask to $VERSION-$REVISION"
+        git pull --rebase origin "$GITHUB_REF_NAME"
+        git push origin "HEAD:$GITHUB_REF_NAME"

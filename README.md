@@ -76,6 +76,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
 | `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
+| `brew install --cask joshyorko/tools/buzz-linux` | Install the portable Buzz Desktop build for Linux x64 |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
 | `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
 | `brew install joshyorko/tools/eitype` | Install Eitype |
@@ -322,6 +323,38 @@ and updated independently.
 ```bash
 dagger -m ./dagger/tap-pipeline call ci-check --package-id=devsy
 dagger -m ./dagger/tap-pipeline call ci-check --package-id=devsy-desktop
+```
+
+### Buzz Desktop for Linux
+
+`buzz-linux` is built from a pinned Buzz source commit in a container, published
+as a tap-owned AppImage, and installed with desktop, icon, and `buzz://` protocol
+integration:
+
+```bash
+brew install --cask joshyorko/tools/buzz-linux
+buzz
+```
+
+The build defaults to the upstream Linux fix commit recorded in
+`dagger/buzz-linux-smoke/src/index.ts`. The workflow accepts an exact source
+repository and 40-character commit so the same pipeline can build a maintained
+fork without changing the package design. It never compiles on the Homebrew
+user's host.
+
+This is one x86_64 glibc artifact, not a separate build per distribution. Its
+Ubuntu 22.04 build floor keeps it usable across current Ubuntu, Fedora, and Arch
+families, including immutable or atomic hosts where Homebrew lives in the user
+filesystem. The artifact intentionally uses host graphics, WebKitGTK, GStreamer,
+and font libraries. It does not currently support arm64 or musl-only systems,
+and a container smoke test cannot replace a real compositor/GPU launch test.
+
+To validate or publish it, run the `Buzz Linux` workflow. A publish run first
+builds from source and installs the resulting artifact through Linuxbrew, then
+creates the release and records its exact SHA-256 in the cask.
+
+```bash
+dagger -m ./dagger/buzz-linux-smoke call smoke-test --tap=.
 ```
 
 ### Codex Desktop (Linux DMG Conversion Runtime)

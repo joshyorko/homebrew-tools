@@ -1,0 +1,20 @@
+diff --git a/desktop/scripts/fix-appimage.sh b/desktop/scripts/fix-appimage.sh
+index 973d9fbb62..e0b53835ac 100755
+--- a/desktop/scripts/fix-appimage.sh
++++ b/desktop/scripts/fix-appimage.sh
+@@ -125,6 +125,6 @@ EOF
+ if [[ -f "$WORKDIR/squashfs-root/AppRun" ]] \
+   && ! grep -q 'WEBKIT_SKIA_ENABLE_CPU_RENDERING' "$WORKDIR/squashfs-root/AppRun"; then
+-  if ! grep -q 'apprun-hooks' "$WORKDIR/squashfs-root/AppRun"; then
++  if ! grep -q 'source.*apprun-hooks/\*' "$WORKDIR/squashfs-root/AppRun"; then
+     tmp_apprun="$(mktemp)"
+     {
+       if head -n1 "$WORKDIR/squashfs-root/AppRun" | grep -q '^#!'; then
+@@ -181,6 +181,6 @@ EOF
+ if [[ -f "$WORKDIR/squashfs-root/AppRun" ]] \
+   && ! grep -q 'buzz-fontconfig-no-colrv1\|FONTCONFIG_FILE=.*usr/etc/fonts' "$WORKDIR/squashfs-root/AppRun"; then
+-  if ! grep -q 'apprun-hooks' "$WORKDIR/squashfs-root/AppRun"; then
++  if ! grep -q 'source.*apprun-hooks/\*' "$WORKDIR/squashfs-root/AppRun"; then
+     tmp_apprun="$(mktemp)"
+     {
+       if head -n1 "$WORKDIR/squashfs-root/AppRun" | grep -q '^#!'; then
