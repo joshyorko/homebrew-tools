@@ -45,6 +45,15 @@ cask "buzz-linux" do
     wrapper = "#{staged_path}/buzz-linux-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
+      buzz_data_root="${XDG_DATA_HOME:-$HOME/.local/share}/Buzz"
+      buzz_runtime_path="$buzz_data_root/node-tools/bin"
+      for managed_node_bin in "$buzz_data_root"/runtimes/node/*/linux-x64/bin; do
+        if [[ -d "$managed_node_bin" ]]; then
+          buzz_runtime_path="$buzz_runtime_path:$managed_node_bin"
+        fi
+      done
+      export PATH="$buzz_runtime_path:$PATH"
+
       gst_inspect="${GST_INSPECT_1_0:-$(command -v gst-inspect-1.0 2>/dev/null || true)}"
       if [[ -n "$gst_inspect" ]]; then
         gst_app_plugin="$("$gst_inspect" appsink 2>/dev/null | awk '/^[[:space:]]*Filename[[:space:]]+/ { print $2; exit }')"
@@ -79,6 +88,7 @@ cask "buzz-linux" do
         printf 'GST_PLUGIN_PATH_1_0=%s\n' "${GST_PLUGIN_PATH_1_0:-}"
         printf 'GST_PLUGIN_SCANNER_1_0=%s\n' "${GST_PLUGIN_SCANNER_1_0:-}"
         printf 'GST_REGISTRY_1_0=%s\n' "${GST_REGISTRY_1_0:-}"
+        printf 'PATH=%s\n' "$PATH"
         exit 0
       fi
 
