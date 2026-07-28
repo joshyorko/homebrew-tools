@@ -2,7 +2,7 @@ name: Tap CI
 
 on:
   pull_request:
-    paths:
+    paths: &tap_paths
     - ".github/workflows/tap-ci.yml"
     - ".github/workflows/tap-auto-update.yml"
     - ".github/workflows/tap-manual.yml"
@@ -15,16 +15,7 @@ on:
   push:
     branches:
     - main
-    paths:
-    - ".github/workflows/tap-ci.yml"
-    - ".github/workflows/tap-auto-update.yml"
-    - ".github/workflows/tap-manual.yml"
-    - "Casks/**"
-    - "Formula/**"
-    - "scripts/**"
-    - "dagger/**"
-    - "README.md"
-    - "AGENTS.md"
+    paths: *tap_paths
 
 permissions:
   contents: read
