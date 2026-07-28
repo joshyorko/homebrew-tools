@@ -3,7 +3,7 @@ cask "buzz-linux" do
   os linux: "linux"
 
   version "0.5.0,1"
-  sha256 x86_64_linux: "62d8dbba3a58b5b4ea2d7edb166158a3aa374e49aa0212c378a1d886877a775f"
+  sha256 x86_64_linux: "89fffe5944fb3ce57a5fc1978f3a7169e3b68f2e175c20393dee5a2008d969af"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/buzz-linux-0.5.0-1/buzz-linux-0.5.0-1-x86_64.AppImage"
   name "Buzz"
