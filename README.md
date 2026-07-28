@@ -345,9 +345,12 @@ user's host.
 This is one x86_64 glibc artifact, not a separate build per distribution. Its
 Ubuntu 22.04 build floor keeps it usable across current Ubuntu, Fedora, and Arch
 families, including immutable or atomic hosts where Homebrew lives in the user
-filesystem. The artifact intentionally uses host graphics, WebKitGTK, GStreamer,
-and font libraries. It does not currently support arm64 or musl-only systems,
-and a container smoke test cannot replace a real compositor/GPU launch test.
+filesystem. The launcher discovers the host GStreamer plugin and scanner paths
+at runtime and gives Buzz a private registry, avoiding AppImage assumptions
+about distro-specific library layouts. The artifact intentionally uses host
+graphics, WebKitGTK, GStreamer, and font libraries. It does not currently
+support arm64 or musl-only systems, and a container smoke test cannot replace a
+real compositor/GPU launch test.
 
 To validate or publish it, run the `Buzz Linux` workflow. A publish run first
 builds from source and installs the resulting artifact through Linuxbrew, then

@@ -177,6 +177,7 @@ export class BuzzLinuxSmoke {
     ])
     const caskContents = await tap.file(CASK_PATH).contents()
     const updatedCask = caskContents
+      .replace(/version ".*"/, `version "${version},${revision}"`)
       .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
       .replace(/sha256 x86_64_linux: ".*"/, `sha256 x86_64_linux: "${sha256}"`)
     const smokeTap = tap.withFile(CASK_PATH, dag.file("buzz-linux.rb", updatedCask))
@@ -206,6 +207,12 @@ export class BuzzLinuxSmoke {
           "cp /tap/Casks/buzz-linux.rb \"$tap_dir/Casks/\"",
           "brew install --cask test/tap/buzz-linux",
           "test -x \"$(brew --prefix)/bin/buzz\"",
+          "wrapper=$(readlink -f \"$(brew --prefix)/bin/buzz\")",
+          "bash -n \"$wrapper\"",
+          "grep -q 'gst-inspect-1.0' \"$wrapper\"",
+          "grep -q 'GST_PLUGIN_PATH_1_0' \"$wrapper\"",
+          "grep -q 'GST_PLUGIN_SCANNER_1_0' \"$wrapper\"",
+          "grep -q 'GST_REGISTRY_1_0' \"$wrapper\"",
           "test -f \"$HOME/.local/share/applications/buzz.desktop\"",
           "test -f \"$HOME/.local/share/icons/hicolor/128x128/apps/buzz.png\"",
           "grep -q \"Exec=$(brew --prefix)/bin/buzz %U\" \"$HOME/.local/share/applications/buzz.desktop\"",

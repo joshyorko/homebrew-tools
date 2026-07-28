@@ -45,6 +45,36 @@ cask "buzz-linux" do
     wrapper = "#{staged_path}/buzz-linux-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
+      gst_inspect="${GST_INSPECT_1_0:-$(command -v gst-inspect-1.0 2>/dev/null || true)}"
+      if [[ -n "$gst_inspect" ]]; then
+        gst_app_plugin="$("$gst_inspect" appsink 2>/dev/null | awk -F': ' '/^[[:space:]]*Filename[[:space:]]*:/ { print $2; exit }')"
+        if [[ -n "$gst_app_plugin" ]]; then
+          gst_plugin_dir="$(dirname "$gst_app_plugin")"
+          export GST_PLUGIN_PATH_1_0="${GST_PLUGIN_PATH_1_0:-$gst_plugin_dir}"
+          export GST_PLUGIN_SYSTEM_PATH_1_0="${GST_PLUGIN_SYSTEM_PATH_1_0:-$gst_plugin_dir}"
+        fi
+      fi
+
+      if [[ -z "${GST_PLUGIN_SCANNER_1_0:-}" ]]; then
+        for candidate in \
+          "$(command -v gst-plugin-scanner 2>/dev/null || true)" \
+          "/usr/libexec/gstreamer-1.0/gst-plugin-scanner" \
+          "/usr/lib/gstreamer-1.0/gst-plugin-scanner" \
+          "/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner" \
+          "/usr/lib/aarch64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner"; do
+          if [[ -n "$candidate" && -x "$candidate" ]]; then
+            export GST_PLUGIN_SCANNER_1_0="$candidate"
+            export GST_PLUGIN_SCANNER="$candidate"
+            break
+          fi
+        done
+      fi
+
+      cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/buzz"
+      mkdir -p "$cache_root"
+      export GST_REGISTRY_1_0="${GST_REGISTRY_1_0:-$cache_root/gstreamer-registry.bin}"
+      export GST_REGISTRY="${GST_REGISTRY:-$GST_REGISTRY_1_0}"
+
       exec "#{appimage}" "$@"
     SH
     FileUtils.chmod 0755, wrapper
