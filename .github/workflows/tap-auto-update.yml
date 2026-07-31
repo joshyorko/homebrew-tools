@@ -13,6 +13,7 @@ on:
     # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
   - cron: "41 0,12,18 * * *"
   - cron: "13 10 * * *"
+  - cron: "23 10 * * *"
   workflow_dispatch:
     inputs:
       slot_id:
@@ -30,6 +31,7 @@ on:
         - devsy-daily
         - fizzy-daily
         - buzz-daily
+        - camp-daily
 
 permissions:
   contents: write
@@ -48,8 +50,8 @@ jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'buzz-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule != '13 10 * * *')
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'buzz-daily' && inputs.slot_id != 'camp-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule != '13 10 * * *' && github.event.schedule != '23 10 * * *')
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -150,6 +152,44 @@ jobs:
     with:
       auto_update: true
     secrets: inherit
+
+  camp:
+    name: Sync Camp Formula
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'camp-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule == '23 10 * * *')
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Sync formula from the latest verified Camp release
+      run: |
+        set -euo pipefail
+        gh auth setup-git
+        git pull --rebase origin "${GITHUB_REF_NAME}"
+
+        sync_dir="$RUNNER_TEMP/camp-sync"
+        mkdir -p "$sync_dir"
+        gh release download --repo joshyorko/camp --pattern camp.rb --dir "$sync_dir"
+        formula="$sync_dir/camp.rb"
+        test -f "$formula"
+
+        version="$(sed -n 's/^  version "\([^"]*\)"$/\1/p' "$formula")"
+        test -n "$version"
+        grep -Fq "https://github.com/joshyorko/camp/releases/download/v${version}/camp_${version}_linux_amd64.tar.gz" "$formula"
+        grep -Fq "https://github.com/joshyorko/camp/releases/download/v${version}/camp_${version}_linux_arm64.tar.gz" "$formula"
+        test "$(grep -c '^      sha256 "[0-9a-f]\{64\}"$' "$formula")" -eq 2
+
+        if [ -f Formula/camp.rb ] && cmp -s "$formula" Formula/camp.rb; then
+          exit 0
+        fi
+
+        install -m 0644 "$formula" Formula/camp.rb
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add Formula/camp.rb
+        git commit -m "Update camp formula to v${version}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
 
   build:
     needs: resolve

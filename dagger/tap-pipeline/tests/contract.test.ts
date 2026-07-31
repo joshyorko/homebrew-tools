@@ -125,6 +125,24 @@ test("Buzz is selectable and runs on a daily auto-update cadence", () => {
   assert.match(buzzWorkflow, /repos\/block\/buzz\/releases\/latest/)
 })
 
+test("Camp sync consumes the published formula without rebuilding Camp", () => {
+  const autoUpdateWorkflow = readFileSync(
+    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
+    "utf8",
+  )
+
+  assert.match(autoUpdateWorkflow, /- cron: "23 10 \* \* \*"/)
+  assert.match(autoUpdateWorkflow, /- camp-daily/)
+  assert.match(autoUpdateWorkflow, /gh release download --repo joshyorko\/camp --pattern camp\.rb/)
+  assert.match(autoUpdateWorkflow, /install -m 0644 "\$formula" Formula\/camp\.rb/)
+  const campJob = autoUpdateWorkflow.slice(
+    autoUpdateWorkflow.indexOf("  camp:\n"),
+    autoUpdateWorkflow.indexOf("  build:\n"),
+  )
+  assert.doesNotMatch(campJob, /dagger/)
+  assert.doesNotMatch(campJob, /go build/)
+})
+
 test("every auto-updated package declares a version resolution strategy", () => {
   const registryById = new Map(PACKAGE_REGISTRY.map((entry) => [entry.id, entry]))
 

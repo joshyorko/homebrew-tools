@@ -74,6 +74,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/codex-release` | Install Codex CLI from Josh Yorko's tap-release branch fork; executable remains `codex` |
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
+| `brew install joshyorko/tools/camp` | Install the latest verified Camp Linux release |
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
 | `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
 | `brew install --cask joshyorko/tools/buzz-linux` | Install the portable Buzz Desktop build for Linux x64 |
