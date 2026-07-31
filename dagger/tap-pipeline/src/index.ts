@@ -42,6 +42,7 @@ const LEAN_CODEX_DESKTOP_LINUX_FEATURES = [
   "open-target-discovery",
   "read-aloud",
   "read-aloud-mcp",
+  "chronicle-skysight",
   "record-and-replay",
   "x11-ewmh-computer-use",
 ]
@@ -65,6 +66,7 @@ const FULL_CODEX_DESKTOP_LINUX_FEATURES = [
   "project-task-sort",
   "read-aloud",
   "read-aloud-mcp",
+  "chronicle-skysight",
   "record-and-replay",
   "remote-control-ui",
   "remote-mobile-control",

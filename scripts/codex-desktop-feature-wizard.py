@@ -31,6 +31,10 @@ CATEGORY_FEATURES = {
         "remote-control-ui",
         "remote-mobile-control",
     },
+    "Capture & memory": {
+        "chronicle-skysight",
+        "record-and-replay",
+    },
     "Appearance": {
         "frameless-titlebar",
         "omarchy-theme",
@@ -48,7 +52,6 @@ CATEGORY_FEATURES = {
         "open-target-discovery",
         "persistent-status-panel",
         "project-task-sort",
-        "record-and-replay",
     },
 }
 
@@ -169,7 +172,8 @@ def load_selection(
 ) -> set[str]:
     path = Path(config_path)
     if not path.exists():
-        return {feature_id for feature_id in default_ids if feature_id in features}
+        selected = {feature_id for feature_id in default_ids if feature_id in features}
+        return _selection_with_requirements(features, selected)
     data = _read_json(path, "Linux feature config")
     if not isinstance(data, dict):
         raise ValueError(f"Linux feature config {path} must be a JSON object")
@@ -182,7 +186,7 @@ def load_selection(
             raise ValueError(f"Invalid Linux feature id in {path}: {feature_id}")
         if feature_id in features:
             selected.add(feature_id)
-    return selected
+    return _selection_with_requirements(features, selected)
 
 
 def _requirements(features: dict[str, Feature], feature_id: str) -> set[str]:
@@ -195,6 +199,15 @@ def _requirements(features: dict[str, Feature], feature_id: str) -> set[str]:
         result.add(required)
         stack.extend(features[required].requires)
     return result
+
+
+def _selection_with_requirements(
+    features: dict[str, Feature], selected: set[str]
+) -> set[str]:
+    normalized = set(selected)
+    for feature_id in tuple(selected):
+        normalized.update(_requirements(features, feature_id))
+    return normalized
 
 
 def _conflict(features: dict[str, Feature], selected: set[str]) -> tuple[str, str] | None:

@@ -130,6 +130,72 @@ class FeatureWizardModelTests(unittest.TestCase):
         self.assertEqual(selected, {"conversation-mode", "read-aloud"})
         self.assertIn("Read Aloud", notice)
 
+    def test_record_replay_uses_standalone_chronicle_dependency(self):
+        self.add_feature(
+            "chronicle-skysight",
+            title="Chronicle / Skysight Activity Memory",
+        )
+        self.add_feature(
+            "record-and-replay",
+            title="Record & Replay",
+            requires=("chronicle-skysight",),
+        )
+        features = WIZARD.discover_features(self.root)
+
+        selected, notice = WIZARD.toggle_feature(
+            features,
+            set(),
+            "record-and-replay",
+            True,
+        )
+
+        self.assertEqual(selected, {"chronicle-skysight", "record-and-replay"})
+        self.assertIn("Chronicle / Skysight Activity Memory", notice)
+        self.assertEqual(features["chronicle-skysight"].category, "Capture & memory")
+        self.assertEqual(features["record-and-replay"].category, "Capture & memory")
+
+        selected, notice = WIZARD.toggle_feature(
+            features,
+            selected,
+            "chronicle-skysight",
+            False,
+        )
+        self.assertEqual(selected, set())
+        self.assertIn("Record & Replay", notice)
+
+    def test_saved_record_replay_selection_restores_chronicle_dependency(self):
+        self.add_feature("chronicle-skysight")
+        self.add_feature(
+            "record-and-replay",
+            requires=("chronicle-skysight",),
+        )
+        features = WIZARD.discover_features(self.root)
+        config = self.root / "features.json"
+        config.write_text('{"enabled": ["record-and-replay"]}\n')
+
+        selected = WIZARD.load_selection(config, features, set())
+
+        self.assertEqual(selected, {"chronicle-skysight", "record-and-replay"})
+
+    def test_makefile_profiles_include_chronicle_dependency(self):
+        makefile = MODULE_PATH.parent.parent.joinpath("Makefile").read_text()
+        profile_lines = [
+            line
+            for line in makefile.splitlines()
+            if line.startswith("CODEX_DESKTOP_LINUX_FEATURES_")
+            and " := " in line
+        ]
+
+        self.assertEqual(len(profile_lines), 2)
+        for line in profile_lines:
+            feature_ids = line.split(" := ", 1)[1].split()
+            self.assertIn("chronicle-skysight", feature_ids)
+            self.assertIn("record-and-replay", feature_ids)
+            self.assertLess(
+                feature_ids.index("chronicle-skysight"),
+                feature_ids.index("record-and-replay"),
+            )
+
     def test_conflict_preserves_selection(self):
         self.add_feature("first", conflicts=("second",))
         self.add_feature("second")
