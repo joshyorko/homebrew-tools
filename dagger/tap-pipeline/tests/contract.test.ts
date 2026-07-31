@@ -106,6 +106,25 @@ test("auto-update slots cover the expected package set", () => {
   )
 })
 
+test("Buzz is selectable and runs on a daily auto-update cadence", () => {
+  const autoUpdateWorkflow = readFileSync(
+    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
+    "utf8",
+  )
+  const buzzWorkflow = readFileSync(
+    new URL("../../../.github/workflows/buzz-linux.yml", import.meta.url),
+    "utf8",
+  )
+
+  assert.match(autoUpdateWorkflow, /- cron: "13 10 \* \* \*"/)
+  assert.match(autoUpdateWorkflow, /- buzz-daily/)
+  assert.match(autoUpdateWorkflow, /"13 10 \* \* \*"\) slot_id="buzz-daily"/)
+  assert.match(autoUpdateWorkflow, /uses: \.\/\.github\/workflows\/buzz-linux\.yml/)
+  assert.match(buzzWorkflow, /workflow_call:/)
+  assert.match(buzzWorkflow, /auto_update:/)
+  assert.match(buzzWorkflow, /repos\/block\/buzz\/releases\/latest/)
+})
+
 test("every auto-updated package declares a version resolution strategy", () => {
   const registryById = new Map(PACKAGE_REGISTRY.map((entry) => [entry.id, entry]))
 

@@ -1,6 +1,13 @@
 name: Buzz Linux
 
 on:
+  workflow_call:
+    inputs:
+      auto_update:
+        description: "Resolve and publish the latest upstream Buzz release"
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       publish:
@@ -43,7 +50,63 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+    - name: Resolve Buzz release
+      id: release
+      env:
+        AUTO_UPDATE: ${{ inputs.auto_update }}
+        GH_TOKEN: ${{ github.token }}
+        INPUT_PACKAGE_REVISION: ${{ inputs.package_revision }}
+        INPUT_PUBLISH: ${{ inputs.publish }}
+        INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+        INPUT_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+        INPUT_UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+      run: |
+        set -euo pipefail
+
+        if [ "$AUTO_UPDATE" = "true" ]; then
+          latest_release="$(gh api repos/block/buzz/releases/latest)"
+          source_tag="$(jq -er '.tag_name' <<<"$latest_release")"
+          upstream_version="${source_tag#v}"
+          source_repository="https://github.com/block/buzz.git"
+          source_ref="$(gh api "repos/block/buzz/commits/$source_tag" --jq '.sha')"
+          package_revision="1"
+          publish="true"
+          current_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' Casks/buzz-linux.rb)"
+          current_upstream_version="${current_version%%,*}"
+
+          if [ "$current_upstream_version" = "$upstream_version" ]; then
+            needs_update="false"
+          else
+            needs_update="true"
+          fi
+        else
+          upstream_version="$INPUT_UPSTREAM_VERSION"
+          package_revision="$INPUT_PACKAGE_REVISION"
+          source_repository="$INPUT_SOURCE_REPOSITORY"
+          source_ref="$INPUT_SOURCE_REF"
+          publish="$INPUT_PUBLISH"
+          needs_update="true"
+        fi
+
+        {
+          echo "upstream_version=$upstream_version"
+          echo "package_revision=$package_revision"
+          echo "source_repository=$source_repository"
+          echo "source_ref=$source_ref"
+          echo "publish=$publish"
+          echo "needs_update=$needs_update"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          echo "## Buzz Linux"
+          echo
+          echo "Version: \`$upstream_version-$package_revision\`"
+          echo "Source: \`$source_ref\`"
+          echo "Needs update: \`$needs_update\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+
     - name: Smoke-test portable artifact
+      if: steps.release.outputs.needs_update == 'true'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -53,32 +116,32 @@ jobs:
         call: >-
           smoke-test
           --tap=.
-          --source-repository="${{ inputs.source_repository }}"
-          --source-ref="${{ inputs.source_ref }}"
-          --version="${{ inputs.upstream_version }}"
-          --revision="${{ inputs.package_revision }}"
+          --source-repository="${{ steps.release.outputs.source_repository }}"
+          --source-ref="${{ steps.release.outputs.source_ref }}"
+          --version="${{ steps.release.outputs.upstream_version }}"
+          --revision="${{ steps.release.outputs.package_revision }}"
 
     - name: Export portable artifact
-      if: inputs.publish
+      if: steps.release.outputs.needs_update == 'true' && steps.release.outputs.publish == 'true'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
         module: ./dagger/buzz-linux-smoke
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         call: >-
-          -o "$RUNNER_TEMP/buzz-linux-${{ inputs.upstream_version }}-${{ inputs.package_revision }}-x86_64.AppImage"
+          -o "$RUNNER_TEMP/buzz-linux-${{ steps.release.outputs.upstream_version }}-${{ steps.release.outputs.package_revision }}-x86_64.AppImage"
           package-artifact
           --tap=.
-          --source-repository="${{ inputs.source_repository }}"
-          --source-ref="${{ inputs.source_ref }}"
-          --version="${{ inputs.upstream_version }}"
-          --revision="${{ inputs.package_revision }}"
+          --source-repository="${{ steps.release.outputs.source_repository }}"
+          --source-ref="${{ steps.release.outputs.source_ref }}"
+          --version="${{ steps.release.outputs.upstream_version }}"
+          --revision="${{ steps.release.outputs.package_revision }}"
 
     - name: Publish release and update cask
-      if: inputs.publish
+      if: steps.release.outputs.needs_update == 'true' && steps.release.outputs.publish == 'true'
       env:
-        VERSION: ${{ inputs.upstream_version }}
-        REVISION: ${{ inputs.package_revision }}
+        VERSION: ${{ steps.release.outputs.upstream_version }}
+        REVISION: ${{ steps.release.outputs.package_revision }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
