@@ -695,7 +695,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(makefile, /CODEX_DESKTOP_FEATURES_CONFIG \?=/)
   assert.match(makefile, /--print-enabled/)
   assert.match(makefile, /scripts\/setup-codex-desktop-local\.sh/)
-  assert.equal(defaultConversionRef, "af6e2a01ab2753b3232ca69188fc489ae5cc141c")
+  assert.equal(defaultConversionRef, "01abbf8c7cff3b87ec0df8aa68bb3f4b6fb28917")
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_REF_FILE \?= codex-desktop-conversion\.ref/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_COMMIT \?= \$\(shell ref=/)
   assert.match(makefile, /\$\$\{ref:-self-hosted\}/)
