@@ -933,3 +933,14 @@ test("codex desktop packaging patches current VS Code target registry", async ()
   assert.match(patched, /linuxDetect:\(\)=>Fi\(`code-insiders`\)/)
   assert.match(patched, /linux:[A-Za-z_$][\w$]*\?\{label:/)
 })
+
+test("codex desktop packaging accepts upstream native Linux editor detectors", async () => {
+  const { patchLinuxEditorTargets } = await import(scriptPath.href)
+  const upstreamNativeRegistry = [
+    "function W1({id:e,label:t,icon:n,darwinDetect:r,win32Detect:i,linuxDetect:a}){return{id:e,platforms:{darwin:r?{}:void 0,win32:i?{}:void 0,linux:a?{label:t,icon:n,kind:`editor`,detect:a}:void 0}}}",
+    "var vscode=W1({id:`vscode`,label:`VS Code`,linuxDetect:()=>G1([`code`,`code-oss`],[`code.desktop`,`code-oss.desktop`])});",
+    "var insiders=W1({id:`vscodeInsiders`,label:`VS Code Insiders`,linuxDetect:()=>G1([`code-insiders`],[`code-insiders.desktop`])});",
+  ].join("")
+
+  assert.equal(patchLinuxEditorTargets(upstreamNativeRegistry), upstreamNativeRegistry)
+})

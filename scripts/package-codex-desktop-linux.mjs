@@ -241,6 +241,9 @@ function patchLinuxEditorTargets(source) {
   if (linuxEditorTargetDetectorsPresent(source)) {
     return source
   }
+  if (nativeLinuxEditorTargetDetectorsPresent(source)) {
+    return source
+  }
   if (
     source.includes("codexLinuxIdeCommand(`vscode`)") &&
     source.includes("codexLinuxIdeCommand(`vscodeInsiders`)")
@@ -321,6 +324,18 @@ function linuxEditorTargetDetectorRegex(command) {
 function linuxEditorTargetDetectorsPresent(source) {
   return linuxEditorTargetDetectorRegex("code").test(source) &&
     linuxEditorTargetDetectorRegex("code-insiders").test(source)
+}
+
+function nativeLinuxEditorTargetDetectorPresent(source, targetId) {
+  const targetPattern = new RegExp(
+    `[A-Za-z_$][\\w$]*\\s*=\\s*[A-Za-z_$][\\w$]*\\(\\{id:\`${targetId}\`[\\s\\S]*?\\}\\);`,
+  )
+  return targetPattern.exec(source)?.[0].includes("linuxDetect:") === true
+}
+
+function nativeLinuxEditorTargetDetectorsPresent(source) {
+  return nativeLinuxEditorTargetDetectorPresent(source, "vscode") &&
+    nativeLinuxEditorTargetDetectorPresent(source, "vscodeInsiders")
 }
 
 function unusedMinifiedParameterName(usedNames, preferredName) {
