@@ -80,6 +80,17 @@ test("platformPathsChanged detects shared orchestration changes", () => {
   assert.equal(platformPathsChanged(["README.md"]), false)
 })
 
+test("shared pipeline changes schedule every PR-enabled package", () => {
+  assert.deepEqual(
+    changedCiPackagesFromPaths(["dagger/tap-pipeline/src/index.ts"]),
+    PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).map((entry) => entry.id),
+  )
+})
+
+test("resource monitor build helper schedules t3code CLI CI", () => {
+  assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
+})
+
 test("transient upstream probe errors are explicitly marked", () => {
   assert.equal(
     isTransientUpstreamProbeError(new TransientUpstreamProbeError("Skipped upstream probe for package")),

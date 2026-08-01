@@ -3,15 +3,20 @@ import { dag, Container, Directory, File, object, func } from "@dagger.io/dagger
 const UPSTREAM_REPO = "https://github.com/pingdotgg/t3code"
 const BUN_VERSION = "1.3.9"
 const NODE_IMAGE = "node:24-bookworm"
+const RUST_IMAGE = "rust:1-bookworm"
 const BREW_IMAGE = "homebrew/brew:latest"
 const FORMULA_PATH = "Formula/t3code-cli-main.rb"
 
 @object()
 export class T3CodeCliMainSmoke {
   private baseContainer(): Container {
+    const rustToolchain = dag.container().from(RUST_IMAGE)
+
     return dag
       .container()
       .from(NODE_IMAGE)
+      .withDirectory("/usr/local/cargo", rustToolchain.directory("/usr/local/cargo"))
+      .withDirectory("/usr/local/rustup", rustToolchain.directory("/usr/local/rustup"))
       .withExec([
         "bash",
         "-lc",
@@ -24,8 +29,10 @@ export class T3CodeCliMainSmoke {
       ])
       .withEnvVariable(
         "PATH",
-        "/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "/root/.bun/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
       )
+      .withEnvVariable("CARGO_HOME", "/usr/local/cargo")
+      .withEnvVariable("RUSTUP_HOME", "/usr/local/rustup")
   }
 
   private async artifactBuild(tap: Directory, ref: string, version?: string): Promise<{
@@ -44,9 +51,14 @@ export class T3CodeCliMainSmoke {
     const container = this.baseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
+      .withMountedCache(
+        "/upstream/native/resource-monitor/target",
+        dag.cacheVolume("t3code-cli-main-resource-monitor-target-cache"),
+      )
       .withWorkdir("/upstream")
       .withExec(["bun", "install", "--frozen-lockfile"])
       .withExec(["bun", "run", "build", "--filter=@t3tools/web", "--filter=t3"])
+      .withExec(["bash", "/tap/scripts/build-t3code-resource-monitor.sh", "/upstream"])
       .withExec([
         "node",
         "/tap/scripts/package-t3code-cli-main.mjs",
@@ -113,6 +125,10 @@ export class T3CodeCliMainSmoke {
           "cp -R /tap/Formula \"$tap_dir/\"",
           "ls -la \"$tap_dir/Formula\"",
           "brew install test/tap/t3code-cli-main",
+          "monitor=$(brew --prefix t3code-cli-main)/libexec/dist/resource-monitor/linux-x64/t3-resource-monitor",
+          "test -x \"$monitor\"",
+          "hello=$(\"$monitor\" </dev/null | head -n 1)",
+          "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
           "test -f $(brew --prefix)/Cellar/t3code-cli-main/*/libexec/node_modules/node-addon-api/napi.h",
           "brew test test/tap/t3code-cli-main",
           "echo '--- package contents ---'",

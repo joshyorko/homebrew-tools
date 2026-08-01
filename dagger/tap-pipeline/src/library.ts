@@ -297,7 +297,12 @@ export const AUTO_UPDATE_SLOTS: AutoUpdateSlot[] = loadAutoUpdateSlots()
 const CHANGED_PATHS: Array<[string, string[]]> = [
   [
     "t3code-cli-main",
-    ["Formula/t3code-cli-main.rb", "scripts/package-t3code-cli-main.mjs", "dagger/t3code-cli-main-smoke/"],
+    [
+      "Formula/t3code-cli-main.rb",
+      "scripts/package-t3code-cli-main.mjs",
+      "scripts/build-t3code-resource-monitor.sh",
+      "dagger/t3code-cli-main-smoke/",
+    ],
   ],
   [
     "codex-release",
@@ -374,9 +379,10 @@ export function platformPathsChanged(paths: string[]): boolean {
 
 export function changedCiPackagesFromPaths(paths: string[]): string[] {
   const changedPackages = new Set(changedPackagesFromPaths(paths))
+  const sharedPipelineChanged = platformPathsChanged(paths)
 
   return PACKAGE_REGISTRY
-    .filter((entry) => entry.supportsPrCi && changedPackages.has(entry.id))
+    .filter((entry) => entry.supportsPrCi && (sharedPipelineChanged || changedPackages.has(entry.id)))
     .map((entry) => entry.id)
 }
 

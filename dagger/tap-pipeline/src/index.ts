@@ -1519,6 +1519,11 @@ end
 
     const container = this.t3BaseContainer()
       .withDirectory("/tap", tap)
+      .withMountedCache(
+        "/upstream/native/resource-monitor/target",
+        dag.cacheVolume("tap-pipeline-t3-resource-monitor-target-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
       .withExec([
         "bash",
         "-lc",
@@ -1537,6 +1542,7 @@ end
       .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
       .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])
       .withExec(["bash", "-lc", "rm -rf apps/server/dist/client && cp -R apps/web/dist apps/server/dist/client"])
+      .withExec(["bash", "/tap/scripts/build-t3code-resource-monitor.sh", "/upstream"])
       .withExec([
         "node",
         "/tap/scripts/package-t3code-cli-main.mjs",
@@ -3033,6 +3039,10 @@ end
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3code-cli-main"),
               "brew install test/tap/t3code-cli-main",
+              "monitor=\"$(brew --prefix t3code-cli-main)/libexec/dist/resource-monitor/linux-x64/t3-resource-monitor\"",
+              "test -x \"$monitor\"",
+              "hello=\"$(\"$monitor\" </dev/null | head -n 1)\"",
+              "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
               "brew test test/tap/t3code-cli-main",
               "t3 --help",
             ].join("\n"),
