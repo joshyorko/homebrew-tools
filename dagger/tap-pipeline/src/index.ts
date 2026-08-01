@@ -804,9 +804,13 @@ export class TapPipeline {
   }
 
   private t3BaseContainer(): Container {
+    const rustToolchain = dag.container().from(RUST_IMAGE)
+
     return dag
       .container()
       .from(NODE_IMAGE)
+      .withDirectory("/usr/local/cargo", rustToolchain.directory("/usr/local/cargo"))
+      .withDirectory("/usr/local/rustup", rustToolchain.directory("/usr/local/rustup"))
       .withMountedCache(
         "/root/.bun/install/cache",
         dag.cacheVolume("tap-pipeline-bun-cache"),
@@ -828,7 +832,9 @@ export class TapPipeline {
         "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl fakeroot g++ git imagemagick jq make python3 rpm tar unzip xz-utils && npm install -g node-gyp && corepack enable && corepack prepare pnpm@11.10.0 --activate && rm -rf /var/lib/apt/lists/*",
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
-      .withEnvVariable("PATH", "/root/.bun/bin:/root/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+      .withEnvVariable("CARGO_HOME", "/usr/local/cargo")
+      .withEnvVariable("RUSTUP_HOME", "/usr/local/rustup")
+      .withEnvVariable("PATH", "/root/.bun/bin:/root/.local/share/pnpm:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
   private codexDesktopBaseContainer(): Container {
