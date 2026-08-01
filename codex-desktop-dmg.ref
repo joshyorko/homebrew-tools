@@ -1,7 +1,7 @@
 # Pinned upstream Codex Desktop DMG used by local Homebrew rebuilds when no
 # explicit --codex-dmg/CODEX_DESKTOP_CODEX_DMG override is provided.
 url: https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg
-sha256: fb93a239c811c7639cf45a90ff36c262fa0290640140cd12da3fdc60b62255ae
-content-length: 609303023
-last-modified: Thu, 30 Jul 2026 19:38:59 GMT
-etag: 0x8DEEE723373F7DD
+sha256: 45ec006a0f3f0fa004b6fd4d6d5529979a05361f995ca2c51de3a3b04deee123
+content-length: 609312441
+last-modified: Sat, 01 Aug 2026 00:03:50 GMT
+etag: 0x8DEEF605E2457C7
