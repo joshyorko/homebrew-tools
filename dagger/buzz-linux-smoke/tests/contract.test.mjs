@@ -15,8 +15,12 @@ test("rejects source builds without the Linux WebKitGTK media capability", () =>
   assert.match(source, /linux_media::enable_media_capture/)
 })
 
-test("uses the upstream AppRun hook fix instead of reapplying a stale patch", () => {
-  assert.match(source, /source\.\*apprun-hooks\/\\\\\*/)
+test("uses the upstream post-AppRun GStreamer shim instead of reapplying a stale patch", () => {
+  assert.match(source, /APPRUN_WRAPPED=/)
+  assert.match(source, /Installing GStreamer launcher shim/)
+  assert.match(source, /buzz-desktop\.bin/)
+  assert.match(source, /GST_PLUGIN_SYSTEM_PATH_1_0/)
+  assert.match(source, /unset \\\"\\\\\$var\\\"/)
   assert.doesNotMatch(source, /git apply \/tap\/patches\/buzz-linux-apprun-hooks\.patch/)
 })
 
