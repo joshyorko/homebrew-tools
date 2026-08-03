@@ -1,12 +1,17 @@
 import { dag, Container, Directory, File, object, func } from "@dagger.io/dagger"
 
 const DEFAULT_SOURCE_REPOSITORY = "https://github.com/block/buzz.git"
-const DEFAULT_SOURCE_REF = "cacebaf5d5fe876b68ec563e68a3b84c60620779"
-const DEFAULT_VERSION = "0.5.0"
+const DEFAULT_SOURCE_REF = "3a96acea09b4a9e3f02c3a26cfb0607d2ccacf42"
+const DEFAULT_VERSION = "0.5.3"
 const BUILD_IMAGE =
   "ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982"
 const BREW_IMAGE = "homebrew/brew:latest"
 const CASK_PATH = "Casks/buzz-linux.rb"
+const TAP_REPOSITORY = "joshyorko/homebrew-tools"
+
+function json(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`
+}
 
 @object()
 export class BuzzLinuxSmoke {
@@ -67,6 +72,18 @@ export class BuzzLinuxSmoke {
     const container = dag
       .container()
       .from(BUILD_IMAGE)
+      .withMountedCache(
+        "/root/.cache/hermit",
+        dag.cacheVolume("buzz-linux-hermit-cache"),
+      )
+      .withMountedCache(
+        "/root/.cargo/registry",
+        dag.cacheVolume("buzz-linux-cargo-registry-cache"),
+      )
+      .withMountedCache(
+        "/root/.cargo/git",
+        dag.cacheVolume("buzz-linux-cargo-git-cache"),
+      )
       .withEnvVariable("DEBIAN_FRONTEND", "noninteractive")
       .withEnvVariable("APPIMAGE_EXTRACT_AND_RUN", "1")
       .withExec([
@@ -83,8 +100,19 @@ export class BuzzLinuxSmoke {
           "cd /src",
           `git checkout --detach "${sourceRef}"`,
           `test "$(git rev-parse HEAD)" = "${sourceRef}"`,
+          "test -f desktop/src-tauri/src/linux_media.rs",
+          "grep -q set_enable_media_stream desktop/src-tauri/src/linux_media.rs",
+          "grep -q linux_media::enable_media_capture desktop/src-tauri/src/lib.rs",
         ].join("\n"),
       ])
+      .withMountedCache(
+        "/root/.local/share/pnpm/store",
+        dag.cacheVolume("buzz-linux-pnpm-store-cache"),
+      )
+      .withMountedCache(
+        "/src/desktop/src-tauri/target",
+        dag.cacheVolume("buzz-linux-cargo-target-cache"),
+      )
       .withExec([
         "bash",
         "-lc",
@@ -108,7 +136,6 @@ export class BuzzLinuxSmoke {
           "source bin/activate-hermit",
           "just desktop-install-ci",
           `cd desktop && node scripts/set-version-from-tag.mjs "${version}"`,
-          "cd src-tauri && cargo update --workspace",
           "cd /src",
           "cat > desktop/src-tauri/tauri.canary.conf.json <<'JSON'",
           '{"bundle":{"createUpdaterArtifacts":false}}',
@@ -126,8 +153,7 @@ export class BuzzLinuxSmoke {
         [
           "set -euo pipefail",
           "cd /src",
-          "git apply --check /tap/patches/buzz-linux-apprun-hooks.patch",
-          "git apply /tap/patches/buzz-linux-apprun-hooks.patch",
+          "grep -q 'source.*apprun-hooks/\\*' desktop/scripts/fix-appimage.sh",
           "appimage=$(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f -print -quit)",
           "test -n \"$appimage\"",
           "appimage=$(realpath \"$appimage\")",
@@ -158,14 +184,66 @@ export class BuzzLinuxSmoke {
   }
 
   @func()
-  async smokeTest(
+  async releaseBundle(
     tap: Directory,
     sourceRepository = DEFAULT_SOURCE_REPOSITORY,
     sourceRef = DEFAULT_SOURCE_REF,
     version = DEFAULT_VERSION,
     revision = "1",
-  ): Promise<string> {
+  ): Promise<Directory> {
     const build = this.sourceBuild(tap, sourceRepository, sourceRef, version, revision)
+    const verification = await this.verifyBuild(tap, build, version, revision)
+    const sha256 = verification.sha256
+    const releaseTag = `buzz-linux-${version}-${revision}`
+    const downloadUrl = `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`
+    const caskContents = await tap.file(CASK_PATH).contents()
+    const updatedCask = caskContents
+      .replace(/version ".*"/, `version "${version},${revision}"`)
+      .replace(/url ".*"/, `url "${downloadUrl}"`)
+      .replace(/sha256 x86_64_linux: ".*"/, `sha256 x86_64_linux: "${sha256}"`)
+    const release = {
+      package: "buzz-linux",
+      kind: "source_build_rust_appimage_cask",
+      homebrew_path: CASK_PATH,
+      version: `${version},${revision}`,
+      release_tag: releaseTag,
+      asset_name: build.assetName,
+      artifact_sha256: sha256,
+      download_url: downloadUrl,
+      release_title: `Buzz Linux ${version}-${revision}`,
+      release_notes: `Portable x86_64 Linux build compiled from block/buzz@${sourceRef}.`,
+      commit_message: `Update buzz-linux cask to ${version}-${revision}`,
+      upstream: {
+        kind: "git",
+        repo: sourceRepository,
+        ref: sourceRef,
+        version,
+        commit: sourceRef,
+      },
+    }
+    const ciLog = [
+      "Buzz Linux smoke test passed.",
+      `source_repository=${sourceRepository}`,
+      `source_ref=${sourceRef}`,
+      `artifact=artifacts/${build.assetName}`,
+      `sha256=${sha256}`,
+      verification.output,
+      "",
+    ].join("\n")
+
+    return dag.directory()
+      .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+      .withFile("homebrew/buzz-linux.rb", dag.file("buzz-linux.rb", updatedCask))
+      .withFile("release.json", dag.file("release.json", json(release)))
+      .withFile("ci.log", dag.file("ci.log", ciLog))
+  }
+
+  private async verifyBuild(
+    tap: Directory,
+    build: { assetName: string; artifactPath: string; container: Container },
+    version: string,
+    revision: string,
+  ): Promise<{ output: string; sha256: string }> {
     const artifact = build.container.file(build.artifactPath)
     const sha256 = (
       await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
@@ -237,6 +315,18 @@ export class BuzzLinuxSmoke {
       ])
       .stdout()
 
-    return output
+    return { output, sha256 }
+  }
+
+  @func()
+  async smokeTest(
+    tap: Directory,
+    sourceRepository = DEFAULT_SOURCE_REPOSITORY,
+    sourceRef = DEFAULT_SOURCE_REF,
+    version = DEFAULT_VERSION,
+    revision = "1",
+  ): Promise<string> {
+    const build = this.sourceBuild(tap, sourceRepository, sourceRef, version, revision)
+    return (await this.verifyBuild(tap, build, version, revision)).output
   }
 }

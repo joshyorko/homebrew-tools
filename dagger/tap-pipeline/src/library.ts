@@ -45,6 +45,10 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
   return `${input.prefix ?? ""}${compactUtcTimestamp(input.committedAt)}.${shortSha}`
 }
 
+export function packagedVersionForUpstreamComparison(packageId: string, version: string): string {
+  return packageId === "buzz-linux" ? version.split(",", 1)[0] : version
+}
+
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
     id: "t3code-cli-main",
@@ -124,6 +128,20 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
       kind: "github_release",
       repo: "https://github.com/devsy-org/devsy",
       assetName: "Devsy_linux_x86_64.AppImage",
+    },
+  },
+  {
+    id: "buzz-linux",
+    kind: "source_build_rust_appimage_cask",
+    homebrewPath: "Casks/buzz-linux.rb",
+    supportsPrCi: true,
+    autoUpdate: {
+      kind: "github_release_latest_tag",
+      stripPrefix: "desktop-v",
+    },
+    upstream: {
+      kind: "github_release",
+      repo: "https://github.com/block/buzz",
     },
   },
   {
@@ -347,6 +365,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["rcc", ["Casks/rcc.rb"]],
   ["action-server", ["Casks/action-server.rb"]],
   ["devpod-linux", ["Casks/devpod-linux.rb", "Formula/devpod-appindicator-runtime-tools.rb"]],
+  ["buzz-linux", ["Casks/buzz-linux.rb", "dagger/buzz-linux-smoke/"]],
   ["t3-code-linux", ["Casks/t3-code-linux.rb"]],
 ]
 

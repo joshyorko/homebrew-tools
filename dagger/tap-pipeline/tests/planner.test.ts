@@ -9,9 +9,15 @@ import {
   isTransientUpstreamProbeError,
   listAutoUpdateSlots,
   packagesForAutoUpdateSlot,
+  packagedVersionForUpstreamComparison,
   platformPathsChanged,
   TransientUpstreamProbeError,
 } from "../src/library.ts"
+
+test("Buzz compares the upstream release against the first cask version component", () => {
+  assert.equal(packagedVersionForUpstreamComparison("buzz-linux", "0.5.0,4"), "0.5.0")
+  assert.equal(packagedVersionForUpstreamComparison("rcc", "18.18.0"), "18.18.0")
+})
 
 test("listAutoUpdateSlots returns the stable slot order", () => {
   assert.deepEqual(
@@ -53,6 +59,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
     "antigravity-cli": "Formula/antigravity-cli.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
+    "buzz-linux": "Casks/buzz-linux.rb",
     "fizzy-cli-master": "Formula/fizzy-cli-master.rb",
     "fizzy-popper-self-hosted": "Formula/fizzy-popper-self-hosted.rb",
     "fizzy-symphony": "Formula/fizzy-symphony.rb",

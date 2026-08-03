@@ -4,6 +4,7 @@ import {
   changedCiPackagesFromPaths,
   listAutoUpdateSlots as slotSummaries,
   packageSummaries,
+  packagedVersionForUpstreamComparison,
   parseAutoUpdateSlotId,
   packagesForAutoUpdateSlot as slotPackages,
   formatGitHeadVersion,
@@ -563,7 +564,9 @@ export class TapPipeline {
         current_version: currentVersion,
         upstream_version: upstreamVersion,
         current_release_published: currentReleasePublished,
-        needs_update: currentVersion !== upstreamVersion || !currentReleasePublished,
+        needs_update:
+          packagedVersionForUpstreamComparison(entry.id, currentVersion) !== upstreamVersion
+          || !currentReleasePublished,
       }
     }))
 
@@ -762,6 +765,8 @@ export class TapPipeline {
         return `devsy-${version}`
       case "devsy-desktop":
         return `devsy-desktop-${version}`
+      case "buzz-linux":
+        return `buzz-linux-${version.replace(/,/g, "-")}`
       case "t3code-cli-main":
         return `t3code-cli-main-${version}`
       case "codex-release":

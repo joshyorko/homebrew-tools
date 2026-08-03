@@ -50,8 +50,8 @@ jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'buzz-daily' && inputs.slot_id != 'camp-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule != '13 10 * * *' && github.event.schedule != '23 10 * * *')
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *')
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -143,16 +143,6 @@ jobs:
           echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)"
         } >> "$GITHUB_OUTPUT"
 
-  buzz:
-    name: Update Buzz Linux
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'buzz-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule == '13 10 * * *')
-    uses: ./.github/workflows/buzz-linux.yml
-    with:
-      auto_update: true
-    secrets: inherit
-
   camp:
     name: Sync Camp Formula
     if: >-
@@ -202,7 +192,22 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Resolve immutable Buzz Linux source
+      if: matrix.package_id == 'buzz-linux'
+      id: buzz_source
+      run: |
+        set -euo pipefail
+        release="$(gh api repos/block/buzz/releases/latest)"
+        tag="$(jq -er '.tag_name | select(startswith("desktop-v"))' <<<"$release")"
+        version="${tag#desktop-v}"
+        commit="$(gh api "repos/block/buzz/commits/$tag" --jq '.sha')"
+        test "$commit" = "$(jq -er '.target_commitish' <<<"$release")"
+        {
+          echo "version=$version"
+          echo "commit=$commit"
+        } >> "$GITHUB_OUTPUT"
     - name: Export release bundle
+      if: matrix.package_id != 'buzz-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -214,6 +219,21 @@ jobs:
           release-bundle
           --package-id="${{ matrix.package_id }}"
           --github-token=env://GH_TOKEN
+
+    - name: Export Buzz Linux release bundle
+      if: matrix.package_id == 'buzz-linux'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/buzz-linux-smoke
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          -o "$RUNNER_TEMP/bundle"
+          release-bundle
+          --tap=.
+          --source-ref="${{ steps.buzz_source.outputs.commit }}"
+          --version="${{ steps.buzz_source.outputs.version }}"
 
     - name: Upload release bundle artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

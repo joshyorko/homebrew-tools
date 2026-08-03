@@ -32,7 +32,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     - name: Run package CI through Dagger
-      if: inputs.action == 'ci'
+      if: inputs.action == 'ci' && inputs.package_id != 'buzz-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -43,8 +43,35 @@ jobs:
           ci-check
           --package-id="${{ inputs.package_id }}"
 
+    - name: Run Buzz Linux CI through Dagger
+      if: inputs.action == 'ci' && inputs.package_id == 'buzz-linux'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/buzz-linux-smoke
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          smoke-test
+          --tap=.
+
+    - name: Resolve immutable Buzz Linux source
+      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
+      id: buzz_source
+      run: |
+        set -euo pipefail
+        release="$(gh api repos/block/buzz/releases/latest)"
+        tag="$(jq -er '.tag_name | select(startswith("desktop-v"))' <<<"$release")"
+        version="${tag#desktop-v}"
+        commit="$(gh api "repos/block/buzz/commits/$tag" --jq '.sha')"
+        test "$commit" = "$(jq -er '.target_commitish' <<<"$release")"
+        {
+          echo "version=$version"
+          echo "commit=$commit"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Export release bundle
-      if: inputs.action == 'release' || inputs.action == 'force-release'
+      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id != 'buzz-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -55,6 +82,21 @@ jobs:
           -o "$RUNNER_TEMP/bundle"
           release-bundle
           --package-id="${{ inputs.package_id }}"
+
+    - name: Export Buzz Linux release bundle
+      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/buzz-linux-smoke
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          -o "$RUNNER_TEMP/bundle"
+          release-bundle
+          --tap=.
+          --source-ref="${{ steps.buzz_source.outputs.commit }}"
+          --version="${{ steps.buzz_source.outputs.version }}"
 
     - name: Publish manual release output
       if: inputs.action == 'release' || inputs.action == 'force-release'
