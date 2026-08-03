@@ -110,6 +110,10 @@ export class BuzzLinuxSmoke {
         dag.cacheVolume("buzz-linux-pnpm-store-cache"),
       )
       .withMountedCache(
+        "/src/target",
+        dag.cacheVolume("buzz-linux-sidecar-target-cache"),
+      )
+      .withMountedCache(
         "/src/desktop/src-tauri/target",
         dag.cacheVolume("buzz-linux-cargo-target-cache"),
       )
@@ -278,7 +282,7 @@ export class BuzzLinuxSmoke {
         "bash",
         "-lc",
         [
-          "set -euo pipefail",
+          "set -euxo pipefail",
           "repo=$(brew --repository)",
           "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
           "mkdir -p \"$tap_dir/Casks\"",

@@ -29,6 +29,7 @@ test("persists expensive source-build caches across authenticated Dagger runs", 
   assert.match(source, /buzz-linux-pnpm-store-cache/)
   assert.match(source, /buzz-linux-cargo-registry-cache/)
   assert.match(source, /buzz-linux-cargo-git-cache/)
+  assert.match(source, /buzz-linux-sidecar-target-cache/)
   assert.match(source, /buzz-linux-cargo-target-cache/)
 })
 
