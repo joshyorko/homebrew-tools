@@ -795,12 +795,25 @@ export class TapPipeline {
   private async tapReleaseExists(packageId: string, version: string): Promise<boolean> {
     const releaseTag = this.expectedTapReleaseTag(packageId, version)
     const url = `https://api.github.com/repos/${TAP_REPOSITORY}/releases/tags/${encodeURIComponent(releaseTag)}`
+    const existsScript = renderGithubApiFetchScript()
+      .replace(
+        "  if (response.ok) {",
+        [
+          "  if (response.status === 404) {",
+          "    await writeStdout(\"false\")",
+          "    completed = true",
+          "    break",
+          "  }",
+          "  if (response.ok) {",
+        ].join("\n"),
+      )
+      .replace("    await writeStdout(await response.text())", "    await writeStdout(\"true\")")
     const output = await this.githubApiContainer()
       .withExec([
         "node",
         "--input-type=module",
         "-e",
-        renderGithubApiFetchScript({ successOutput: "true", notFoundOutput: "false" }),
+        existsScript,
         url,
       ])
       .stdout()

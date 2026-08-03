@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 
 import { renderGithubApiFetchScript } from "../src/github-api.ts"
 
@@ -56,4 +57,12 @@ test("renderGithubApiFetchScript can treat 404 as a non-error sentinel", () => {
   assert.match(script, /await writeStdout\("false"\)/)
   assert.match(script, /completed = true/)
   assert.match(script, /await writeStdout\("true"\)/)
+})
+
+test("tap release existence checks inline the 404 sentinel into the Dagger entrypoint", () => {
+  const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+
+  assert.match(source, /response\.status === 404/)
+  assert.match(source, /await writeStdout\(\\"false\\"\)/)
+  assert.match(source, /await writeStdout\(\\"true\\"\)/)
 })
