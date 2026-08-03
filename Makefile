@@ -8,42 +8,6 @@ CODEX_DESKTOP_LINUX_FEATURES ?= $(if $(strip $(CODEX_DESKTOP_SAVED_LINUX_FEATURE
 CODEX_DESKTOP_BUNDLE_DIR ?= dist/codex-desktop-local
 CODEX_DESKTOP_BUNDLE_ARCHIVE ?= dist/codex-desktop-local.tar.gz
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
-CODEX_RELEASE_INSTALL_ARGS =
-
-ifneq ($(strip $(CODEX_RELEASE_SOURCE_REPO)),)
-CODEX_RELEASE_INSTALL_ARGS += --source-repo "$(CODEX_RELEASE_SOURCE_REPO)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_REF)),)
-CODEX_RELEASE_INSTALL_ARGS += --ref "$(CODEX_RELEASE_REF)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_SOURCE_DIR)),)
-CODEX_RELEASE_INSTALL_ARGS += --source-dir "$(CODEX_RELEASE_SOURCE_DIR)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_CACHE_DIR)),)
-CODEX_RELEASE_INSTALL_ARGS += --cache-dir "$(CODEX_RELEASE_CACHE_DIR)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_OUTPUT_DIR)),)
-CODEX_RELEASE_INSTALL_ARGS += --output-dir "$(CODEX_RELEASE_OUTPUT_DIR)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_ARTIFACT)),)
-CODEX_RELEASE_INSTALL_ARGS += --artifact "$(CODEX_RELEASE_ARTIFACT)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_BUNDLE_DIR)),)
-CODEX_RELEASE_INSTALL_ARGS += --bundle-dir "$(CODEX_RELEASE_BUNDLE_DIR)"
-endif
-
-ifneq ($(strip $(CODEX_RELEASE_SKIP_INSTALL)),)
-CODEX_RELEASE_INSTALL_ARGS += --skip-install
-endif
-
-CODEX_RELEASE_INSTALL_ARGS += $(CODEX_RELEASE_INSTALL_EXTRA_ARGS)
-
 ifneq ($(strip $(CODEX_DESKTOP_CODEX_DMG)),)
 CODEX_DESKTOP_INSTALL_ARGS += --codex-dmg "$(CODEX_DESKTOP_CODEX_DMG)"
 endif
@@ -62,21 +26,13 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex codex-build codex-release-local codex-desktop-build codex-desktop-build-archive codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-release-install test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: codex-desktop-build codex-desktop-build-archive codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
 
 print-codex-desktop-linux-features-full:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_FULL)"
-
-codex:
-	scripts/install-codex-release-local.sh $(CODEX_RELEASE_INSTALL_ARGS) -- $(CODEX_RELEASE_BUILD_ARGS)
-
-codex-build:
-	CODEX_RELEASE_SKIP_INSTALL=1 scripts/install-codex-release-local.sh $(CODEX_RELEASE_INSTALL_ARGS) -- $(CODEX_RELEASE_BUILD_ARGS)
-
-codex-release-local: codex-build
 
 codex-desktop-build:
 	CODEX_DESKTOP_SKIP_INSTALL=1 scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
@@ -117,9 +73,6 @@ codex-desktop-rebuild-dry-run:
 
 test-codex-desktop-install:
 	scripts/test-install-codex-desktop-local.sh
-
-test-codex-release-install:
-	scripts/test-install-codex-release-local.sh
 
 test-codex-desktop-setup:
 	python3 scripts/test-codex-desktop-feature-wizard.py

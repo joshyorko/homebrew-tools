@@ -69,24 +69,6 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
-    id: "codex-release",
-    kind: "source_build_rust_formula",
-    homebrewPath: "Formula/codex-release.rb",
-    supportsPrCi: true,
-    autoUpdate: {
-      kind: "git_head_sha",
-      ref: "tap-release",
-      prefix: "release.",
-      shaLength: 12,
-      includeCommitDate: true,
-    },
-    upstream: {
-      kind: "git",
-      repo: "https://github.com/joshyorko/codex",
-      ref: "tap-release",
-    },
-  },
-  {
     id: "antigravity-cli",
     kind: "http_binary_formula",
     homebrewPath: "Formula/antigravity-cli.rb",
@@ -321,10 +303,6 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "scripts/build-t3code-resource-monitor.sh",
       "dagger/t3code-cli-main-smoke/",
     ],
-  ],
-  [
-    "codex-release",
-    ["Formula/codex-release.rb", "scripts/package-codex-release.mjs"],
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
   ["devsy", ["Formula/devsy.rb"]],

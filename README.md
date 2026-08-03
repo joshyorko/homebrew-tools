@@ -72,7 +72,6 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
-| `brew install joshyorko/tools/codex-release` | Install Codex CLI from Josh Yorko's tap-release branch fork; executable remains `codex` |
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
 | `brew install joshyorko/tools/camp` | Install the latest verified Camp Linux release |
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
@@ -189,59 +188,6 @@ That smoke test is the real end-to-end path:
 - package the tarball the formula consumes
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
-
-### Codex Release (Fork Channel)
-
-Codex CLI packaged from Josh Yorko's fork `tap-release` branch for Linux/devcontainer use.
-The fork should keep upstream `main` available for clean syncs, then promote chosen
-commits to the `tap-release` branch for tap publishing.
-
-> [!NOTE]
-> Use the full tap path to make the fork channel explicit:
-> ```bash
-> brew install joshyorko/tools/codex-release
-> ```
-
-```bash
-brew install joshyorko/tools/codex-release
-codex --help
-```
-
-The formula token is `codex-release` so it does not collide with upstream, but it
-installs the `codex` executable. Uninstall the official `codex` cask first if it
-already owns that binary.
-
-For fast local iteration, build the Codex asset locally and install it through a
-temporary local tap:
-
-```bash
-make codex
-```
-
-`make codex` fetches `joshyorko/codex` `tap-release` into
-`.codex-release/source`, builds the Linux release tarball in a local
-Docker/Podman Ubuntu container, reuses Rust and native dependency caches under
-`.codex-release/cache`, writes the raw Codex tarball under
-`dist/codex-release-build/`, passes that tarball to the local Dagger tap
-pipeline, writes the rendered Homebrew bundle under `dist/codex-release-local/`,
-and runs `brew install` or `brew reinstall` from a temporary tap. Use
-`make codex-build` to only build and render the bundle.
-
-To install from an already-built local tarball:
-
-```bash
-CODEX_RELEASE_ARTIFACT=/path/to/codex-release-release.20260608000000.abc123.tar.gz make codex
-```
-
-Extra Codex build flags pass through with `CODEX_RELEASE_BUILD_ARGS`, for
-example `CODEX_RELEASE_BUILD_ARGS=--rebuild-image make codex`. Override the
-source with `CODEX_RELEASE_SOURCE_REPO` and `CODEX_RELEASE_REF` when needed.
-If the Rust compiler is killed during the containerized build on a
-memory-constrained machine, lower Cargo parallelism:
-
-```bash
-CODEX_RELEASE_CARGO_JOBS=2 make codex-build
-```
 
 ### Antigravity CLI
 
