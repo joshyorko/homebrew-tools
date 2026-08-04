@@ -2,10 +2,10 @@ cask "devsy-desktop" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "1.13.0"
-  sha256 x86_64_linux: "44a8c2a92d7c76c781e588c8f5832c1b1680e5f6b8ddd6ad160a43946212f613"
+  version "1.14.0"
+  sha256 x86_64_linux: "c8ac761375eae0ca2ea213a3dd2ca75e59881fbccc65aa18a55b92410020a718"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-desktop-1.13.0/Devsy_linux_x86_64.AppImage"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-desktop-1.14.0/Devsy_linux_x86_64.AppImage"
   name "Devsy"
   desc "Desktop interface for the Devsy development environment platform"
   homepage "https://devsy.sh/"
