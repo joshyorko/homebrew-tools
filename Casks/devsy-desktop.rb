@@ -2,7 +2,7 @@ cask "devsy-desktop" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "1.14.1"
+  version "1.14.1,1"
   sha256 x86_64_linux: "a0f5e4562bdb1a55ef08210b37b94bcc6881c743278503515961e881667909dc"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-desktop-1.14.1/Devsy_linux_x86_64.AppImage"

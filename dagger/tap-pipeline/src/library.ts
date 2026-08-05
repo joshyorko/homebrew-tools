@@ -46,7 +46,7 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 }
 
 export function packagedVersionForUpstreamComparison(packageId: string, version: string): string {
-  return packageId === "buzz-linux" ? version.split(",", 1)[0] : version
+  return ["buzz-linux", "devsy-desktop"].includes(packageId) ? version.split(",", 1)[0] : version
 }
 
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [

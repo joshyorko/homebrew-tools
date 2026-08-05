@@ -751,7 +751,7 @@ export class TapPipeline {
       case "devsy":
         return `devsy-${version}`
       case "devsy-desktop":
-        return `devsy-desktop-${version}`
+        return `devsy-desktop-${version.split(",", 1)[0]}`
       case "buzz-linux":
         return `buzz-linux-${version.replace(/,/g, "-")}`
       case "t3code-cli-main":

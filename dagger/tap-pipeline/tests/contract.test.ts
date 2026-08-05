@@ -275,7 +275,9 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   const renderer = readFileSync(new URL("../src/devsy-render.ts", import.meta.url), "utf8")
   const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8")
   const formulaVersion = formula.match(/^\s*version "(\d+\.\d+\.\d+)"$/m)?.[1]
-  const caskVersion = cask.match(/^\s*version "(\d+\.\d+\.\d+)"$/m)?.[1]
+  const caskVersionMatch = cask.match(/^\s*version "(\d+\.\d+\.\d+),(\d+)"$/m)
+  const caskVersion = caskVersionMatch?.[1]
+  const caskRevision = caskVersionMatch?.[2]
   const formulaUrls = [...formula.matchAll(/^\s*url "([^"]+)"$/gm)].map((match) => match[1])
   const formulaDigests = [...formula.matchAll(/^\s*sha256 "([a-f0-9]{64})"$/gm)].map((match) => match[1])
   const caskUrl = cask.match(/^\s*url "([^"]+)"$/m)?.[1]
@@ -300,6 +302,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.match(cask, /depends_on arch: :x86_64/)
   assert.doesNotMatch(cask, /arch arm/)
   assert.equal(caskVersion, formulaVersion)
+  assert.equal(caskRevision, "1")
   assert.match(caskUrl ?? "", new RegExp(`/(?:v|devsy-desktop-)${caskVersion}/Devsy_linux_x86_64\\.AppImage$`))
   assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
   assert.match(cask, /target: "devsy-desktop"/)
@@ -315,6 +318,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
 
   assert.match(pipeline, /case "devsy"/)
   assert.match(pipeline, /case "devsy-desktop"/)
+  assert.match(pipeline, /case "devsy-desktop":\n\s+return `devsy-desktop-\$\{version\.split\(",", 1\)\[0\]\}`/)
   assert.match(renderer, /GitHub digest mismatch for/)
   assert.match(pipeline, /Devsy_linux_x86_64\.AppImage/)
   assert.match(renderer, /devsy-linux-amd64/)

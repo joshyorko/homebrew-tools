@@ -14,8 +14,9 @@ import {
   TransientUpstreamProbeError,
 } from "../src/library.ts"
 
-test("Buzz compares the upstream release against the first cask version component", () => {
+test("package revisions compare against the first cask version component", () => {
   assert.equal(packagedVersionForUpstreamComparison("buzz-linux", "0.5.0,4"), "0.5.0")
+  assert.equal(packagedVersionForUpstreamComparison("devsy-desktop", "1.14.1,1"), "1.14.1")
   assert.equal(packagedVersionForUpstreamComparison("rcc", "18.18.0"), "18.18.0")
 })
 
