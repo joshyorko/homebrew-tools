@@ -239,7 +239,7 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
   assert.match(source, /! grep -Eq .*AppImage/)
 
-  assert.match(cask, /^\s*version "main\.20260805060356\.3c5bdb84a936,1"$/m)
+  assert.match(cask, /^\s*version "main\.20260805114256\.2a04db134c2d,1"$/m)
   assert.match(cask, /T3-Code-#\{version\.csv\.first\}-#\{arch\}\.AppImage/)
   assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
   assert.match(cask, /raise "T3 Code AppRun is not executable" unless File\.executable\?\(app_run\)/)
