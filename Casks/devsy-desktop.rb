@@ -32,6 +32,9 @@ cask "devsy-desktop" do
     system "chmod", "+x", appimage
     system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
 
+    app_run = "#{staged_path}/squashfs-root/AppRun"
+    raise "No executable AppRun found in extracted Devsy AppImage" unless File.executable?(app_run)
+
     desktop_source = "#{staged_path}/squashfs-root/devsy-desktop.desktop"
     raise "No desktop entry found in extracted Devsy AppImage" unless File.file?(desktop_source)
 
@@ -51,7 +54,7 @@ cask "devsy-desktop" do
     wrapper = "#{staged_path}/devsy-desktop-wrapper"
     File.write(wrapper, <<~SH)
       #!/bin/bash
-      exec "#{appimage}" "$@"
+      exec "#{app_run}" "$@"
     SH
     FileUtils.chmod 0755, wrapper
   end

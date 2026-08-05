@@ -307,6 +307,9 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.doesNotMatch(cask, /target: "devsy"/)
   assert.doesNotMatch(cask, /binary .*resources\/bin\/devsy/)
   assert.doesNotMatch(cask, /--no-sandbox/)
+  assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
+  assert.match(cask, /exec "#\{app_run\}" "\$@"/)
+  assert.doesNotMatch(cask, /exec "#\{appimage\}" "\$@"/)
   assert.doesNotMatch(cask, /\bflatpak\b/i)
   assert.doesNotMatch(cask, /\brpm\b/i)
 

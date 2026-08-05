@@ -3015,6 +3015,9 @@ end
               "test -n \"$embedded_cli\"",
               `test "$(sha256sum "$embedded_cli" | awk '{print $1}')" = "${cliBuild.amd64.sha256}"`,
               "test -n \"$(find \"$(brew --prefix)/Caskroom/devsy-desktop\" -path '*/squashfs-root/usr/lib/libappindicator.so.1' -type f -print -quit)\"",
+              "grep -q 'squashfs-root/AppRun' \"$(brew --prefix)/bin/devsy-desktop\"",
+              "! grep -q 'exec .*\\.AppImage' \"$(brew --prefix)/bin/devsy-desktop\"",
+              "test -n \"$(find \"$(brew --prefix)/Caskroom/devsy-desktop\" -path '*/squashfs-root/AppRun' -type f -perm -111 -print -quit)\"",
               "test -n \"$(find \"$(brew --prefix)/Caskroom/devsy-desktop\" -name 'Devsy_linux_x86_64.AppImage' -type f -perm -111 -print -quit)\"",
             ].join("\n"),
           ])

@@ -255,8 +255,10 @@ flatpak install --user ./Devsy.flatpak
 ```
 
 The AppImage bundles `libnotify.so.4`, `libXss.so.1`, `libXtst.so.6`,
-`libappindicator.so.1`, and its StatusNotifier implementation. FUSE, GTK3, NSS,
-AT-SPI, and `xdg-utils` remain host runtime requirements. Bluefin runtime validation
+`libappindicator.so.1`, and its StatusNotifier implementation. The Homebrew cask
+extracts the verified AppImage during installation and launches its bundled `AppRun`
+directly, so it does not require FUSE at runtime. GTK3, NSS, AT-SPI, and `xdg-utils`
+remain host runtime requirements. Bluefin runtime validation
 confirmed a Wayland window, active StatusNotifier tray item and menu, protocol launch,
 sandboxed Electron renderer, formula/cask coexistence, and a clean exit. The embedded
 AppIndicator support means this package must not inherit DevPod's separate
