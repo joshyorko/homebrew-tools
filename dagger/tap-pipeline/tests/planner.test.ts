@@ -17,6 +17,10 @@ import {
 test("package revisions compare against the first cask version component", () => {
   assert.equal(packagedVersionForUpstreamComparison("buzz-linux", "0.5.0,4"), "0.5.0")
   assert.equal(packagedVersionForUpstreamComparison("devsy-desktop", "1.14.1,1"), "1.14.1")
+  assert.equal(
+    packagedVersionForUpstreamComparison("t3-code-linux", "main.20260805060356.3c5bdb84a936,1"),
+    "main.20260805060356.3c5bdb84a936",
+  )
   assert.equal(packagedVersionForUpstreamComparison("rcc", "18.18.0"), "18.18.0")
 })
 

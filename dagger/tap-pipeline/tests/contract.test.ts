@@ -228,10 +228,24 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   }
 
   const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
+  const cask = readFileSync(new URL("../../../Casks/t3-code-linux.rb", import.meta.url), "utf8")
+  const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8")
 
   assert.match(source, /pnpm",\s*"dist:desktop:linux"/)
   assert.match(source, /T3-Code-\$\{resolvedVersion\}-x86_64\.AppImage/)
   assert.doesNotMatch(source, /repos\/pingdotgg\/t3code\/releases\/latest/)
+  assert.match(source, /case "t3-code-linux":\n\s+return `t3-code-linux-\$\{version\.split\(",", 1\)\[0\]\}`/)
+  assert.match(source, /test -x .*squashfs-root\/AppRun/)
+  assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
+  assert.match(source, /! grep -Eq .*AppImage/)
+
+  assert.match(cask, /^\s*version "main\.20260805060356\.3c5bdb84a936,1"$/m)
+  assert.match(cask, /T3-Code-#\{version\.csv\.first\}-#\{arch\}\.AppImage/)
+  assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
+  assert.match(cask, /raise "T3 Code AppRun is not executable" unless File\.executable\?\(app_run\)/)
+  assert.match(cask, /exec "#\{app_run\}" --no-sandbox "\$@"/)
+  assert.doesNotMatch(cask, /exec .*AppImage.*--no-sandbox/)
+  assert.match(readme, /T3 Code[\s\S]*launches its extracted `AppRun`[\s\S]*does not require FUSE at runtime/)
 })
 
 test("antigravity CLI is a manual closed-source binary formula", () => {

@@ -2,7 +2,7 @@ cask "t3-code-linux" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "main.20260805060356.3c5bdb84a936"
+  version "main.20260805060356.3c5bdb84a936,1"
   sha256 x86_64_linux: "5fa5898718fb23574476afba70bf00f80e9884e65d804f6f6ded292e63d22c97"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-main.20260805060356.3c5bdb84a936/T3-Code-main.20260805060356.3c5bdb84a936-x86_64.AppImage"
@@ -26,9 +26,12 @@ cask "t3-code-linux" do
     FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
     FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
 
-    appimage = "#{staged_path}/T3-Code-#{version}-#{arch}.AppImage"
+    appimage = "#{staged_path}/T3-Code-#{version.csv.first}-#{arch}.AppImage"
     system "chmod", "+x", appimage
     system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
+
+    app_run = "#{staged_path}/squashfs-root/AppRun"
+    raise "T3 Code AppRun is not executable" unless File.executable?(app_run)
 
     desktop_file = "#{staged_path}/t3-code-linux.desktop"
     desktop_source = Dir["#{staged_path}/squashfs-root/*.desktop"].find { |path| File.file?(path) }
@@ -75,7 +78,7 @@ cask "t3-code-linux" do
       path_prepend_if_dir "$HOME/.local/share/mise/shims"
       export PATH
 
-      exec "#{staged_path}/T3-Code-#{version}-#{arch}.AppImage" --no-sandbox "$@"
+      exec "#{app_run}" --no-sandbox "$@"
     SH
     system "chmod", "+x", wrapper
   end

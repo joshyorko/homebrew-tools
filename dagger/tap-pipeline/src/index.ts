@@ -763,7 +763,7 @@ export class TapPipeline {
       case "fizzy-symphony":
         return `fizzy-symphony-${version}`
       case "t3-code-linux":
-        return `t3-code-linux-${version}`
+        return `t3-code-linux-${version.split(",", 1)[0]}`
       case "codex-desktop-linux":
         return `codex-desktop-linux-${version}`
       case "vscode-insiders-linux":
@@ -3163,6 +3163,11 @@ end
               ...tapStagingCommands("t3-code-linux"),
               "brew install --cask test/tap/t3-code-linux",
               "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
+              "installed_dir=$(find \"$(brew --caskroom)/t3-code-linux\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
+              "test -n \"$installed_dir\"",
+              "test -x \"$installed_dir/squashfs-root/AppRun\"",
+              "grep -Fq 'squashfs-root/AppRun' \"$(brew --prefix)/bin/t3-code-linux\"",
+              "! grep -Eq '^exec .*AppImage' \"$(brew --prefix)/bin/t3-code-linux\"",
               "test -f \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",

@@ -139,6 +139,7 @@ devpod provider list-available
 T3 Code desktop packaged for Linux Homebrew as a separate cask. The tap builds
 the Linux AppImage from upstream `pingdotgg/t3code` `main` with Dagger, uploads
 that immutable artifact to this tap's releases, then renders the cask around it.
+The cask launches its extracted `AppRun` directly, so it does not require FUSE at runtime.
 The Linux-specific token avoids colliding with the official `homebrew/cask`
 `t3-code` package.
 
