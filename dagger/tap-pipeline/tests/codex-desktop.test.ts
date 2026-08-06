@@ -775,6 +775,7 @@ test("codex desktop is local-only and not published by tap automation", () => {
   assert.match(pipeline, /CODEX_ACCEPTANCE_DECISION_JSON", "\/work\/reports\/upstream-dmg-decision\.json"/)
   assert.match(pipeline, /install-exit-code/)
   assert.match(pipeline, /reports\/install\.log/)
+  assert.match(pipeline, /"mkdir -p \/work\/reports",\s*"\("/)
   assert.match(pipeline, /if \(!build\.ok\)/)
   assert.match(pipeline, /withFile\("result\.json"/)
   assert.match(pipeline, /reports\/upstream-dmg-decision\.json/)

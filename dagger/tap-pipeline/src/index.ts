@@ -1794,9 +1794,9 @@ end
         "-lc",
         [
           "set +e",
+          "mkdir -p /work/reports",
           "(",
           "  set -euo pipefail",
-          "  mkdir -p /work/reports",
           `  printf '%s\\n' '${JSON.stringify({ enabled: linuxFeatures })}' > /work/linux-features.json`,
           "  node /tap/scripts/patch-codex-desktop-conversion.mjs --conversion-dir /conversion",
           "  bash scripts/install-deps.sh",
