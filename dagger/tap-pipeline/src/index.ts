@@ -1803,8 +1803,8 @@ end
           "  export PATH=\"/root/.local/bin:$PATH\"",
           "  command -v 7zz",
           "  ./install.sh --fresh /inputs/Codex.dmg",
-          ")",
-          "install_status=$?",
+          ") 2>&1 | tee /work/reports/install.log",
+          "install_status=${PIPESTATUS[0]}",
           "printf '%s\\n' \"$install_status\" > /work/reports/install-exit-code",
           "exit 0",
         ].join("\n"),
@@ -3878,6 +3878,7 @@ end
       ["/work/reports/patch-report.json", "reports/patch-report.json"],
       ["/work/reports/rebuild-report.json", "reports/rebuild-report.json"],
       ["/work/reports/install-exit-code", "reports/install-exit-code"],
+      ["/work/reports/install.log", "reports/install.log"],
     ]) {
       try {
         await build.container.file(source).contents()
