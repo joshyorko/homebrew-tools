@@ -7,3 +7,4 @@ dist/
 .tokensave/
 .crabbox.yaml
 .clawpatch
+.venv-codex-desktop-setup/

@@ -3,6 +3,7 @@ CODEX_DESKTOP_CONVERSION_COMMIT ?= $(shell ref="$$(sed -e 's/[[:space:]]*\#.*//'
 CODEX_DESKTOP_LINUX_FEATURES_LEAN := node-repl-reaper open-target-discovery read-aloud read-aloud-mcp chronicle-skysight record-and-replay x11-ewmh-computer-use
 CODEX_DESKTOP_LINUX_FEATURES_FULL := agent-workspace api-key-model-visibility api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort frameless-titlebar global-dictation mcp-helper-reaper node-repl-reaper omarchy-theme open-target-discovery persistent-status-panel pet-overlay project-task-sort read-aloud read-aloud-mcp chronicle-skysight record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use
 CODEX_DESKTOP_FEATURES_CONFIG ?= $(if $(XDG_CONFIG_HOME),$(XDG_CONFIG_HOME),$(HOME)/.config)/homebrew-tools/codex-desktop-features.json
+CODEX_DESKTOP_SETUP_VENV ?= $(CURDIR)/.venv-codex-desktop-setup
 CODEX_DESKTOP_SAVED_LINUX_FEATURES := $(shell if test -f "$(CODEX_DESKTOP_FEATURES_CONFIG)"; then python3 scripts/codex-desktop-feature-wizard.py --config "$(CODEX_DESKTOP_FEATURES_CONFIG)" --print-enabled 2>/dev/null; fi)
 CODEX_DESKTOP_LINUX_FEATURES ?= $(if $(strip $(CODEX_DESKTOP_SAVED_LINUX_FEATURES)),$(CODEX_DESKTOP_SAVED_LINUX_FEATURES),$(CODEX_DESKTOP_LINUX_FEATURES_FULL))
 CODEX_DESKTOP_BUNDLE_DIR ?= dist/codex-desktop-local
@@ -26,7 +27,7 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex-desktop-build codex-desktop-build-archive codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: codex-desktop-build codex-desktop-build-archive codex-desktop-setup-env codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
@@ -41,8 +42,11 @@ codex-desktop-build-archive: codex-desktop-build
 	mkdir -p "$(dir $(CODEX_DESKTOP_BUNDLE_ARCHIVE))"
 	tar -czf "$(CODEX_DESKTOP_BUNDLE_ARCHIVE)" -C "$(dir $(CODEX_DESKTOP_BUNDLE_DIR))" "$(notdir $(CODEX_DESKTOP_BUNDLE_DIR))"
 
-codex-desktop-setup:
-	CODEX_DESKTOP_FEATURES_CONFIG="$(CODEX_DESKTOP_FEATURES_CONFIG)" scripts/setup-codex-desktop-local.sh --full-profile "$(CODEX_DESKTOP_LINUX_FEATURES_FULL)" --lean-profile "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
+codex-desktop-setup-env:
+	CODEX_DESKTOP_SETUP_VENV="$(CODEX_DESKTOP_SETUP_VENV)" scripts/bootstrap-codex-desktop-setup-env.sh
+
+codex-desktop-setup: codex-desktop-setup-env
+	CODEX_DESKTOP_SETUP_PYTHON="$(CODEX_DESKTOP_SETUP_VENV)/bin/python3" CODEX_DESKTOP_FEATURES_CONFIG="$(CODEX_DESKTOP_FEATURES_CONFIG)" scripts/setup-codex-desktop-local.sh --full-profile "$(CODEX_DESKTOP_LINUX_FEATURES_FULL)" --lean-profile "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
 
 codex-desktop-install:
 	scripts/install-codex-desktop-local.sh $(CODEX_DESKTOP_INSTALL_ARGS)
@@ -76,6 +80,7 @@ test-codex-desktop-install:
 
 test-codex-desktop-setup:
 	python3 scripts/test-codex-desktop-feature-wizard.py
+	scripts/test-bootstrap-codex-desktop-setup-env.sh
 	scripts/test-setup-codex-desktop-local.sh
 
 test-codex-desktop-rebuild:
