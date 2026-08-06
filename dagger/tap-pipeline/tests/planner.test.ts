@@ -1,5 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 
 import {
   AUTO_UPDATE_SLOTS,
@@ -8,11 +9,55 @@ import {
   changedPackagesFromPaths,
   isTransientUpstreamProbeError,
   listAutoUpdateSlots,
+  parseRecoveryBrewfile,
   packagesForAutoUpdateSlot,
   packagedVersionForUpstreamComparison,
   platformPathsChanged,
+  recoveryBrewfile,
+  recoveryHomebrewContents,
+  recoveryPackageSummaries,
   TransientUpstreamProbeError,
 } from "../src/library.ts"
+
+test("recovery inventory and Brewfile are derived from release-capable registry entries", () => {
+  const packages = recoveryPackageSummaries()
+  const brewfile = recoveryBrewfile(packages)
+
+  assert.deepEqual(
+    parseRecoveryBrewfile(brewfile).map((entry) => entry.id),
+    packages.map((entry) => entry.id),
+  )
+  assert.equal(brewfile, readFileSync(new URL("../../../recovery/Brewfile", import.meta.url), "utf8"))
+  assert.equal(packages.some((entry) => entry.id === "antigravity-cli"), false)
+  assert.equal(packages.some((entry) => entry.id === "buzz-linux"), true)
+})
+
+test("recovery Brewfile rejects packages without a standard release bundle", () => {
+  assert.throws(
+    () => parseRecoveryBrewfile('brew "joshyorko/tools/antigravity-cli"\n'),
+    /does not have a standard release bundle/,
+  )
+  assert.throws(() => parseRecoveryBrewfile('brew "homebrew/core/wget"\n'), /Unsupported recovery Brewfile entry/)
+})
+
+test("recovery Homebrew rendering points tap release assets at the local file server", () => {
+  const rendered = recoveryHomebrewContents(
+    [
+      '  url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-1.2.3/devsy-linux-amd64"',
+      '  url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-1.2.3/devsy-linux-arm64"',
+    ].join("\n"),
+    "devsy",
+    "http://127.0.0.1:8000/brew-recovery/",
+  )
+
+  assert.equal(
+    rendered,
+    [
+      '  url "http://127.0.0.1:8000/brew-recovery/packages/devsy/artifacts/devsy-linux-amd64"',
+      '  url "http://127.0.0.1:8000/brew-recovery/packages/devsy/artifacts/devsy-linux-arm64"',
+    ].join("\n"),
+  )
+})
 
 test("package revisions compare against the first cask version component", () => {
   assert.equal(packagedVersionForUpstreamComparison("buzz-linux", "0.5.0,4"), "0.5.0")

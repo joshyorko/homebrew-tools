@@ -8,6 +8,9 @@ CODEX_DESKTOP_SAVED_LINUX_FEATURES := $(shell if test -f "$(CODEX_DESKTOP_FEATUR
 CODEX_DESKTOP_LINUX_FEATURES ?= $(if $(strip $(CODEX_DESKTOP_SAVED_LINUX_FEATURES)),$(CODEX_DESKTOP_SAVED_LINUX_FEATURES),$(CODEX_DESKTOP_LINUX_FEATURES_FULL))
 CODEX_DESKTOP_BUNDLE_DIR ?= dist/codex-desktop-local
 CODEX_DESKTOP_BUNDLE_ARCHIVE ?= dist/codex-desktop-local.tar.gz
+RECOVERY_OUTPUT ?= dist/homebrew-tools-recovery
+RECOVERY_FILE_SERVER_URL ?= http://127.0.0.1:8000/homebrew-tools-recovery
+DAGGER_GIT_DIR ?= $(shell git rev-parse --git-common-dir)
 CODEX_DESKTOP_INSTALL_ARGS = --conversion-commit "$(CODEX_DESKTOP_CONVERSION_COMMIT)"
 ifneq ($(strip $(CODEX_DESKTOP_CODEX_DMG)),)
 CODEX_DESKTOP_INSTALL_ARGS += --codex-dmg "$(CODEX_DESKTOP_CODEX_DMG)"
@@ -27,7 +30,13 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: codex-desktop-build codex-desktop-build-archive codex-desktop-setup-env codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: recovery-t3code-cli-main recovery-all codex-desktop-build codex-desktop-build-archive codex-desktop-setup-env codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+
+recovery-t3code-cli-main:
+	dagger -m ./dagger/tap-pipeline call --git-dir="$(DAGGER_GIT_DIR)" -o "$(RECOVERY_OUTPUT)" recovery-export --package-id=t3code-cli-main --file-server-base-url="$(RECOVERY_FILE_SERVER_URL)"
+
+recovery-all:
+	dagger -m ./dagger/tap-pipeline call --git-dir="$(DAGGER_GIT_DIR)" -o "$(RECOVERY_OUTPUT)" recovery-export --brewfile=./recovery/Brewfile --file-server-base-url="$(RECOVERY_FILE_SERVER_URL)"
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"

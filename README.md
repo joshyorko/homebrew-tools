@@ -4,6 +4,17 @@ This tap contains Homebrew casks and formulae for tools maintained by [@joshyork
 
 ## Dagger Platform
 
+When GitHub releases are unavailable, build a local recovery export without installing any packages first:
+
+```bash
+make recovery-t3code-cli-main  # one small, usable export
+make recovery-all              # every standard tap release selected by recovery/Brewfile
+```
+
+Both commands write `dist/homebrew-tools-recovery`. Override `RECOVERY_OUTPUT` or
+`RECOVERY_FILE_SERVER_URL` on the `make` command when the directory will be served elsewhere.
+The all-package Brewfile is checked against the package registry, so unsupported or unknown entries fail before builds start.
+
 This tap is migrating to a Dagger-first platform. The orchestration entrypoint is `dagger/tap-pipeline/`, which owns:
 
 - the package registry
@@ -39,6 +50,24 @@ homebrew/<rendered_file>
 release.json
 ci.log
 ```
+
+The recovery export reuses those package release bundles and provides this stable transport contract:
+
+```text
+Brewfile
+manifest.json
+tap/Formula/*.rb
+tap/Casks/*.rb
+packages/<package-id>/artifacts/*
+packages/<package-id>/release.json
+packages/<package-id>/ci.log
+```
+
+`manifest.json` is schema version 1 and records the package versions plus the SHA256, relative path, and local
+HTTP URL of every artifact. Formulae and casks under `tap/` use the same artifact URLs. The directory is the
+intended future input to Josh's All the Things `--brew` option and may be copied into Hauler or another transport;
+the recovery export itself does not publish to GitHub, build OCI images, inspect Homebrew caches, or require a
+package to be installed. Serve the directory at `RECOVERY_FILE_SERVER_URL` when installing from the local tap.
 
 ## Quick Install
 

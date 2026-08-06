@@ -76,6 +76,7 @@ export type PackageRegistryEntry = {
   kind: PackageKind
   homebrewPath: string
   supportsPrCi: boolean
+  supportsReleaseBundle?: boolean
   autoUpdate: AutoUpdateStrategy
   upstream: UpstreamSource
 }

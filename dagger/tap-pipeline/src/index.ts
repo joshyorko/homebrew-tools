@@ -6,7 +6,11 @@ import {
   packageSummaries,
   packagedVersionForUpstreamComparison,
   parseAutoUpdateSlotId,
+  parseRecoveryBrewfile,
   packagesForAutoUpdateSlot as slotPackages,
+  recoveryBrewfile,
+  recoveryHomebrewContents,
+  recoveryPackageSummaries,
   formatGitHeadVersion,
   isTransientUpstreamProbeError,
   releaseMetadataForPackage,
@@ -3571,6 +3575,21 @@ end
 
     const tap = this.source
 
+    if (packageId === "buzz-linux") {
+      const entry = this.packageEntry(packageId)
+      if (entry.upstream.kind !== "github_release") {
+        throw new Error("Expected GitHub release upstream for buzz-linux")
+      }
+      const version = await this.resolveUpstreamVersion(packageId)
+      const sourceRef = await dag.git(entry.upstream.repo).tag(`desktop-v${version}`).commit()
+      return dag.buzzLinuxSmoke().releaseBundle(tap, {
+        sourceRepository: entry.upstream.repo,
+        sourceRef,
+        version,
+        revision: "1",
+      })
+    }
+
     const ciLog = await this.ciCheck(packageId, githubToken)
 
     switch (packageId) {
@@ -3818,6 +3837,86 @@ end
       default:
         throw new Error(`releaseBundle is not implemented for package: ${packageId}`)
     }
+  }
+
+  @func()
+  async recoveryExport(
+    brewfile?: File,
+    packageId?: string,
+    fileServerBaseUrl = "http://127.0.0.1:8000/homebrew-tools-recovery",
+    githubToken?: Secret,
+  ): Promise<Directory> {
+    if (brewfile && packageId) {
+      throw new Error("Use either brewfile or packageId for recoveryExport, not both")
+    }
+
+    const entries = packageId
+      ? parseRecoveryBrewfile(recoveryBrewfile(recoveryPackageSummaries().filter((entry) => entry.id === packageId)))
+      : parseRecoveryBrewfile(brewfile ? await brewfile.contents() : recoveryBrewfile())
+    const baseUrl = fileServerBaseUrl.replace(/\/+$/, "")
+    let output = dag.directory().withNewFile("Brewfile", recoveryBrewfile(entries))
+    const releases: Record<string, unknown>[] = []
+
+    for (const entry of entries) {
+      const bundle = await this.releaseBundle(entry.id, githubToken)
+      const release = JSON.parse(await bundle.file("release.json").contents()) as Record<string, unknown>
+      const renderedName = entry.homebrewPath.split("/").at(-1)
+
+      if (!renderedName) {
+        throw new Error(`Invalid Homebrew path for ${entry.id}: ${entry.homebrewPath}`)
+      }
+
+      const rendered = recoveryHomebrewContents(
+        await bundle.file(`homebrew/${renderedName}`).contents(),
+        entry.id,
+        baseUrl,
+      )
+      const packageDirectory = dag.directory()
+        .withDirectory("artifacts", bundle.directory("artifacts"))
+        .withFile("release.json", bundle.file("release.json"))
+        .withFile("ci.log", bundle.file("ci.log"))
+
+      output = output
+        .withDirectory(`packages/${entry.id}`, packageDirectory)
+        .withNewFile(`tap/${entry.homebrewPath}`, rendered)
+      releases.push({
+        package: entry.id,
+        kind: entry.kind,
+        homebrew_path: `tap/${entry.homebrewPath}`,
+        version: release.version,
+        release_tag: release.release_tag,
+      })
+    }
+
+    const checksumOutput = await dag.container()
+      .from(NODE_IMAGE)
+      .withMountedDirectory("/recovery", output)
+      .withWorkdir("/recovery")
+      .withExec([
+        "bash",
+        "-lc",
+        "find packages -path '*/artifacts/*' -type f -print0 | sort -z | xargs -0 sha256sum",
+      ])
+      .stdout()
+    const checksums = parseTextLines(checksumOutput).map((line) => {
+      const [sha256, path] = line.split(/\s+/, 2)
+      return { path, sha256 }
+    })
+
+    return output.withNewFile("manifest.json", json({
+      schema_version: 1,
+      file_server_base_url: baseUrl,
+      tap_name: "joshyorko/tools",
+      packages: releases.map((release) => ({
+        ...release,
+        artifacts: checksums
+          .filter((artifact) => artifact.path.startsWith(`packages/${release.package}/artifacts/`))
+          .map((artifact) => ({
+            ...artifact,
+            url: `${baseUrl}/${artifact.path}`,
+          })),
+      })),
+    }))
   }
 
   @func()

@@ -3,5 +3,11 @@
   "engineVersion": "v0.20.6",
   "sdk": {
     "source": "typescript"
-  }
+  },
+  "dependencies": [
+    {
+      "name": "buzz-linux-smoke",
+      "source": "../buzz-linux-smoke"
+    }
+  ]
 }

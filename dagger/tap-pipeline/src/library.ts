@@ -55,6 +55,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "source_build_node_formula",
     homebrewPath: "Formula/t3code-cli-main.rb",
     supportsPrCi: true,
+    supportsReleaseBundle: true,
     autoUpdate: {
       kind: "git_head_sha",
       ref: "main",
@@ -73,6 +74,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "http_binary_formula",
     homebrewPath: "Formula/antigravity-cli.rb",
     supportsPrCi: true,
+    supportsReleaseBundle: false,
     autoUpdate: {
       kind: "manual",
       reason: "Google publishes Antigravity CLI through a platform manifest; update after verifying checksums.",
@@ -286,6 +288,61 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
 ]
+
+const TAP_RELEASE_URL_PREFIX = "https://github.com/joshyorko/homebrew-tools/releases/download/"
+const RECOVERY_TAP_PREFIX = "joshyorko/tools/"
+
+export function recoveryPackageSummaries(): PackageRegistryEntry[] {
+  return packageSummaries().filter((entry) => entry.supportsReleaseBundle !== false)
+}
+
+export function recoveryBrewfile(entries = recoveryPackageSummaries()): string {
+  const lines = entries.map((entry) => {
+    const stanza = entry.homebrewPath.startsWith("Casks/") ? "cask" : "brew"
+    return `${stanza} "${RECOVERY_TAP_PREFIX}${entry.id}"`
+  })
+
+  return `# Generated from dagger/tap-pipeline/src/library.ts package registry.\n${lines.join("\n")}\n`
+}
+
+export function parseRecoveryBrewfile(contents: string): PackageRegistryEntry[] {
+  const entries: PackageRegistryEntry[] = []
+
+  for (const rawLine of contents.split("\n")) {
+    const line = rawLine.replace(/\s*#.*$/, "").trim()
+    if (!line) continue
+
+    const match = line.match(/^(?:brew|cask)\s+"joshyorko\/tools\/([^"\s]+)"$/)
+    if (!match) {
+      throw new Error(`Unsupported recovery Brewfile entry: ${rawLine}`)
+    }
+
+    const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === match[1])
+    if (!entry) {
+      throw new Error(`Unknown recovery package: ${match[1]}`)
+    }
+    if (entry.supportsReleaseBundle === false) {
+      throw new Error(`${entry.id} does not have a standard release bundle`)
+    }
+    if (!entries.some((candidate) => candidate.id === entry.id)) {
+      entries.push({ ...entry })
+    }
+  }
+
+  if (entries.length === 0) {
+    throw new Error("Recovery Brewfile does not select any packages")
+  }
+
+  return entries
+}
+
+export function recoveryHomebrewContents(contents: string, packageId: string, fileServerBaseUrl: string): string {
+  const baseUrl = fileServerBaseUrl.replace(/\/+$/, "")
+  return contents.replace(
+    new RegExp(`${TAP_RELEASE_URL_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^/]+/([^\"\\s]+)`, "g"),
+    `${baseUrl}/packages/${packageId}/artifacts/$1`,
+  )
+}
 
 function loadAutoUpdateSlots(): AutoUpdateSlot[] {
   const file = readFileSync(new URL("../auto-update-slots.json", import.meta.url), "utf8")
