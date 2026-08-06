@@ -20,6 +20,7 @@ Environment:
   CODEX_DESKTOP_FEATURES_CONFIG      Saved feature selection path.
   CODEX_DESKTOP_FEATURE_WIZARD       Override the Python wizard path.
   CODEX_DESKTOP_INSTALLER            Override the local installer path.
+  CODEX_DESKTOP_SETUP_PYTHON         Python used by the feature wizard.
 EOF
 }
 

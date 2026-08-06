@@ -363,6 +363,24 @@ selection lives under `${XDG_CONFIG_HOME:-~/.config}/homebrew-tools/` and is
 used automatically by later `make codex-desktop-install` runs. A concise
 terminal picker is used when no graphical session is available.
 
+The graphical wizard depends on the device's native Python GObject bindings for
+GTK 4 and libadwaita. These bindings and the saved feature selection are host
+state, so syncing this checkout does not copy them to another device. Verify the
+selected interpreter with:
+
+```bash
+python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); from gi.repository import Adw, Gtk'
+```
+
+If another system Python provides those native bindings, select it with
+`CODEX_DESKTOP_SETUP_PYTHON=/path/to/python3 make codex-desktop-setup`. A venv
+or `requirements.txt` is not needed: the wizard otherwise uses only the Python
+standard library, while GTK and libadwaita are native per-device dependencies.
+The saved selection remains local under the XDG config path above; set
+`CODEX_DESKTOP_FEATURES_CONFIG` to an intentional synced path only when the
+same selection should be shared across devices. Do not sync build caches,
+reports, or installed application state.
+
 The review screen also chooses the DMG source. **Tested pinned DMG** is the
 default for repeatable feature work. **Newest upstream DMG** is a one-off build
 that downloads the current OpenAI artifact and runs the selected feature set

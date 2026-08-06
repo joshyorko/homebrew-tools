@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
 
@@ -388,6 +388,34 @@ class FeatureWizardModelTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertIn("Newest upstream DMG accepted", output.getvalue())
         self.assertIn(str(result), output.getvalue())
+
+    def test_graphical_session_without_gtk_explains_terminal_fallback(self):
+        self.add_feature("read-aloud")
+        config = self.root / "features.json"
+        result = self.root / "result.json"
+        args = WIZARD.parse_arguments(
+            [
+                "--features-root",
+                str(self.root),
+                "--config",
+                str(config),
+                "--result",
+                str(result),
+            ]
+        )
+        error = io.StringIO()
+
+        with (
+            mock.patch.object(WIZARD, "graphical_session_available", return_value=True),
+            mock.patch.object(WIZARD, "gtk_available", return_value=False),
+            mock.patch.object(sys.stdin, "isatty", return_value=False),
+            redirect_stderr(error),
+        ):
+            status = WIZARD.run_wizard(args)
+
+        self.assertEqual(status, 2)
+        self.assertIn("GTK 4/libadwaita Python bindings", error.getvalue())
+        self.assertIn("CODEX_DESKTOP_SETUP_PYTHON", error.getvalue())
 
     def test_cancel_preserves_saved_selection(self):
         config = self.root / "features.json"

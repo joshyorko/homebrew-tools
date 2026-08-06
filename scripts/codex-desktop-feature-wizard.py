@@ -932,8 +932,16 @@ def run_wizard(args: argparse.Namespace) -> int:
     full_profile = parse_feature_words(args.full_profile)
     lean_profile = parse_feature_words(args.lean_profile)
     selected = load_selection(args.config, features, full_profile)
-    if graphical_session_available() and gtk_available():
-        return run_gtk_wizard(args, features, selected, full_profile, lean_profile)
+    if graphical_session_available():
+        if gtk_available():
+            return run_gtk_wizard(args, features, selected, full_profile, lean_profile)
+        print(
+            "Codex Desktop graphical setup is unavailable because the selected "
+            "Python cannot load the GTK 4/libadwaita Python bindings. Install the "
+            "native bindings for this device or set CODEX_DESKTOP_SETUP_PYTHON to "
+            "a system Python that provides them; using the terminal wizard instead.",
+            file=sys.stderr,
+        )
     return run_terminal_wizard(args, features, selected, full_profile, lean_profile)
 
 
