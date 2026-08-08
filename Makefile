@@ -30,13 +30,16 @@ endif
 
 CODEX_DESKTOP_INSTALL_ARGS += $(CODEX_DESKTOP_INSTALL_EXTRA_ARGS)
 
-.PHONY: recovery-t3code-cli-main recovery-all codex-desktop-build codex-desktop-build-archive codex-desktop-setup-env codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
+.PHONY: recovery-t3code-cli-main recovery-all fizzy-symphony-smoke codex-desktop-build codex-desktop-build-archive codex-desktop-setup-env codex-desktop-setup codex-desktop-install codex-desktop-install-artifact codex-desktop-install-archive crabbox-pull-codex-desktop-archive codex-install codex-desktop-uninstall codex-desktop-zap codex-desktop-rebuild-relaunch codex-desktop-rebuild-foreground codex-desktop-rebuild-dry-run test-codex-desktop-setup test-codex-desktop-install test-codex-desktop-rebuild test-codex-desktop-local install-codex-desktop uninstall-codex-desktop zap-codex-desktop print-codex-desktop-linux-features-lean print-codex-desktop-linux-features-full
 
 recovery-t3code-cli-main:
 	dagger -m ./dagger/tap-pipeline call --git-dir="$(DAGGER_GIT_DIR)" -o "$(RECOVERY_OUTPUT)" recovery-export --package-id=t3code-cli-main --file-server-base-url="$(RECOVERY_FILE_SERVER_URL)"
 
 recovery-all:
 	dagger -m ./dagger/tap-pipeline call --git-dir="$(DAGGER_GIT_DIR)" -o "$(RECOVERY_OUTPUT)" recovery-export --brewfile=./recovery/Brewfile --file-server-base-url="$(RECOVERY_FILE_SERVER_URL)"
+
+fizzy-symphony-smoke:
+	dagger -m ./dagger/fizzy-symphony-smoke call smoke-test --tap=.
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"
