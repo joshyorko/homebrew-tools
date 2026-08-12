@@ -48,5 +48,10 @@
     "id": "buzz-daily",
     "description": "Daily Buzz Linux source-build refresh.",
     "packageIds": ["buzz-linux"]
+  },
+  {
+    "id": "chatgpt-daily",
+    "description": "Daily ChatGPT Linux cask packaging smoke test.",
+    "packageIds": ["chatgpt"]
   }
 ]

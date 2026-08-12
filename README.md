@@ -99,7 +99,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
-| `brew install --build-from-source joshyorko/tools/chatgpt` | Install ChatGPT Desktop from OpenAI's official Linux package |
+| `brew install --cask joshyorko/tools/chatgpt` | Install ChatGPT Desktop from OpenAI's official Linux package |
 | `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
@@ -342,23 +342,21 @@ dagger -m ./dagger/buzz-linux-smoke call smoke-test --tap=.
 
 ### ChatGPT Desktop (Official Linux Package)
 
-The `chatgpt` formula downloads the official architecture-specific OpenAI Linux
-DEB during a local Homebrew build. It verifies the pinned release
-(`26.803.81509`), package architecture, and SHA-256 before extracting the
-complete `/usr/lib/chatgpt` payload into the formula's `libexec`. The payload is
-not patched, rebuilt, vendored, or published by this tap.
+The `chatgpt` cask downloads the official architecture-specific OpenAI Linux
+RPM. It verifies the pinned release (`26.803.81509`), package architecture, and
+SHA-256 before extracting the complete `/usr/lib/chatgpt` payload locally. The
+payload is not patched, rebuilt, vendored, or published by this tap.
 
 Only the Homebrew integration is added: `bin/chatgpt` and a desktop entry under
-Homebrew's `share/applications`.
-The Debian maintainer scripts are never run, so no APT repository or AppArmor
-configuration is installed.
+the user's local application and icon directories. RPM maintainer scripts are
+never run, so no system repository or service configuration is installed.
 
 ```bash
-brew install --build-from-source joshyorko/tools/chatgpt
+brew install --cask joshyorko/tools/chatgpt
 chatgpt
 ```
 
-The formula owns only files under the Homebrew prefix. Removing or upgrading it
+The cask owns only the launcher and desktop integration files. Removing or upgrading it
 does not delete ChatGPT or Codex user data. The Linux preview's Wayland
 Computer Use, Remote, Global Dictation, and Record & Replay behavior still
 needs validation on the target Bluefin desktop.
@@ -368,7 +366,7 @@ needs validation on the target Bluefin desktop.
 The official Linux package above is the preferred ChatGPT Desktop stream. The
 older Codex Desktop conversion remains available as separate local-only
 builder tooling for conversion-specific experiments; it is not used by the
-`chatgpt` formula and does not publish converted app payloads. The builder
+`chatgpt` cask and does not publish converted app payloads. The builder
 downloads the official
 `https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg`, converts that DMG on
 this machine, patches the extracted app for Linux Electron, rebuilds native

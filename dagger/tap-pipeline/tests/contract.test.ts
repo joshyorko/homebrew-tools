@@ -29,8 +29,7 @@ test("package registry covers every planned adapter kind", () => {
       "github_release_binary_cask",
       "github_release_deb_cask",
       "http_binary_formula",
-      "http_deb_cask",
-      "rpm_repack_cask",
+    "rpm_repack_cask",
       "source_build_go_formula",
       "source_build_node_appimage_cask",
       "source_build_node_formula",
@@ -94,7 +93,8 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
-      "buzz-linux",
+    "buzz-linux",
+    "chatgpt",
       "devpod-linux",
       "devsy",
       "devsy-desktop",
@@ -266,11 +266,11 @@ test("antigravity CLI is a manual closed-source binary formula", () => {
   assert.match(formula, /license :cannot_represent/)
 })
 
-test("ChatGPT Desktop cask extracts the pinned official Linux package locally", () => {
+test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "chatgpt")
 
   assert.ok(entry)
-  assert.equal(entry.kind, "http_deb_cask")
+  assert.equal(entry.kind, "rpm_repack_cask")
   assert.equal(entry.homebrewPath, "Casks/chatgpt.rb")
   assert.equal(entry.supportsPrCi, true)
   assert.equal(entry.supportsReleaseBundle, false)
@@ -280,11 +280,12 @@ test("ChatGPT Desktop cask extracts the pinned official Linux package locally", 
 
   assert.match(cask, /cask "chatgpt"/)
   assert.match(cask, /version "26\.803\.81509"/)
-  assert.match(cask, /chatgpt_#\{arch\}\.deb/)
-  assert.match(cask, /x86_64_linux: "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"/)
-  assert.match(cask, /arm64_linux:\s+"f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"/)
-  assert.match(cask, /depends_on formula: "xz"/)
-  assert.match(cask, /--use-compress-program=#\{HOMEBREW_PREFIX\}\/opt\/xz\/bin\/xz/)
+  assert.match(cask, /chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
+  assert.match(cask, /x86_64_linux: "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702"/)
+  assert.match(cask, /arm64_linux:\s+"290b1f2d0f57a508df23e308a6d0d643063767b684906dfb916ce4b01ecfdac9"/)
+  assert.match(cask, /depends_on formula: "cpio"/)
+  assert.match(cask, /depends_on formula: "rpm2cpio"/)
+  assert.match(cask, /Formula\["rpm2cpio"\]/)
   assert.match(cask, /binary "usr\/lib\/chatgpt\/codex-launcher", target: "chatgpt"/)
   assert.match(cask, /usr\/share\/applications\/chatgpt\.desktop/)
   assert.match(cask, /usr\/share\/pixmaps\/chatgpt\.png/)
@@ -297,11 +298,16 @@ test("ChatGPT Desktop cask extracts the pinned official Linux package locally", 
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
+  const uninstaller = readFileSync(new URL("../../../scripts/uninstall-chatgpt.sh", import.meta.url), "utf8")
   assert.match(makefile, /^chatgpt:\n\tscripts\/install-chatgpt-local\.sh$/m)
   assert.match(installer, /dagger -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
   assert.match(installer, /brew tap-new --no-git/)
   assert.match(installer, /brew install --cask/)
   assert.doesNotMatch(installer, /Formula\/chatgpt\.rb|--build-from-source/)
+  assert.match(makefile, /^uninstall-chatgpt:\n\tscripts\/uninstall-chatgpt\.sh$/m)
+  assert.match(uninstaller, /brew uninstall --cask chatgpt/)
+  assert.match(uninstaller, /chatgpt-local\\/chatgpt-/)
+  assert.doesNotMatch(uninstaller, /\.config\/ChatGPT|\.cache\/ChatGPT|\.local\/share\/ChatGPT/)
 })
 
 test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {

@@ -13,6 +13,7 @@ on:
     # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
   - cron: "41 0,12,18 * * *"
   - cron: "13 10 * * *"
+  - cron: "0 10 * * *"
   - cron: "23 10 * * *"
   workflow_dispatch:
     inputs:
@@ -31,6 +32,7 @@ on:
         - devsy-daily
         - fizzy-daily
         - buzz-daily
+        - chatgpt-daily
         - camp-daily
 
 permissions:
@@ -50,8 +52,8 @@ jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *')
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily' && inputs.slot_id != 'chatgpt-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *' && github.event.schedule != '0 10 * * *')
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -371,3 +373,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - run: echo "No upstream package updates detected for this slot."
+
+  chatgpt:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'chatgpt-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 10 * * *')
+    name: Smoke Test ChatGPT Linux Cask
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Run ChatGPT cask smoke test through Dagger
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          ci-check
+          --package-id=chatgpt

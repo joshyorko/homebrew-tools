@@ -23,6 +23,7 @@ export type AutoUpdateSlotId =
   | "devsy-daily"
   | "fizzy-daily"
   | "buzz-daily"
+  | "chatgpt-daily"
 
 export type UpstreamSource =
   | {

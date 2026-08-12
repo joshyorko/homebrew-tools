@@ -86,7 +86,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   },
   {
     id: "chatgpt",
-    kind: "http_deb_cask",
+    kind: "rpm_repack_cask",
     homebrewPath: "Casks/chatgpt.rb",
     supportsPrCi: true,
     supportsReleaseBundle: false,
