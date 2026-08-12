@@ -130,6 +130,18 @@ test("Buzz runs through the standard daily auto-update pipeline", () => {
   assert.match(autoUpdateWorkflow, /--version="\$\{\{ steps\.buzz_source\.outputs\.version \}\}"/)
 })
 
+test("ChatGPT runs through the standard daily release pipeline", () => {
+  const autoUpdateWorkflow = readFileSync(
+    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
+    "utf8",
+  )
+
+  assert.match(autoUpdateWorkflow, /- cron: "0 10 \* \* \*"/)
+  assert.match(autoUpdateWorkflow, /- chatgpt-daily/)
+  assert.match(autoUpdateWorkflow, /"0 10 \* \* \*"\) slot_id="chatgpt-daily"/)
+  assert.doesNotMatch(autoUpdateWorkflow, /^  chatgpt:/m)
+})
+
 test("Camp sync consumes the published formula without rebuilding Camp", () => {
   const autoUpdateWorkflow = readFileSync(
     new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
@@ -273,8 +285,8 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.equal(entry.kind, "rpm_repack_cask")
   assert.equal(entry.homebrewPath, "Casks/chatgpt.rb")
   assert.equal(entry.supportsPrCi, true)
-  assert.equal(entry.supportsReleaseBundle, false)
-  assert.equal(entry.autoUpdate.kind, "manual")
+  assert.equal(entry.supportsReleaseBundle, true)
+  assert.equal(entry.autoUpdate.kind, "deb_packages_version")
 
   const cask = readFileSync(new URL("../../../Casks/chatgpt.rb", import.meta.url), "utf8")
 
@@ -298,6 +310,10 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
     /case "chatgpt"[\s\S]*getent passwd[\s\S]*share\/pixmaps\/chatgpt\.png/,
+  )
+  assert.match(
+    readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
+    /case "chatgpt"[\s\S]*buildChatgptArtifacts[\s\S]*artifacts\/\$\{build\.amd64\.assetName\}[\s\S]*artifacts\/\$\{build\.arm64\.assetName\}/,
   )
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")

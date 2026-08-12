@@ -69,6 +69,10 @@ export type AutoUpdateStrategy =
       shaLength?: number
     }
   | {
+      kind: "deb_packages_version"
+      url: string
+    }
+  | {
       kind: "manual"
       reason: string
     }

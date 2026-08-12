@@ -370,6 +370,13 @@ type DownloadedAsset = {
   sourceUrl: string
 }
 
+type ChatgptBuild = {
+  version: string
+  container: Container
+  amd64: DownloadedAsset
+  arm64: DownloadedAsset
+}
+
 type RccBuild = {
   version: string
   container: Container
@@ -755,6 +762,8 @@ export class TapPipeline {
         return `rcc-${version}`
       case "action-server":
         return `action-server-${version}`
+      case "chatgpt":
+        return `chatgpt-${version}`
       case "devpod-linux":
         return `devpod-linux-${version}`
       case "devsy":
@@ -998,6 +1007,30 @@ export class TapPipeline {
         commit: build.upstreamTag,
       },
     })
+  }
+
+  private chatgptReleaseMetadata(build: ChatgptBuild): Record<string, unknown> {
+    return {
+      ...releaseMetadataForPackage("chatgpt", {
+        version: build.version,
+        releaseTag: `chatgpt-${build.version}`,
+        assetName: build.amd64.assetName,
+        artifactSha256: build.amd64.sha256,
+        downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/chatgpt-${build.version}/${build.amd64.assetName}`,
+        releaseTitle: `ChatGPT ${build.version}`,
+        releaseNotes: `Verified official OpenAI Linux RPM snapshot ${build.version}`,
+        commitMessage: `Update ChatGPT cask to ${build.version}`,
+        upstream: {
+          kind: "http_file",
+          url: "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/",
+          version: build.version,
+        },
+      }),
+      artifacts: [
+        { name: build.amd64.assetName, sha256: build.amd64.sha256 },
+        { name: build.arm64.assetName, sha256: build.arm64.sha256 },
+      ],
+    }
   }
 
   private devpodReleaseMetadata(build: DevpodBuild): Record<string, unknown> {
@@ -2117,6 +2150,70 @@ end
     return JSON.parse(output)
   }
 
+  private async fetchText(url: string): Promise<string> {
+    return this.githubApiContainer()
+      .withExec([
+        "node",
+        "--input-type=module",
+        "-e",
+        [
+          "const response = await fetch(process.argv[1])",
+          "if (!response.ok) throw new Error(`Failed to fetch ${process.argv[1]}: ${response.status} ${response.statusText}`)",
+          "process.stdout.write(await response.text())",
+        ].join("\n"),
+        url,
+      ])
+      .stdout()
+  }
+
+  private async resolveChatgptVersion(): Promise<string> {
+    const entry = this.packageEntry("chatgpt")
+    if (entry.autoUpdate.kind !== "deb_packages_version") {
+      throw new Error("Expected chatgpt to use a Debian Packages version strategy")
+    }
+
+    const packages = await this.fetchText(entry.autoUpdate.url)
+    const match = packages.match(/^Version:\s*(\d+(?:\.\d+)+)$/m)
+    if (!match) {
+      throw new Error(`Unable to find a ChatGPT version in ${entry.autoUpdate.url}`)
+    }
+    return match[1]
+  }
+
+  private async buildChatgptArtifacts(): Promise<ChatgptBuild> {
+    const version = await this.resolveChatgptVersion()
+    const amd64Name = `chatgpt-${version}-1.x86_64.rpm`
+    const arm64Name = `chatgpt-${version}-1.aarch64.rpm`
+    let container = dag.container().from(NODE_IMAGE)
+    container = this.downloadAsset(
+      container,
+      `https://persistent.oaistatic.com/codex-app-prod/linux/rpm/x86_64/${amd64Name}`,
+      `/tmp/${amd64Name}`,
+    )
+    container = this.downloadAsset(
+      container,
+      `https://persistent.oaistatic.com/codex-app-prod/linux/rpm/aarch64/${arm64Name}`,
+      `/tmp/${arm64Name}`,
+    )
+
+    return {
+      version,
+      container,
+      amd64: {
+        assetName: amd64Name,
+        artifactPath: `/tmp/${amd64Name}`,
+        sha256: await this.sha256For(container, `/tmp/${amd64Name}`),
+        sourceUrl: `https://persistent.oaistatic.com/codex-app-prod/linux/rpm/x86_64/${amd64Name}`,
+      },
+      arm64: {
+        assetName: arm64Name,
+        artifactPath: `/tmp/${arm64Name}`,
+        sha256: await this.sha256For(container, `/tmp/${arm64Name}`),
+        sourceUrl: `https://persistent.oaistatic.com/codex-app-prod/linux/rpm/aarch64/${arm64Name}`,
+      },
+    }
+  }
+
   private async resolveGitHeadVersion(
     repo: string,
     ref: string,
@@ -2236,6 +2333,8 @@ end
           codexDesktopConversionCommit,
         )).version
       }
+      case "deb_packages_version":
+        return this.resolveChatgptVersion()
       case "manual":
         throw new Error(`${packageId} is manually updated: ${entry.autoUpdate.reason}`)
     }
@@ -3655,6 +3754,30 @@ end
         }
 
         return bundle
+      }
+      case "chatgpt": {
+        const build = await this.buildChatgptArtifacts()
+        const release = this.chatgptReleaseMetadata(build)
+        const caskContents = await tap.file("Casks/chatgpt.rb").contents()
+        const updatedCask = caskContents
+          .replace(
+            /url ".*"/,
+            `url "https://github.com/${TAP_REPOSITORY}/releases/download/chatgpt-#{version}/chatgpt-#{version}-1.#{arch}.rpm"`,
+          )
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 arm:[\s\S]*?x86_64_linux: ".*"/, [
+            `sha256 arm:          "${build.arm64.sha256}",`,
+            `       intel:        "${build.amd64.sha256}",`,
+            `       arm64_linux:  "${build.arm64.sha256}",`,
+            `       x86_64_linux: "${build.amd64.sha256}"`,
+          ].join("\n"))
+
+        return dag.directory()
+          .withFile(`artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
+          .withFile(`artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
+          .withFile("homebrew/chatgpt.rb", dag.file("chatgpt.rb", updatedCask))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "devpod-linux": {
         const build = await this.buildDevpodArtifact()

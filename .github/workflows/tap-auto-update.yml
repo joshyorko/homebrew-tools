@@ -52,8 +52,8 @@ jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily' && inputs.slot_id != 'chatgpt-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *' && github.event.schedule != '0 10 * * *')
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *')
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -89,6 +89,7 @@ jobs:
             "41 6 * * *") slot_id="t3-daily" ;;
             "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
             "13 10 * * *") slot_id="buzz-daily" ;;
+            "0 10 * * *") slot_id="chatgpt-daily" ;;
             *)
               echo "Unknown scheduled slot for Tap Auto Update: $EVENT_SCHEDULE" >&2
               exit 1
@@ -373,23 +374,3 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - run: echo "No upstream package updates detected for this slot."
-
-  chatgpt:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'chatgpt-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule == '0 10 * * *')
-    name: Smoke Test ChatGPT Linux Cask
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Run ChatGPT cask smoke test through Dagger
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          ci-check
-          --package-id=chatgpt

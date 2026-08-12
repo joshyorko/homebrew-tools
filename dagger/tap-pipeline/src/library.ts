@@ -89,10 +89,10 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "rpm_repack_cask",
     homebrewPath: "Casks/chatgpt.rb",
     supportsPrCi: true,
-    supportsReleaseBundle: false,
+    supportsReleaseBundle: true,
     autoUpdate: {
-      kind: "manual",
-      reason: "OpenAI publishes architecture-specific Linux DEBs behind a mutable URL; update after verifying the version and checksums.",
+      kind: "deb_packages_version",
+      url: "https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages",
     },
     upstream: {
       kind: "http_file",
