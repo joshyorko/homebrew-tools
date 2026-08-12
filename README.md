@@ -99,6 +99,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
+| `brew install --build-from-source joshyorko/tools/chatgpt` | Install ChatGPT Desktop from OpenAI's official Linux package |
 | `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
@@ -339,11 +340,36 @@ creates the release and records its exact SHA-256 in the cask.
 dagger -m ./dagger/buzz-linux-smoke call smoke-test --tap=.
 ```
 
-### Codex Desktop (Linux DMG Conversion Runtime)
+### ChatGPT Desktop (Official Linux Package)
 
-Codex Desktop Linux support is local-only in this tap. The tap no longer
-publishes converted Codex Desktop app payloads as GitHub release assets. The
-local builder downloads the official
+The `chatgpt` formula downloads the official architecture-specific OpenAI Linux
+DEB during a local Homebrew build. It verifies the pinned release
+(`26.803.81509`), package architecture, and SHA-256 before extracting the
+complete `/usr/lib/chatgpt` payload into the formula's `libexec`. The payload is
+not patched, rebuilt, vendored, or published by this tap.
+
+Only the Homebrew integration is added: `bin/chatgpt` and a desktop entry under
+Homebrew's `share/applications`.
+The Debian maintainer scripts are never run, so no APT repository or AppArmor
+configuration is installed.
+
+```bash
+brew install --build-from-source joshyorko/tools/chatgpt
+chatgpt
+```
+
+The formula owns only files under the Homebrew prefix. Removing or upgrading it
+does not delete ChatGPT or Codex user data. The Linux preview's Wayland
+Computer Use, Remote, Global Dictation, and Record & Replay behavior still
+needs validation on the target Bluefin desktop.
+
+### Legacy Codex Desktop (Linux DMG Conversion Runtime)
+
+The official Linux package above is the preferred ChatGPT Desktop stream. The
+older Codex Desktop conversion remains available as separate local-only
+builder tooling for conversion-specific experiments; it is not used by the
+`chatgpt` formula and does not publish converted app payloads. The builder
+downloads the official
 `https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg`, converts that DMG on
 this machine, patches the extracted app for Linux Electron, rebuilds native
 modules, stages bundled resources, renders a temporary local cask, and installs

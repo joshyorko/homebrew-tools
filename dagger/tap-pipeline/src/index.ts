@@ -200,6 +200,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/antigravity-cli.rb \"$tap_dir/Formula/\"",
       ]
+    case "chatgpt":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/chatgpt.rb \"$tap_dir/Formula/\"",
+      ]
     case "devsy":
       return [
         "mkdir -p \"$tap_dir/Formula\"",
@@ -2916,6 +2921,30 @@ end
               "brew test test/tap/antigravity-cli",
               "agy --version",
               "agy --help",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "chatgpt": {
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", tap)
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("chatgpt"),
+              "brew install test/tap/chatgpt",
+              "brew test test/tap/chatgpt",
+              "test -x \"$(brew --prefix)/bin/chatgpt\"",
+              "test -f \"$(brew --prefix)/share/applications/chatgpt.desktop\"",
             ].join("\n"),
           ])
           .stdout()

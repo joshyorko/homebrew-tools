@@ -85,6 +85,21 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "chatgpt",
+    kind: "http_binary_formula",
+    homebrewPath: "Formula/chatgpt.rb",
+    supportsPrCi: true,
+    supportsReleaseBundle: false,
+    autoUpdate: {
+      kind: "manual",
+      reason: "OpenAI publishes architecture-specific Linux DEBs behind a mutable URL; update after verifying the version and checksums.",
+    },
+    upstream: {
+      kind: "http_file",
+      url: "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb",
+    },
+  },
+  {
     id: "devsy",
     kind: "http_binary_formula",
     homebrewPath: "Formula/devsy.rb",
@@ -362,6 +377,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     ],
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
+  ["chatgpt", ["Formula/chatgpt.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb"]],
   [
