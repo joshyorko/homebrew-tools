@@ -53,27 +53,21 @@ class Chatgpt < Formula
 
       extract_archive(data_archive, dir)
       app_dir = Pathname(dir)/"usr/lib/chatgpt"
-      desktop_source = Pathname(dir)/"usr/share/applications/chatgpt.desktop"
-      icon_source = Pathname(dir)/"usr/share/pixmaps/chatgpt.png"
       odie "ChatGPT application payload is missing" unless app_dir.directory?
-      odie "ChatGPT desktop entry is missing" unless desktop_source.file?
-      odie "ChatGPT icon is missing" unless icon_source.file?
 
       libexec.install app_dir
 
-      desktop_contents = File.read(desktop_source)
-      unless desktop_contents.match?(/^Exec=.*$/) && desktop_contents.match?(/^Icon=.*$/)
-        odie "ChatGPT desktop entry is missing Exec or Icon"
-      end
-      desktop_contents = desktop_contents.gsub(/^Exec=.*$/, "Exec=#{opt_bin}/chatgpt %U")
-      desktop_contents = desktop_contents.gsub(/^Icon=.*$/, "Icon=#{opt_share}/pixmaps/chatgpt.png")
-
       applications_dir = share/"applications"
-      pixmaps_dir = share/"pixmaps"
       applications_dir.mkpath
-      pixmaps_dir.mkpath
-      File.write(applications_dir/"chatgpt.desktop", desktop_contents)
-      FileUtils.cp icon_source, pixmaps_dir/"chatgpt.png"
+      File.write(applications_dir/"chatgpt.desktop", <<~DESKTOP)
+        [Desktop Entry]
+        Name=ChatGPT
+        Comment=OpenAI ChatGPT Desktop
+        Exec=#{opt_bin}/chatgpt %U
+        Type=Application
+        Terminal=false
+        Categories=Network;Chat;
+      DESKTOP
     end
 
     (bin/"chatgpt").write <<~SH
@@ -88,11 +82,9 @@ class Chatgpt < Formula
     assert_predicate libexec/"chatgpt/codex-launcher", :executable?
     assert_predicate bin/"chatgpt", :executable?
     assert_path_exists share/"applications/chatgpt.desktop"
-    assert_path_exists share/"pixmaps/chatgpt.png"
 
     desktop_contents = (share/"applications/chatgpt.desktop").read
     assert_match(/Exec=#{Regexp.escape(opt_bin.to_s)}\/chatgpt %U/, desktop_contents)
-    assert_match(/Icon=#{Regexp.escape(opt_share.to_s)}\/pixmaps\/chatgpt.png/, desktop_contents)
     assert_match(/#{Regexp.escape(libexec.to_s)}\/chatgpt\/codex-launcher/, (bin/"chatgpt").read)
   end
 
@@ -105,7 +97,7 @@ class Chatgpt < Formula
       Launch ChatGPT with:
         chatgpt
 
-      Homebrew owns only the application and desktop files under its prefix.
+      Homebrew owns the application and desktop entry under its prefix.
       ChatGPT and Codex user data is left in place when this formula is removed.
       The Linux preview's Wayland Computer Use, Remote, Global Dictation, and
       Record & Replay support still require validation on the target desktop.

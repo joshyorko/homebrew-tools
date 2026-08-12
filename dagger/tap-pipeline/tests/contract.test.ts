@@ -266,6 +266,15 @@ test("antigravity CLI is a manual closed-source binary formula", () => {
 })
 
 test("ChatGPT Desktop formula extracts the pinned official Linux package locally", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "chatgpt")
+
+  assert.ok(entry)
+  assert.equal(entry.kind, "http_binary_formula")
+  assert.equal(entry.homebrewPath, "Formula/chatgpt.rb")
+  assert.equal(entry.supportsPrCi, true)
+  assert.equal(entry.supportsReleaseBundle, false)
+  assert.equal(entry.autoUpdate.kind, "manual")
+
   const formula = readFileSync(new URL("../../../Formula/chatgpt.rb", import.meta.url), "utf8")
 
   assert.match(formula, /class Chatgpt < Formula/)
@@ -285,10 +294,14 @@ test("ChatGPT Desktop formula extracts the pinned official Linux package locally
   assert.match(formula, /libexec\.install app_dir/)
   assert.match(formula, /exec "#\{libexec\}\/chatgpt\/codex-launcher"/)
   assert.match(formula, /Exec=#\{opt_bin\}\/chatgpt %U/)
-  assert.match(formula, /Icon=#\{opt_share\}\/pixmaps\/chatgpt\.png/)
+  assert.doesNotMatch(formula, /desktop_source|icon_source|pixmaps/)
   assert.doesNotMatch(formula, /dpkg\s+-i/)
   assert.doesNotMatch(formula, /sources\.list\.d|apparmor_parser/)
   assert.doesNotMatch(formula, /github\.com\/joshyorko\/homebrew-tools\/releases/)
+  assert.match(
+    readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
+    /case "chatgpt"[\s\S]*brew install test\/tap\/chatgpt[\s\S]*brew test test\/tap\/chatgpt/,
+  )
 })
 
 test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {

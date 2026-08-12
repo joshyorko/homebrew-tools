@@ -348,8 +348,8 @@ DEB during a local Homebrew build. It verifies the pinned release
 complete `/usr/lib/chatgpt` payload into the formula's `libexec`. The payload is
 not patched, rebuilt, vendored, or published by this tap.
 
-Only the Homebrew integration is added: `bin/chatgpt`, a desktop entry under
-Homebrew's `share/applications`, and the official icon under `share/pixmaps`.
+Only the Homebrew integration is added: `bin/chatgpt` and a desktop entry under
+Homebrew's `share/applications`.
 The Debian maintainer scripts are never run, so no APT repository or AppArmor
 configuration is installed.
 
