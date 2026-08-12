@@ -300,8 +300,16 @@ test("ChatGPT Desktop formula extracts the pinned official Linux package locally
   assert.doesNotMatch(formula, /github\.com\/joshyorko\/homebrew-tools\/releases/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*brew install test\/tap\/chatgpt[\s\S]*brew test test\/tap\/chatgpt/,
+    /case "chatgpt"[\s\S]*brew install --build-from-source test\/tap\/chatgpt[\s\S]*brew test test\/tap\/chatgpt/,
   )
+
+  const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
+  const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
+  assert.match(makefile, /^chatgpt:\n\tscripts\/install-chatgpt-local\.sh$/m)
+  assert.match(installer, /dagger -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
+  assert.match(installer, /brew tap-new --no-git/)
+  assert.match(installer, /brew install --build-from-source/)
+  assert.doesNotMatch(makefile, /brew install --build-from-source \.\/Formula\/chatgpt\.rb/)
 })
 
 test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {

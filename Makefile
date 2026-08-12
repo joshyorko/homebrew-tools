@@ -42,7 +42,7 @@ fizzy-symphony-smoke:
 	dagger -m ./dagger/fizzy-symphony-smoke call smoke-test --tap=.
 
 chatgpt:
-	brew install --build-from-source ./Formula/chatgpt.rb
+	scripts/install-chatgpt-local.sh
 
 print-codex-desktop-linux-features-lean:
 	@printf '%s\n' "$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)"

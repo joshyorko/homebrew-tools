@@ -2941,7 +2941,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("chatgpt"),
-              "brew install test/tap/chatgpt",
+              "brew install --build-from-source test/tap/chatgpt",
               "brew test test/tap/chatgpt",
               "test -x \"$(brew --prefix)/bin/chatgpt\"",
               "test -f \"$(brew --prefix)/share/applications/chatgpt.desktop\"",

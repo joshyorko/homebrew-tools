@@ -34,8 +34,10 @@ class Chatgpt < Formula
     verify_sha256(deb_path)
 
     Dir.mktmpdir("chatgpt-deb") do |dir|
+      local_deb = Pathname(dir)/"chatgpt.deb"
+      FileUtils.cp deb_path, local_deb
       Dir.chdir(dir) do
-        odie "Unable to extract ChatGPT DEB" unless system "ar", "x", deb_path.to_s
+        odie "Unable to extract ChatGPT DEB" unless system "ar", "x", local_deb.basename.to_s
       end
 
       control_archive = Dir["#{dir}/control.tar.*"].first
