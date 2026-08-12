@@ -3,6 +3,11 @@ require "fileutils"
 require "tmpdir"
 
 class Chatgpt < Formula
+  PACKAGE_SHA256 = {
+    "amd64" => "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb",
+    "arm64" => "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1",
+  }.freeze
+
   desc "ChatGPT Desktop for Linux from OpenAI's official package"
   homepage "https://developers.openai.com/codex/app"
   version "26.803.81509"
@@ -17,10 +22,10 @@ class Chatgpt < Formula
   on_linux do
     if Hardware::CPU.arm?
       url "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb"
-      sha256 "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"
+      sha256 PACKAGE_SHA256["arm64"]
     else
       url "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb"
-      sha256 "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"
+      sha256 PACKAGE_SHA256["amd64"]
     end
   end
 
@@ -29,7 +34,7 @@ class Chatgpt < Formula
     verify_sha256(deb_path)
 
     Dir.mktmpdir("chatgpt-deb") do |dir|
-      system "ar", "x", deb_path.to_s, chdir: dir
+      odie "Unable to extract ChatGPT DEB" unless system "ar", "x", deb_path.to_s, chdir: dir
 
       control_archive = Dir["#{dir}/control.tar.*"].first
       data_archive = Dir["#{dir}/data.tar.*"].first
@@ -56,8 +61,8 @@ class Chatgpt < Formula
       libexec.install app_dir
 
       desktop_contents = File.read(desktop_source)
-      exec_replaced = desktop_contents.sub!(/^Exec=.*$/, "Exec=#{opt_bin}/chatgpt %U")
-      icon_replaced = desktop_contents.sub!(/^Icon=.*$/, "Icon=#{opt_share}/pixmaps/chatgpt.png")
+      exec_replaced = desktop_contents.gsub!(/^Exec=.*$/, "Exec=#{opt_bin}/chatgpt %U")
+      icon_replaced = desktop_contents.gsub!(/^Icon=.*$/, "Icon=#{opt_share}/pixmaps/chatgpt.png")
       odie "ChatGPT desktop entry is missing Exec or Icon" unless exec_replaced && icon_replaced
 
       applications_dir = share/"applications"
@@ -107,9 +112,8 @@ class Chatgpt < Formula
   private
 
   def verify_sha256(path)
-    expected = Hardware::CPU.arm? ?
-      "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1" :
-      "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"
+    expected_architecture = Hardware::CPU.arm? ? "arm64" : "amd64"
+    expected = PACKAGE_SHA256.fetch(expected_architecture)
     actual = Digest::SHA256.file(path).hexdigest
     odie "ChatGPT DEB SHA-256 does not match the pinned artifact" unless actual == expected
   end
@@ -123,15 +127,16 @@ class Chatgpt < Formula
   end
 
   def extract_archive(archive, destination)
-    case archive
+    command = case archive
     when /\.tar\.gz$/
-      system "tar", "-xzf", archive, "-C", destination
+      ["tar", "-xzf", archive, "-C", destination]
     when /\.tar\.xz$/
-      system "tar", "-xJf", archive, "-C", destination
+      ["tar", "-xJf", archive, "-C", destination]
     when /\.tar\.zst$/
-      system "tar", "--use-compress-program=unzstd", "-xf", archive, "-C", destination
+      ["tar", "--use-compress-program=unzstd", "-xf", archive, "-C", destination]
     else
-      system "tar", "-xf", archive, "-C", destination
+      ["tar", "-xf", archive, "-C", destination]
     end
+    odie "Unable to extract ChatGPT archive #{archive}" unless system(*command)
   end
 end
