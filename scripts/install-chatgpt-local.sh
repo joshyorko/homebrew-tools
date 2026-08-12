@@ -18,12 +18,12 @@ dagger -m ./dagger/tap-pipeline call --git-dir="$git_common_dir" ci-check --pack
 temp_tap_name="chatgpt-local/chatgpt-$(date +%s)-$$"
 brew tap-new --no-git "$temp_tap_name" >/dev/null
 temp_tap_dir="$(brew --repository "$temp_tap_name")"
-mkdir -p "$temp_tap_dir/Formula"
-cp "$repo_dir/Formula/chatgpt.rb" "$temp_tap_dir/Formula/chatgpt.rb"
+mkdir -p "$temp_tap_dir/Casks"
+cp "$repo_dir/Casks/chatgpt.rb" "$temp_tap_dir/Casks/chatgpt.rb"
 
-local_formula="$temp_tap_name/chatgpt"
-if brew list --formula chatgpt >/dev/null 2>&1; then
-    brew reinstall --build-from-source "$local_formula"
+local_cask="$temp_tap_name/chatgpt"
+if brew list --cask chatgpt >/dev/null 2>&1; then
+    brew reinstall --cask --force "$local_cask"
 else
-    brew install --build-from-source "$local_formula"
+    brew install --cask "$local_cask"
 fi

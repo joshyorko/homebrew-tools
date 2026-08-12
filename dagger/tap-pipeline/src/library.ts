@@ -86,8 +86,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   },
   {
     id: "chatgpt",
-    kind: "http_binary_formula",
-    homebrewPath: "Formula/chatgpt.rb",
+    kind: "http_deb_cask",
+    homebrewPath: "Casks/chatgpt.rb",
     supportsPrCi: true,
     supportsReleaseBundle: false,
     autoUpdate: {
@@ -377,7 +377,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     ],
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
-  ["chatgpt", ["Formula/chatgpt.rb"]],
+  ["chatgpt", ["Casks/chatgpt.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb"]],
   [

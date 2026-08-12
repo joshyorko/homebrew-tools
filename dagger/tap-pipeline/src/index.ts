@@ -202,8 +202,8 @@ function tapStagingCommands(packageId: string): string[] {
       ]
     case "chatgpt":
       return [
-        "mkdir -p \"$tap_dir/Formula\"",
-        "cp /tap/Formula/chatgpt.rb \"$tap_dir/Formula/\"",
+        "mkdir -p \"$tap_dir/Casks\"",
+        "cp /tap/Casks/chatgpt.rb \"$tap_dir/Casks/\"",
       ]
     case "devsy":
       return [
@@ -2941,10 +2941,10 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("chatgpt"),
-              "brew install --build-from-source test/tap/chatgpt",
-              "brew test test/tap/chatgpt",
+              "brew install --cask test/tap/chatgpt",
               "test -x \"$(brew --prefix)/bin/chatgpt\"",
-              "test -f \"$(brew --prefix)/share/applications/chatgpt.desktop\"",
+              "test -f \"$HOME/.local/share/applications/chatgpt.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/chatgpt.png\"",
             ].join("\n"),
           ])
           .stdout()

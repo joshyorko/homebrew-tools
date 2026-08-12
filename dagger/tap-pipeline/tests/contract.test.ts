@@ -29,6 +29,7 @@ test("package registry covers every planned adapter kind", () => {
       "github_release_binary_cask",
       "github_release_deb_cask",
       "http_binary_formula",
+      "http_deb_cask",
       "rpm_repack_cask",
       "source_build_go_formula",
       "source_build_node_appimage_cask",
@@ -265,42 +266,32 @@ test("antigravity CLI is a manual closed-source binary formula", () => {
   assert.match(formula, /license :cannot_represent/)
 })
 
-test("ChatGPT Desktop formula extracts the pinned official Linux package locally", () => {
+test("ChatGPT Desktop cask extracts the pinned official Linux package locally", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "chatgpt")
 
   assert.ok(entry)
-  assert.equal(entry.kind, "http_binary_formula")
-  assert.equal(entry.homebrewPath, "Formula/chatgpt.rb")
+  assert.equal(entry.kind, "http_deb_cask")
+  assert.equal(entry.homebrewPath, "Casks/chatgpt.rb")
   assert.equal(entry.supportsPrCi, true)
   assert.equal(entry.supportsReleaseBundle, false)
   assert.equal(entry.autoUpdate.kind, "manual")
 
-  const formula = readFileSync(new URL("../../../Formula/chatgpt.rb", import.meta.url), "utf8")
+  const cask = readFileSync(new URL("../../../Casks/chatgpt.rb", import.meta.url), "utf8")
 
-  assert.match(formula, /class Chatgpt < Formula/)
-  assert.match(formula, /version "26\.803\.81509"/)
-  assert.match(
-    formula,
-    /persistent\.oaistatic\.com\/codex-app-prod\/linux\/deb\/latest\/chatgpt_amd64\.deb/,
-  )
-  assert.match(
-    formula,
-    /persistent\.oaistatic\.com\/codex-app-prod\/linux\/deb\/latest\/chatgpt_arm64\.deb/,
-  )
-  assert.match(formula, /"amd64" => "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"/)
-  assert.match(formula, /"arm64" => "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"/)
-  assert.match(formula, /control_field\(control, "Version"\) == version\.to_s/)
-  assert.match(formula, /control_field\(control, "Architecture"\) == PACKAGE_ARCHITECTURE/)
-  assert.match(formula, /libexec\.install app_dir/)
-  assert.match(formula, /exec "#\{libexec\}\/chatgpt\/codex-launcher"/)
-  assert.match(formula, /Exec=#\{opt_bin\}\/chatgpt %U/)
-  assert.doesNotMatch(formula, /desktop_source|icon_source|pixmaps/)
-  assert.doesNotMatch(formula, /dpkg\s+-i/)
-  assert.doesNotMatch(formula, /sources\.list\.d|apparmor_parser/)
-  assert.doesNotMatch(formula, /github\.com\/joshyorko\/homebrew-tools\/releases/)
+  assert.match(cask, /cask "chatgpt"/)
+  assert.match(cask, /version "26\.803\.81509"/)
+  assert.match(cask, /chatgpt_#\{arch\}\.deb/)
+  assert.match(cask, /intel: "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"/)
+  assert.match(cask, /arm:\s+"f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"/)
+  assert.match(cask, /depends_on formula: "xz"/)
+  assert.match(cask, /binary "usr\/lib\/chatgpt\/codex-launcher", target: "chatgpt"/)
+  assert.match(cask, /usr\/share\/applications\/chatgpt\.desktop/)
+  assert.match(cask, /usr\/share\/pixmaps\/chatgpt\.png/)
+  assert.match(cask, /Exec=#\{HOMEBREW_PREFIX\}\/bin\/chatgpt %U/)
+  assert.doesNotMatch(cask, /dpkg\s+-i|sources\.list\.d|apparmor_parser/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*brew install --build-from-source test\/tap\/chatgpt[\s\S]*brew test test\/tap\/chatgpt/,
+    /case "chatgpt"[\s\S]*brew install --cask test\/tap\/chatgpt/,
   )
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
@@ -308,8 +299,8 @@ test("ChatGPT Desktop formula extracts the pinned official Linux package locally
   assert.match(makefile, /^chatgpt:\n\tscripts\/install-chatgpt-local\.sh$/m)
   assert.match(installer, /dagger -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
   assert.match(installer, /brew tap-new --no-git/)
-  assert.match(installer, /brew install --build-from-source/)
-  assert.doesNotMatch(makefile, /brew install --build-from-source \.\/Formula\/chatgpt\.rb/)
+  assert.match(installer, /brew install --cask/)
+  assert.doesNotMatch(installer, /Formula\/chatgpt\.rb|--build-from-source/)
 })
 
 test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {

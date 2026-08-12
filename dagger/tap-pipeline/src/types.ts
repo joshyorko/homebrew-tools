@@ -6,6 +6,7 @@ export type PackageKind =
   | "source_build_node_appimage_cask"
   | "source_build_rust_appimage_cask"
   | "http_binary_formula"
+  | "http_deb_cask"
   | "github_release_binary_cask"
   | "github_release_deb_cask"
   | "github_release_appimage_cask"

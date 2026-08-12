@@ -94,7 +94,7 @@ test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
   const changed = changedCiPackagesFromPaths([
     "Casks/rcc.rb",
     "Formula/antigravity-cli.rb",
-    "Formula/chatgpt.rb",
+    "Casks/chatgpt.rb",
     "Formula/voxtype.rb",
     "Formula/eitype.rb",
     "README.md",
@@ -107,7 +107,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     "antigravity-cli": "Formula/antigravity-cli.rb",
-    chatgpt: "Formula/chatgpt.rb",
+    chatgpt: "Casks/chatgpt.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
     "buzz-linux": "Casks/buzz-linux.rb",
