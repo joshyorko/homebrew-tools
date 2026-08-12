@@ -62,9 +62,11 @@ class Chatgpt < Formula
       libexec.install app_dir
 
       desktop_contents = File.read(desktop_source)
-      exec_replaced = desktop_contents.gsub!(/^Exec=.*$/, "Exec=#{opt_bin}/chatgpt %U")
-      icon_replaced = desktop_contents.gsub!(/^Icon=.*$/, "Icon=#{opt_share}/pixmaps/chatgpt.png")
-      odie "ChatGPT desktop entry is missing Exec or Icon" unless exec_replaced && icon_replaced
+      unless desktop_contents.match?(/^Exec=.*$/) && desktop_contents.match?(/^Icon=.*$/)
+        odie "ChatGPT desktop entry is missing Exec or Icon"
+      end
+      desktop_contents = desktop_contents.gsub(/^Exec=.*$/, "Exec=#{opt_bin}/chatgpt %U")
+      desktop_contents = desktop_contents.gsub(/^Icon=.*$/, "Icon=#{opt_share}/pixmaps/chatgpt.png")
 
       applications_dir = share/"applications"
       pixmaps_dir = share/"pixmaps"
