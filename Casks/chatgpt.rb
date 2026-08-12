@@ -7,11 +7,11 @@ cask "chatgpt" do
 
   version "26.803.81509"
   sha256 arm:          "290b1f2d0f57a508df23e308a6d0d643063767b684906dfb916ce4b01ecfdac9",
-         intel:        "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702",
-         arm64_linux:  "290b1f2d0f57a508df23e308a6d0d643063767b684906dfb916ce4b01ecfdac9",
-         x86_64_linux: "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702"
+       intel:        "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702",
+       arm64_linux:  "290b1f2d0f57a508df23e308a6d0d643063767b684906dfb916ce4b01ecfdac9",
+       x86_64_linux: "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702"
 
-  url "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/#{arch}/chatgpt-#{version}-1.#{arch}.rpm"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/chatgpt-#{version}/chatgpt-#{version}-1.#{arch}.rpm"
   name "ChatGPT"
   desc "OpenAI's official ChatGPT desktop app"
   homepage "https://chatgpt.com/"
