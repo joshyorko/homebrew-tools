@@ -284,6 +284,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux package locally", 
   assert.match(cask, /x86_64_linux: "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"/)
   assert.match(cask, /arm64_linux:\s+"f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"/)
   assert.match(cask, /depends_on formula: "xz"/)
+  assert.match(cask, /--use-compress-program=#\{HOMEBREW_PREFIX\}\/opt\/xz\/bin\/xz/)
   assert.match(cask, /binary "usr\/lib\/chatgpt\/codex-launcher", target: "chatgpt"/)
   assert.match(cask, /usr\/share\/applications\/chatgpt\.desktop/)
   assert.match(cask, /usr\/share\/pixmaps\/chatgpt\.png/)

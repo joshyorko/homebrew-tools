@@ -40,7 +40,8 @@ cask "chatgpt" do
     when /\.tar\.gz$/
       system "tar", "-xzf", data_archive, "-C", staged_path
     when /\.tar\.xz$/
-      system "tar", "-xJf", data_archive, "-C", staged_path
+      system "tar", "--use-compress-program=#{HOMEBREW_PREFIX}/opt/xz/bin/xz", "-xf", data_archive,
+             "-C", staged_path
     when /\.tar\.zst$/
       system "sh", "-c", "unzstd -c '#{data_archive}' | tar -xf - -C '#{staged_path}'"
     else
