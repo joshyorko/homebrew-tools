@@ -2943,8 +2943,9 @@ end
               ...tapStagingCommands("chatgpt"),
               "brew install --cask test/tap/chatgpt",
               "test -x \"$(brew --prefix)/bin/chatgpt\"",
-              "test -f \"$HOME/.local/share/applications/chatgpt.desktop\"",
-              "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/chatgpt.png\"",
+              "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",
+              "test -f \"$user_home/.local/share/applications/chatgpt.desktop\"",
+              "test -f \"$user_home/.local/share/pixmaps/chatgpt.png\"",
             ].join("\n"),
           ])
           .stdout()

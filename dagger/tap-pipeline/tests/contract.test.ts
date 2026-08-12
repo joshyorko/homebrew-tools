@@ -295,6 +295,10 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
     /case "chatgpt"[\s\S]*brew install --cask test\/tap\/chatgpt/,
   )
+  assert.match(
+    readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
+    /case "chatgpt"[\s\S]*getent passwd[\s\S]*share\/pixmaps\/chatgpt\.png/,
+  )
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
@@ -306,7 +310,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.doesNotMatch(installer, /Formula\/chatgpt\.rb|--build-from-source/)
   assert.match(makefile, /^uninstall-chatgpt:\n\tscripts\/uninstall-chatgpt\.sh$/m)
   assert.match(uninstaller, /brew uninstall --cask chatgpt/)
-  assert.match(uninstaller, /chatgpt-local\\/chatgpt-/)
+  assert.match(uninstaller, /chatgpt-local/)
   assert.doesNotMatch(uninstaller, /\.config\/ChatGPT|\.cache\/ChatGPT|\.local\/share\/ChatGPT/)
 })
 
