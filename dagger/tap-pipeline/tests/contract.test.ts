@@ -278,10 +278,10 @@ test("ChatGPT Desktop formula extracts the pinned official Linux package locally
     formula,
     /persistent\.oaistatic\.com\/codex-app-prod\/linux\/deb\/latest\/chatgpt_arm64\.deb/,
   )
-  assert.match(formula, /sha256 "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"/)
-  assert.match(formula, /sha256 "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"/)
+  assert.match(formula, /"amd64" => "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb"/)
+  assert.match(formula, /"arm64" => "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1"/)
   assert.match(formula, /control_field\(control, "Version"\) == version\.to_s/)
-  assert.match(formula, /control_field\(control, "Architecture"\) == expected_architecture/)
+  assert.match(formula, /control_field\(control, "Architecture"\) == PACKAGE_ARCHITECTURE/)
   assert.match(formula, /libexec\.install app_dir/)
   assert.match(formula, /exec "#\{libexec\}\/chatgpt\/codex-launcher"/)
   assert.match(formula, /Exec=#\{opt_bin\}\/chatgpt %U/)

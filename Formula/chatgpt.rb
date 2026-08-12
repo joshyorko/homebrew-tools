@@ -3,6 +3,11 @@ require "fileutils"
 require "tmpdir"
 
 class Chatgpt < Formula
+  PACKAGE_ARCHITECTURE = Hardware::CPU.arm? ? "arm64" : "amd64"
+  PACKAGE_URL = {
+    "amd64" => "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb",
+    "arm64" => "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb",
+  }.freeze
   PACKAGE_SHA256 = {
     "amd64" => "a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb",
     "arm64" => "f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1",
@@ -20,13 +25,8 @@ class Chatgpt < Formula
   depends_on :linux
 
   on_linux do
-    if Hardware::CPU.arm?
-      url "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb"
-      sha256 PACKAGE_SHA256["arm64"]
-    else
-      url "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb"
-      sha256 PACKAGE_SHA256["amd64"]
-    end
+    url PACKAGE_URL.fetch(PACKAGE_ARCHITECTURE)
+    sha256 PACKAGE_SHA256.fetch(PACKAGE_ARCHITECTURE)
   end
 
   def install
@@ -34,7 +34,9 @@ class Chatgpt < Formula
     verify_sha256(deb_path)
 
     Dir.mktmpdir("chatgpt-deb") do |dir|
-      odie "Unable to extract ChatGPT DEB" unless system "ar", "x", deb_path.to_s, chdir: dir
+      Dir.chdir(dir) do
+        odie "Unable to extract ChatGPT DEB" unless system "ar", "x", deb_path.to_s
+      end
 
       control_archive = Dir["#{dir}/control.tar.*"].first
       data_archive = Dir["#{dir}/data.tar.*"].first
@@ -45,10 +47,9 @@ class Chatgpt < Formula
       FileUtils.mkdir_p control_dir
       extract_archive(control_archive, control_dir)
       control = File.read("#{control_dir}/control")
-      expected_architecture = Hardware::CPU.arm? ? "arm64" : "amd64"
       odie "Unexpected ChatGPT package name" unless control_field(control, "Package") == "chatgpt"
       odie "Unexpected ChatGPT package version" unless control_field(control, "Version") == version.to_s
-      odie "Unexpected ChatGPT package architecture" unless control_field(control, "Architecture") == expected_architecture
+      odie "Unexpected ChatGPT package architecture" unless control_field(control, "Architecture") == PACKAGE_ARCHITECTURE
 
       extract_archive(data_archive, dir)
       app_dir = Pathname(dir)/"usr/lib/chatgpt"
@@ -112,8 +113,7 @@ class Chatgpt < Formula
   private
 
   def verify_sha256(path)
-    expected_architecture = Hardware::CPU.arm? ? "arm64" : "amd64"
-    expected = PACKAGE_SHA256.fetch(expected_architecture)
+    expected = PACKAGE_SHA256.fetch(PACKAGE_ARCHITECTURE)
     actual = Digest::SHA256.file(path).hexdigest
     odie "ChatGPT DEB SHA-256 does not match the pinned artifact" unless actual == expected
   end
