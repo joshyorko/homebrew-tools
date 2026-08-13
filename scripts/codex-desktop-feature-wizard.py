@@ -447,6 +447,7 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--lean-profile", default="")
     parser.add_argument("--result", type=Path)
     parser.add_argument("--conversion-commit", default="unknown")
+    parser.add_argument("--official-linux-package", action="store_true")
     parser.add_argument("--pinned-dmg-sha256", default="unknown")
     parser.add_argument("--pinned-dmg-content-length", default="unknown")
     parser.add_argument("--pinned-dmg-last-modified", default="unknown")
@@ -624,16 +625,20 @@ def run_terminal_wizard(
         raise ValueError(f"Unknown profile choice: {profile}")
 
     print(f"\nSelected {len(selected)} feature(s): {selection_argument(selected)}")
-    latest_dmg_summary = build_latest_dmg_summary_from_args(args)
-    print(f"Newest upstream DMG: {latest_dmg_summary['subtitle']}")
-    print("Build source: [p]inned tested DMG  [l]atest upstream DMG")
-    source = input("Choose build source [p]: ").strip().lower() or "p"
-    if source in {"p", "pinned"}:
-        dmg_source = "pinned"
-    elif source in {"l", "latest"}:
-        dmg_source = "latest"
+    dmg_source = "pinned"
+    if args.official_linux_package:
+        print("Build source: Official signed Linux package")
     else:
-        raise ValueError(f"Unknown DMG source choice: {source}")
+        latest_dmg_summary = build_latest_dmg_summary_from_args(args)
+        print(f"Newest upstream DMG: {latest_dmg_summary['subtitle']}")
+        print("Build source: [p]inned tested DMG  [l]atest upstream DMG")
+        source = input("Choose build source [p]: ").strip().lower() or "p"
+        if source in {"p", "pinned"}:
+            dmg_source = "pinned"
+        elif source in {"l", "latest"}:
+            dmg_source = "latest"
+        else:
+            raise ValueError(f"Unknown DMG source choice: {source}")
     action = input("[s]ave only, [i]build & install, or [q]uit [s]: ").strip().lower() or "s"
     if action in {"i", "install"}:
         complete_action("install", args.config, args.result, selected, dmg_source)
@@ -846,6 +851,38 @@ def run_gtk_wizard(
             self.review_summary = Gtk.Label(xalign=0, wrap=True, selectable=True)
             page.append(self.review_summary)
             source_group = Adw.PreferencesGroup(title="Build source")
+            if args.official_linux_package:
+                source_group.add(Adw.ActionRow(
+                    title="Official signed Linux package",
+                    subtitle="Verified package from OpenAI's stable Linux repository",
+                ))
+                page.append(source_group)
+            else:
+                self.add_dmg_source_rows(source_group)
+                page.append(source_group)
+            note = Adw.StatusPage(
+                title="Your running app stays untouched",
+                description="Build &amp; install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
+                icon_name="security-high-symbolic",
+            )
+            note.set_vexpand(True)
+            page.append(note)
+            actions = Gtk.Box(spacing=8)
+            back = Gtk.Button(label="Back")
+            back.connect("clicked", lambda _button: self.stack.set_visible_child_name("features"))
+            save = Gtk.Button(label="Save only")
+            save.connect("clicked", lambda _button: self.finish("save"))
+            install = Gtk.Button(label="Build & install")
+            install.add_css_class("suggested-action")
+            install.connect("clicked", lambda _button: self.finish("install"))
+            actions.append(back)
+            actions.append(Gtk.Box(hexpand=True))
+            actions.append(save)
+            actions.append(install)
+            page.append(actions)
+            return page
+
+        def add_dmg_source_rows(self, source_group):
             pinned_fingerprint = args.pinned_dmg_sha256
             if len(pinned_fingerprint) > 16:
                 pinned_fingerprint = f"{pinned_fingerprint[:16]}…"
@@ -875,28 +912,6 @@ def run_gtk_wizard(
             latest_choice.connect("toggled", self.on_dmg_source_toggled, "latest")
             source_group.add(pinned)
             source_group.add(latest)
-            page.append(source_group)
-            note = Adw.StatusPage(
-                title="Your running app stays untouched",
-                description="Build &amp; install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
-                icon_name="security-high-symbolic",
-            )
-            note.set_vexpand(True)
-            page.append(note)
-            actions = Gtk.Box(spacing=8)
-            back = Gtk.Button(label="Back")
-            back.connect("clicked", lambda _button: self.stack.set_visible_child_name("features"))
-            save = Gtk.Button(label="Save only")
-            save.connect("clicked", lambda _button: self.finish("save"))
-            install = Gtk.Button(label="Build & install")
-            install.add_css_class("suggested-action")
-            install.connect("clicked", lambda _button: self.finish("install"))
-            actions.append(back)
-            actions.append(Gtk.Box(hexpand=True))
-            actions.append(save)
-            actions.append(install)
-            page.append(actions)
-            return page
 
         def on_dmg_source_toggled(self, button, dmg_source):
             if button.get_active():
@@ -907,8 +922,8 @@ def run_gtk_wizard(
             feature_text = "\n".join(f"• {title}" for title in titles) if titles else "No optional features"
             self.review_summary.set_label(
                 f"Conversion commit\n{args.conversion_commit}\n\n"
-                f"DMG source\n"
-                f"{'Tested pinned DMG' if self.dmg_source == 'pinned' else 'Newest upstream DMG'}\n\n"
+                f"Build source\n"
+                f"{'Official signed Linux package' if args.official_linux_package else ('Tested pinned DMG' if self.dmg_source == 'pinned' else 'Newest upstream DMG')}\n\n"
                 f"Enabled features ({len(self.selected)})\n{feature_text}"
             )
             self.stack.set_visible_child_name("review")
