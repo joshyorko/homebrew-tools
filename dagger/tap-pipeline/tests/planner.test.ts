@@ -140,6 +140,13 @@ test("platformPathsChanged detects shared orchestration changes", () => {
   assert.equal(platformPathsChanged(["README.md"]), false)
 })
 
+test("committed Codex Desktop feature choices schedule its package CI", () => {
+  assert.deepEqual(
+    changedPackagesFromPaths(["config/codex-desktop-linux-features.json"]),
+    ["codex-desktop-linux"],
+  )
+})
+
 test("shared pipeline changes schedule every PR-enabled package", () => {
   assert.deepEqual(
     changedCiPackagesFromPaths(["dagger/tap-pipeline/src/index.ts"]),

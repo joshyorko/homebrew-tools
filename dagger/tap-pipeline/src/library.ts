@@ -412,7 +412,10 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
   ["chatgpt", ["Casks/chatgpt.rb"]],
-  ["codex-desktop-linux", ["Casks/codex-desktop.rb"]],
+  [
+    "codex-desktop-linux",
+    ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],
+  ],
   ["headroom-self-hosted", ["Formula/headroom-self-hosted.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb"]],

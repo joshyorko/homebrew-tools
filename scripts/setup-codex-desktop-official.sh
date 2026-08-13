@@ -16,6 +16,10 @@ EOF
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-$repo_dir/dist/codex-desktop-official}"
+features_config="$repo_dir/config/codex-desktop-linux-features.json"
+conversion_ref="$(sed -e 's/[[:space:]]*#.*//' -e '/^[[:space:]]*$/d' "$repo_dir/codex-desktop-conversion.ref" | head -n 1)"
+full_profile="${CODEX_DESKTOP_LINUX_FEATURES_FULL:-agent-workspace api-key-model-visibility api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort frameless-titlebar global-dictation mcp-helper-reaper node-repl-reaper omarchy-theme open-target-discovery persistent-status-panel pet-overlay project-task-sort read-aloud read-aloud-mcp chronicle-skysight record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use}"
+lean_profile="${CODEX_DESKTOP_LINUX_FEATURES_LEAN:-node-repl-reaper open-target-discovery read-aloud read-aloud-mcp chronicle-skysight record-and-replay x11-ewmh-computer-use}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -38,6 +42,30 @@ done
 
 command -v dagger >/dev/null 2>&1 || { echo "dagger is required for Codex Desktop setup." >&2; exit 69; }
 command -v git >/dev/null 2>&1 || { echo "git is required for Codex Desktop setup." >&2; exit 69; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required for Codex Desktop setup." >&2; exit 69; }
+
+wizard_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-desktop-feature-source.XXXXXX")"
+wizard_result="$wizard_dir/result.json"
+trap 'rm -rf "$wizard_dir"' EXIT
+git clone --quiet --filter=blob:none https://github.com/joshyorko/codex-desktop-linux "$wizard_dir/source"
+git -C "$wizard_dir/source" checkout --quiet "$conversion_ref"
+python3 "$repo_dir/scripts/codex-desktop-feature-wizard.py" \
+    --features-root "$wizard_dir/source/linux-features" \
+    --config "$features_config" \
+    --result "$wizard_result" \
+    --conversion-commit "$conversion_ref" \
+    --full-profile "$full_profile" \
+    --lean-profile "$lean_profile"
+python3 - "$wizard_result" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+if result.get("action") == "cancel":
+    raise SystemExit("Codex Desktop setup cancelled.")
+PY
+echo "Saved release feature choices to $features_config"
 
 git_dir="${DAGGER_GIT_DIR:-$(git -C "$repo_dir" rev-parse --git-common-dir)}"
 case "$git_dir" in
