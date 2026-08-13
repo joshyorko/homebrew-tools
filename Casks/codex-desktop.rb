@@ -47,6 +47,17 @@ cask "codex-desktop" do
       "Icon=#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
     )
     File.write(desktop_file, desktop_contents)
+
+    launcher_path = "#{staged_path}/usr/bin/codex-desktop"
+    launcher_contents = <<~SH
+      #!/usr/bin/env bash
+      set -euo pipefail
+      launcher="$(readlink -f "${BASH_SOURCE[0]}")"
+      app_root="$(cd "$(dirname "$launcher")/../../opt/codex-desktop" && pwd)"
+      exec "$app_root/start.sh" "$@"
+    SH
+    File.write(launcher_path, launcher_contents)
+    FileUtils.chmod(0755, launcher_path)
   end
 
   zap trash: [

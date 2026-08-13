@@ -1531,6 +1531,17 @@ end
       "Icon=#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
     )
     File.write(desktop_file, desktop_contents)
+
+    launcher_path = "#{staged_path}/usr/bin/codex-desktop"
+    launcher_contents = <<~SH
+      #!/usr/bin/env bash
+      set -euo pipefail
+      launcher="$(readlink -f "\${BASH_SOURCE[0]}")"
+      app_root="$(cd "$(dirname "$launcher")/../../opt/codex-desktop" && pwd)"
+      exec "$app_root/start.sh" "$@"
+    SH
+    File.write(launcher_path, launcher_contents)
+    FileUtils.chmod(0755, launcher_path)
   end
 
   zap trash: [
@@ -3729,6 +3740,9 @@ end
               "installed_dir=$(find \"$(brew --caskroom)/codex-desktop\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
               "test -x \"$installed_dir/opt/codex-desktop/ChatGPT\"",
               "test -x \"$installed_dir/opt/codex-desktop/start.sh\"",
+              "! grep -Fq 'exec /opt/codex-desktop/start.sh' \"$(brew --prefix)/bin/codex-desktop\"",
+              "codex-desktop --help >/tmp/codex-desktop-help.txt",
+              "grep -q 'Codex Desktop' /tmp/codex-desktop-help.txt",
               "test ! -e \"$installed_dir/usr/bin/codex-update-manager\"",
               "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
               "grep -Fq \"Exec=$(brew --prefix)/bin/codex-desktop %u\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
@@ -4660,6 +4674,7 @@ end
           "installed_dir=$(find \"$(brew --caskroom)/codex-desktop\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
           "test -x \"$installed_dir/opt/codex-desktop/ChatGPT\"",
           "test -x \"$installed_dir/opt/codex-desktop/start.sh\"",
+          "! grep -Fq 'exec /opt/codex-desktop/start.sh' \"$(brew --prefix)/bin/codex-desktop\"",
           "test ! -e \"$installed_dir/usr/bin/codex-update-manager\"",
           "build_info=$(find \"$installed_dir\" -path '*/.codex-linux/build-info.json' -print -quit)",
           "test -n \"$build_info\"",
