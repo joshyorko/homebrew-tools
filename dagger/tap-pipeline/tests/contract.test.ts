@@ -254,7 +254,7 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
   assert.match(source, /! grep -Eq .*AppImage/)
 
-  assert.match(cask, /^\s*version "main\.20260805114256\.2a04db134c2d,1"$/m)
+  assert.match(cask, /^\s*version "main\.20260812125613\.e321667b100a"$/m)
   assert.match(cask, /T3-Code-#\{version\.csv\.first\}-#\{arch\}\.AppImage/)
   assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
   assert.match(cask, /raise "T3 Code AppRun is not executable" unless File\.executable\?\(app_run\)/)
@@ -356,7 +356,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   const renderer = readFileSync(new URL("../src/devsy-render.ts", import.meta.url), "utf8")
   const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8")
   const formulaVersion = formula.match(/^\s*version "(\d+\.\d+\.\d+)"$/m)?.[1]
-  const caskVersionMatch = cask.match(/^\s*version "(\d+\.\d+\.\d+),(\d+)"$/m)
+  const caskVersionMatch = cask.match(/^\s*version "(\d+\.\d+\.\d+)(?:,(\d+))?"$/m)
   const caskVersion = caskVersionMatch?.[1]
   const caskRevision = caskVersionMatch?.[2]
   const formulaUrls = [...formula.matchAll(/^\s*url "([^"]+)"$/gm)].map((match) => match[1])
@@ -383,7 +383,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.match(cask, /depends_on arch: :x86_64/)
   assert.doesNotMatch(cask, /arch arm/)
   assert.equal(caskVersion, formulaVersion)
-  assert.equal(caskRevision, "1")
+  assert.equal(caskRevision, undefined)
   assert.match(caskUrl ?? "", new RegExp(`/(?:v|devsy-desktop-)${caskVersion}/Devsy_linux_x86_64\\.AppImage$`))
   assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
   assert.match(cask, /target: "devsy-desktop"/)
