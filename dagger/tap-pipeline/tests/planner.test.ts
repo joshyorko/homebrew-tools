@@ -121,6 +121,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
     "action-server": "Casks/action-server.rb",
     "devpod-linux": "Casks/devpod-linux.rb",
     "t3-code-linux": "Casks/t3-code-linux.rb",
+    "headroom-self-hosted": "Formula/headroom-self-hosted.rb",
   }
 
   for (const entry of PACKAGE_REGISTRY.filter((candidate) => candidate.supportsPrCi)) {

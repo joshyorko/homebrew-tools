@@ -14,6 +14,7 @@ on:
   - cron: "41 0,12,18 * * *"
   - cron: "13 10 * * *"
   - cron: "0 10 * * *"
+  - cron: "31 10 * * *"
   - cron: "23 10 * * *"
   workflow_dispatch:
     inputs:
@@ -33,6 +34,7 @@ on:
         - fizzy-daily
         - buzz-daily
         - chatgpt-daily
+        - headroom-daily
         - camp-daily
 
 permissions:
@@ -90,6 +92,7 @@ jobs:
             "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
             "13 10 * * *") slot_id="buzz-daily" ;;
             "0 10 * * *") slot_id="chatgpt-daily" ;;
+            "31 10 * * *") slot_id="headroom-daily" ;;
             *)
               echo "Unknown scheduled slot for Tap Auto Update: $EVENT_SCHEDULE" >&2
               exit 1
