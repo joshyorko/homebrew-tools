@@ -2891,6 +2891,7 @@ end
       .withEnvVariable("PATH", "/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin")
       .withDirectory("/source", upstreamRef.tree({ discardGitDir: true }))
       .withWorkdir("/source")
+      .withNewFile("/work/package/provenance.json", json(buildProvenance))
       .withExec([
         "bash",
         "-lc",
@@ -2900,7 +2901,7 @@ end
           "python -m pip wheel --disable-pip-version-check --no-cache-dir --wheel-dir /work/package/wheelhouse '.[proxy]'",
           "find /work/package/wheelhouse -maxdepth 1 -type f -name 'headroom_ai-*.whl' -print -quit | grep -q .",
           "test \"$(find /work/package/wheelhouse -maxdepth 1 -type f -name '*.whl' | wc -l)\" -gt 1",
-          `printf '%s\\n' ${JSON.stringify(JSON.stringify(buildProvenance, null, 2))} > /work/package/provenance.json`,
+          "python -m json.tool /work/package/provenance.json >/dev/null",
           `tar -czf ${JSON.stringify(artifactPath)} -C /work/package .`,
         ].join("\n"),
       ])
