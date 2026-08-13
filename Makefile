@@ -85,6 +85,7 @@ crabbox-pull-codex-desktop-legacy-archive:
 
 codex-desktop-setup:
 	CODEX_DESKTOP_LINUX_FEATURES_FULL="$(CODEX_DESKTOP_LINUX_FEATURES_FULL)" CODEX_DESKTOP_LINUX_FEATURES_LEAN="$(CODEX_DESKTOP_LINUX_FEATURES_LEAN)" CODEX_DESKTOP_BUNDLE_DIR="$(CODEX_DESKTOP_OFFICIAL_BUNDLE_DIR)" scripts/setup-codex-desktop-official.sh
+	CODEX_DESKTOP_SKIP_SETUP=1 CODEX_DESKTOP_BUNDLE_DIR="$(CODEX_DESKTOP_OFFICIAL_BUNDLE_DIR)" scripts/install-codex-desktop-official.sh
 
 codex-desktop-install:
 	CODEX_DESKTOP_BUNDLE_DIR="$(CODEX_DESKTOP_OFFICIAL_BUNDLE_DIR)" scripts/install-codex-desktop-official.sh
