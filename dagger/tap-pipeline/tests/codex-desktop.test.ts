@@ -635,6 +635,10 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.doesNotMatch(officialInstall, /\$bundle_dir\/\s+release\.json/)
   assert.doesNotMatch(officialInstall, /homebrew\/\s+codex-desktop\.rb/)
   assert.match(makefile, /codex-desktop-setup:/)
+  assert.match(
+    makefile,
+    /^codex-desktop-setup:\n\t[^\n]*setup-codex-desktop-official\.sh\n\tCODEX_DESKTOP_SKIP_SETUP=1 [^\n]*install-codex-desktop-official\.sh$/m,
+  )
   assert.match(makefile, /codex-desktop-install:/)
   assert.match(makefile, /setup-codex-desktop-official\.sh/)
   assert.match(makefile, /install-codex-desktop-official\.sh/)
