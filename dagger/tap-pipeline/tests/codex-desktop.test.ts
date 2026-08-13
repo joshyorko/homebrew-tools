@@ -617,7 +617,12 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   ]
 
   const officialSetup = readFileSync(new URL("../../../scripts/setup-codex-desktop-official.sh", import.meta.url), "utf8")
+  const officialInstall = readFileSync(new URL("../../../scripts/install-codex-desktop-official.sh", import.meta.url), "utf8")
   const releaseFeatures = readFileSync(new URL("../../../config/codex-desktop-linux-features.json", import.meta.url), "utf8")
+  const officialCaskRenderer = pipeline.slice(
+    pipeline.indexOf("private renderCodexDesktopOfficialCask"),
+    pipeline.indexOf("private renderCodexDesktopOfficialCask") + 12_000,
+  )
   assert.deepEqual(JSON.parse(releaseFeatures), { enabled: [] })
   assert.match(officialSetup, /release-bundle/)
   assert.match(officialSetup, /codex-desktop-offline-smoke/)
@@ -625,6 +630,10 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.match(officialSetup, /codex-desktop-feature-wizard\.py/)
   assert.match(officialSetup, /config\/codex-desktop-linux-features\.json/)
   assert.doesNotMatch(officialSetup, /DMG|dmg/)
+  assert.match(officialInstall, /release_json="\$bundle_dir\/release\.json"/)
+  assert.match(officialInstall, /source_cask="\$bundle_dir\/homebrew\/codex-desktop\.rb"/)
+  assert.doesNotMatch(officialInstall, /\$bundle_dir\/\s+release\.json/)
+  assert.doesNotMatch(officialInstall, /homebrew\/\s+codex-desktop\.rb/)
   assert.match(makefile, /codex-desktop-setup:/)
   assert.match(makefile, /codex-desktop-install:/)
   assert.match(makefile, /setup-codex-desktop-official\.sh/)
@@ -645,6 +654,12 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.match(pipeline, /linux_features_enabled: build\.linuxFeaturesEnabled/)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG=linux-features\/features\.homebrew\.json make build-native-feature-helpers/)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG=linux-features\/features\.homebrew\.json[^\n]+\.\/install\.sh \/work\/chatgpt\.deb/)
+  assert.match(pipeline, /launcher_path = "#\{staged_path\}\/usr\/bin\/codex-desktop"/)
+  assert.match(pipeline, /readlink -f/)
+  assert.match(pipeline, /BASH_SOURCE\[0\]/)
+  assert.match(pipeline, /\.\.\/\.\.\/opt\/codex-desktop/)
+  assert.doesNotMatch(officialCaskRenderer, /exec \/opt\/codex-desktop\/start\.sh/)
+  assert.match(pipeline, /! grep -Fq 'exec \/opt\/codex-desktop\/start\.sh'/)
   assert.match(pipeline, /codexDesktopLocalBundle/)
   assert.match(pipeline, /CODEX_DESKTOP_LOCAL_ARTIFACT/)
   assert.match(pipeline, /No converted Codex Desktop app payload is distributed by the tap/)
