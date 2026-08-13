@@ -46,13 +46,12 @@ const CODEX_DESKTOP_CONVERSION_COMMIT =
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg"
 const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
 const LEAN_CODEX_DESKTOP_LINUX_FEATURES = [
+  "computer-use-linux",
   "node-repl-reaper",
-  "open-target-discovery",
   "read-aloud",
   "read-aloud-mcp",
   "chronicle-skysight",
   "record-and-replay",
-  "x11-ewmh-computer-use",
 ]
 const FULL_CODEX_DESKTOP_LINUX_FEATURES = [
   "agent-workspace",
@@ -60,26 +59,27 @@ const FULL_CODEX_DESKTOP_LINUX_FEATURES = [
   "api-key-service-tier",
   "appshots",
   "authenticated-proxy",
-  "codex-wrapper-updater",
-  "conversation-mode",
+  "automation-extensions",
+  "chronicle-skysight",
+  "computer-use-linux",
   "copilot-reasoning-effort",
+  "directory-only-working-tree-watch",
   "frameless-titlebar",
   "global-dictation",
   "mcp-helper-reaper",
   "node-repl-reaper",
   "omarchy-theme",
-  "open-target-discovery",
   "persistent-status-panel",
   "pet-overlay",
+  "project-group-last-updated-sort",
   "project-task-sort",
   "read-aloud",
   "read-aloud-mcp",
-  "chronicle-skysight",
   "record-and-replay",
   "remote-control-ui",
   "remote-mobile-control",
+  "shared-app-server-socket",
   "ui-tweaks",
-  "x11-ewmh-computer-use",
 ]
 const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = FULL_CODEX_DESKTOP_LINUX_FEATURES
 const CODEX_DESKTOP_LINUX_FEATURES = process.env.CODEX_DESKTOP_LINUX_FEATURES === undefined
@@ -897,9 +897,13 @@ export class TapPipeline {
   }
 
   private codexDesktopBaseContainer(): Container {
+    const rustToolchain = dag.container().from(RUST_IMAGE)
+
     return dag
       .container()
       .from(NODE_IMAGE)
+      .withFile("/usr/local/cargo/bin/rustup", rustToolchain.file("/usr/local/cargo/bin/rustup"), { permissions: 0o755 })
+      .withDirectory("/usr/local/rustup", rustToolchain.directory("/usr/local/rustup"))
       .withMountedCache(
         "/root/.npm",
         dag.cacheVolume("tap-pipeline-codex-desktop-npm-cache"),
@@ -915,29 +919,24 @@ export class TapPipeline {
         dag.cacheVolume("tap-pipeline-codex-desktop-node-runtime-cache"),
         { sharing: CacheSharingMode.Locked },
       )
-      .withMountedCache(
-        "/root/.cargo/registry",
-        dag.cacheVolume("tap-pipeline-codex-desktop-cargo-registry-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withMountedCache(
-        "/root/.cargo/git",
-        dag.cacheVolume("tap-pipeline-codex-desktop-cargo-git-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
+      .withEnvVariable("CARGO_HOME", "/usr/local/cargo")
+      .withEnvVariable("RUSTUP_HOME", "/usr/local/rustup")
+      .withEnvVariable("PATH", "/root/.local/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+      .withEnvVariable("DEBIAN_FRONTEND", "noninteractive")
       .withExec([
         "bash",
         "-lc",
         [
           "set -euo pipefail",
+          "ln -sf rustup /usr/local/cargo/bin/cargo",
+          "ln -sf rustup /usr/local/cargo/bin/rustc",
+          "cargo --version",
           "apt-get update",
           "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends 7zip ca-certificates curl dpkg-dev file g++ git gnupg gpgv jq make pkg-config python3 p7zip-full sudo tar unzip util-linux xz-utils",
           "npm install -g node-gyp",
           "rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
-      .withEnvVariable("PATH", "/root/.local/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-      .withEnvVariable("DEBIAN_FRONTEND", "noninteractive")
   }
 
   private goBaseContainer(): Container {

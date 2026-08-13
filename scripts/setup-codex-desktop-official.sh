@@ -18,8 +18,8 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bundle_dir="${CODEX_DESKTOP_BUNDLE_DIR:-$repo_dir/dist/codex-desktop-official}"
 features_config="$repo_dir/config/codex-desktop-linux-features.json"
 conversion_ref="$(sed -e 's/[[:space:]]*#.*//' -e '/^[[:space:]]*$/d' "$repo_dir/codex-desktop-conversion.ref" | head -n 1)"
-full_profile="${CODEX_DESKTOP_LINUX_FEATURES_FULL:-agent-workspace api-key-model-visibility api-key-service-tier appshots authenticated-proxy codex-wrapper-updater conversation-mode copilot-reasoning-effort frameless-titlebar global-dictation mcp-helper-reaper node-repl-reaper omarchy-theme open-target-discovery persistent-status-panel pet-overlay project-task-sort read-aloud read-aloud-mcp chronicle-skysight record-and-replay remote-control-ui remote-mobile-control ui-tweaks x11-ewmh-computer-use}"
-lean_profile="${CODEX_DESKTOP_LINUX_FEATURES_LEAN:-node-repl-reaper open-target-discovery read-aloud read-aloud-mcp chronicle-skysight record-and-replay x11-ewmh-computer-use}"
+full_profile="${CODEX_DESKTOP_LINUX_FEATURES_FULL:-agent-workspace api-key-model-visibility api-key-service-tier appshots authenticated-proxy automation-extensions chronicle-skysight computer-use-linux copilot-reasoning-effort directory-only-working-tree-watch frameless-titlebar global-dictation mcp-helper-reaper node-repl-reaper omarchy-theme persistent-status-panel pet-overlay project-group-last-updated-sort project-task-sort read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control shared-app-server-socket ui-tweaks}"
+lean_profile="${CODEX_DESKTOP_LINUX_FEATURES_LEAN:-computer-use-linux node-repl-reaper read-aloud read-aloud-mcp chronicle-skysight record-and-replay}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
