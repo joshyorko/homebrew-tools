@@ -38,6 +38,7 @@ const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
+const CODEX_DESKTOP_LINUX_REPO = "https://github.com/joshyorko/codex-desktop-linux"
 const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
 const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg"
@@ -447,6 +448,21 @@ type CodexDesktopBuildFailure = {
 }
 
 type CodexDesktopBuildAttempt = CodexDesktopBuild | CodexDesktopBuildFailure
+
+type CodexDesktopLinuxOfficialBuild = {
+  artifactPath: string
+  assetName: string
+  architecture: string
+  buildMode: string
+  commit: string
+  container: Container
+  sha256: string
+  upstreamPackagePath: string
+  upstreamPackageSha256: string
+  upstreamPackageUrl: string
+  upstreamVersion: string
+  version: string
+}
 
 type CodexDesktopDmgMetadata = {
   cacheSegment: string
@@ -893,7 +909,7 @@ export class TapPipeline {
         [
           "set -euo pipefail",
           "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends 7zip ca-certificates curl file g++ git jq make pkg-config python3 p7zip-full sudo tar unzip xz-utils",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends 7zip ca-certificates curl dpkg-dev file g++ git gnupg gpgv jq make pkg-config python3 p7zip-full sudo tar unzip util-linux xz-utils",
           "npm install -g node-gyp",
           "rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
@@ -1228,6 +1244,43 @@ export class TapPipeline {
     }
   }
 
+  private codexDesktopOfficialReleaseMetadata(
+    build: CodexDesktopLinuxOfficialBuild,
+  ): Record<string, unknown> {
+    return {
+      package: "codex-desktop-linux",
+      kind: "codex_desktop_linux_cask",
+      homebrew_path: "Casks/codex-desktop.rb",
+      version: build.version,
+      release_tag: `codex-desktop-linux-${build.version}`,
+      asset_name: build.assetName,
+      artifact_sha256: build.sha256,
+      download_url: `https://github.com/${TAP_REPOSITORY}/releases/download/codex-desktop-linux-${build.version}/${build.assetName}`,
+      release_title: `Codex Desktop Linux ${build.version}`,
+      release_notes: `Built from PatchRaptor main commit ${build.commit} using OpenAI Linux package ${build.upstreamVersion}; the native updater is disabled for Homebrew ownership of upgrades.`,
+      commit_message: `Build Codex Desktop Linux cask ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: CODEX_DESKTOP_LINUX_REPO,
+        ref: build.commit,
+        commit: build.commit,
+        official_package_version: build.upstreamVersion,
+        official_package_path: build.upstreamPackagePath,
+        official_package_url: build.upstreamPackageUrl,
+        official_package_sha256: build.upstreamPackageSha256,
+        architecture: build.architecture,
+      },
+      source_repository: CODEX_DESKTOP_LINUX_REPO,
+      source_commit: build.commit,
+      official_package_version: build.upstreamVersion,
+      official_package_path: build.upstreamPackagePath,
+      official_package_url: build.upstreamPackageUrl,
+      official_package_sha256: build.upstreamPackageSha256,
+      architecture: build.architecture,
+      build_mode: build.buildMode,
+    }
+  }
+
   private renderCodexDesktopLocalCask(version: string, sha256: string): string {
     return `cask "codex-desktop" do
   version "${version}"
@@ -1399,6 +1452,74 @@ export class TapPipeline {
       codex-desktop logs
       codex-desktop logs --follow
       codex-desktop doctor
+  EOS
+end
+`
+  }
+
+  private renderCodexDesktopOfficialCask(downloadUrl: string, version: string, sha256: string): string {
+    return `cask "codex-desktop" do
+  arch intel: "amd64"
+  os linux: "linux"
+
+  version "${version}"
+  sha256 x86_64_linux: "${sha256}"
+
+  url "${downloadUrl}"
+  name "Codex Desktop"
+  desc "ChatGPT Community Linux desktop app built from PatchRaptor main"
+  homepage "https://github.com/joshyorko/codex-desktop-linux"
+
+  livecheck do
+    skip "Built from the pinned PatchRaptor main commit by the tap release pipeline."
+  end
+
+  binary "usr/bin/codex-desktop"
+  artifact "usr/share/applications/codex-desktop.desktop",
+           target: "#{Dir.home}/.local/share/applications/codex-desktop.desktop"
+  artifact "usr/share/icons/hicolor/256x256/apps/codex-desktop.png",
+           target: "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
+
+  preflight do
+    package = Dir["#{staged_path}/*.deb"].first
+    raise "unable to find Codex Desktop .deb in #{staged_path}" unless package
+
+    system "ar", "x", package, chdir: staged_path
+    data_archive = Dir["#{staged_path}/data.tar.*"].first
+    raise "unable to find data archive in #{package}" unless data_archive
+
+    case data_archive
+    when /\\.tar\\.gz$/
+      system "tar", "-xzf", data_archive, "-C", staged_path
+    when /\\.tar\\.xz$/
+      system "tar", "-xJf", data_archive, "-C", staged_path
+    when /\\.tar\\.zst$/
+      system "sh", "-c", "unzstd -c '#{data_archive}' | tar -xf - -C '#{staged_path}'"
+    else
+      system "tar", "-xf", data_archive, "-C", staged_path
+    end
+
+    desktop_file = "#{staged_path}/usr/share/applications/codex-desktop.desktop"
+    desktop_contents = File.read(desktop_file)
+    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/codex-desktop %u")
+    desktop_contents.gsub!(
+      /^Icon=.*/,
+      "Icon=#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
+    )
+    File.write(desktop_file, desktop_contents)
+  end
+
+  zap trash: [
+    "#{Dir.home}/.local/share/applications/codex-desktop.desktop",
+    "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png",
+  ]
+
+  caveats <<~EOS
+    Launch Codex Desktop with:
+      codex-desktop
+
+    This cask is built from the official OpenAI Linux package by PatchRaptor
+    main. Homebrew owns upgrades; the native package updater is omitted.
   EOS
 end
 `
@@ -1951,6 +2072,64 @@ end
       requestedConversionCommit,
       requestedLinuxFeatures,
     )
+  }
+
+  private async buildCodexDesktopLinuxOfficialArtifact(
+    tap: Directory,
+  ): Promise<CodexDesktopLinuxOfficialBuild> {
+    const entry = this.packageEntry("codex-desktop-linux")
+    if (entry.upstream.kind !== "git") {
+      throw new Error("Expected Codex Desktop to use a git upstream")
+    }
+
+    const upstreamRef = dag.git(CODEX_DESKTOP_LINUX_REPO).ref(entry.upstream.ref)
+    const commit = await upstreamRef.commit()
+    const upstreamTree = upstreamRef.tree({ discardGitDir: true })
+    const pins = JSON.parse(await upstreamTree.file("nix/upstream-linux-packages.json").contents()) as {
+      version: string
+      amd64: { repositoryPath: string, sha256: string }
+    }
+    const version = `${pins.version}.patchraptor.${commit.slice(0, 12)}`
+    const assetName = `codex-desktop-linux-${version}-amd64.deb`
+    const artifactPath = `/tmp/${assetName}`
+    const upstreamUrl = `https://persistent.oaistatic.com/codex-app-prod/linux/deb/${pins.amd64.repositoryPath}`
+    const container = this.codexDesktopBaseContainer()
+      .withDirectory("/tap", tap)
+      .withDirectory("/upstream", upstreamTree)
+      .withWorkdir("/upstream")
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          `curl -fL --retry 3 -o /work/chatgpt.deb ${JSON.stringify(upstreamUrl)}`,
+          `printf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(pins.amd64.sha256)} | sha256sum -c -`,
+          "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.example.json make build-native-feature-helpers",
+          "UPSTREAM_DEB=/work/chatgpt.deb PACKAGE_WITH_UPDATER=0 make build-app",
+          `PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION=${JSON.stringify(version)} make deb`,
+          "deb=$(find dist -maxdepth 1 -type f -name 'codex-desktop_*.deb' -print -quit)",
+          "test -n \"$deb\"",
+          "test \"$(dpkg-deb -f \"$deb\" Package)\" = chatgpt || test \"$(dpkg-deb -f \"$deb\" Package)\" = codex-desktop",
+          `test "$(dpkg-deb -f \"$deb\" Version)" = ${JSON.stringify(version)}`,
+          `cp "$deb" ${JSON.stringify(artifactPath)}`,
+        ].join("\n"),
+      ])
+    const sha256 = await this.sha256For(container, artifactPath)
+
+    return {
+      artifactPath,
+      assetName,
+      architecture: "amd64",
+      buildMode: "patchraptor-main-official-deb-no-updater",
+      commit,
+      container,
+      sha256,
+      upstreamPackagePath: pins.amd64.repositoryPath,
+      upstreamPackageSha256: pins.amd64.sha256,
+      upstreamPackageUrl: upstreamUrl,
+      upstreamVersion: pins.version,
+      version,
+    }
   }
 
   private async buildVscodeArtifact(tap: Directory, sourceUrl?: string, version?: string): Promise<VscodeBuild> {
@@ -3309,6 +3488,57 @@ end
           .stdout()
       }
       case "codex-desktop-linux": {
+        const officialBuild = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
+        const releaseUrl = `file:///artifacts/${officialBuild.assetName}`
+        const officialCask = this.renderCodexDesktopOfficialCask(
+          releaseUrl,
+          officialBuild.version,
+          officialBuild.sha256,
+        )
+        const smokeTap = tap.withFile(
+          "Casks/codex-desktop.rb",
+          dag.file("codex-desktop.rb", officialCask),
+        )
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withUser("root")
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withExec([
+            "bash",
+            "-lc",
+            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils tar xz-utils zstd && rm -rf /var/lib/apt/lists/*",
+          ])
+          .withUser("linuxbrew")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${officialBuild.assetName}`, officialBuild.container.file(officialBuild.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("codex-desktop-linux"),
+              "brew install --cask test/tap/codex-desktop",
+              "test -x \"$(brew --prefix)/bin/codex-desktop\"",
+              "installed_dir=$(find \"$(brew --caskroom)/codex-desktop\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
+              "test -x \"$installed_dir/opt/codex-desktop/ChatGPT\"",
+              "test -x \"$installed_dir/opt/codex-desktop/start.sh\"",
+              "test ! -e \"$installed_dir/usr/bin/codex-update-manager\"",
+              "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+              "grep -Fq \"Exec=$(brew --prefix)/bin/codex-desktop %u\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+              "test -f \"$HOME/.local/share/icons/hicolor/256x256/apps/codex-desktop.png\"",
+            ].join("\n"),
+          ])
+          .stdout()
+
+        // The historical fixture implementation below remains frozen until
+        // the official-package lane is fully adopted and the old tests are
+        // retired in a separate cleanup change.
         const build = await this.buildCodexDesktopFixtureArtifact(tap)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
@@ -3657,9 +3887,8 @@ end
       }
       case "codex-desktop-linux": {
         void codexDesktopConversionCommit
-        throw new Error(
-          "codex-desktop-linux is local-only and must not be published as release metadata. Use codex-desktop-local-bundle from scripts/install-codex-desktop-local.sh.",
-        )
+        const build = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
+        return json(this.codexDesktopOfficialReleaseMetadata(build))
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
@@ -3695,12 +3924,7 @@ end
   ): Promise<Directory> {
     this.setGithubToken(githubToken)
 
-    if (packageId === "codex-desktop-linux") {
-      void codexDesktopConversionCommit
-      throw new Error(
-        "codex-desktop-linux is local-only and must not be published as a release bundle. Use codex-desktop-local-bundle from scripts/install-codex-desktop-local.sh.",
-      )
-    }
+    void codexDesktopConversionCommit
 
     const tap = this.source
 
@@ -3929,9 +4153,20 @@ end
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "codex-desktop-linux": {
-        throw new Error(
-          "codex-desktop-linux is local-only and must not be published as a release bundle. Use codex-desktop-local-bundle from scripts/install-codex-desktop-local.sh.",
+        const build = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
+        const releaseTag = `codex-desktop-linux-${build.version}`
+        const renderedCask = this.renderCodexDesktopOfficialCask(
+          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`,
+          build.version,
+          build.sha256,
         )
+        const release = this.codexDesktopOfficialReleaseMetadata(build)
+
+        return dag.directory()
+          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", renderedCask))
+          .withFile("release.json", dag.file("release.json", json(release)))
+          .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
@@ -4162,6 +4397,63 @@ end
       .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", caskContents))
       .withFile("release.json", dag.file("release.json", json(localMetadata)))
       .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmgFile)))
+  }
+
+  @func()
+  async codexDesktopOfflineSmoke(bundle: Directory): Promise<string> {
+    const release = JSON.parse(await bundle.file("release.json").contents()) as {
+      asset_name: string
+      artifact_sha256: string
+      package: string
+    }
+    if (release.package !== "codex-desktop-linux") {
+      throw new Error(`Expected a Codex Desktop release bundle, got ${release.package}`)
+    }
+
+    const artifactPath = `artifacts/${release.asset_name}`
+    const caskPath = "homebrew/codex-desktop.rb"
+    const cask = (await bundle.file(caskPath).contents())
+      .replace(/url ".*"/, `url "file:///artifacts/${release.asset_name}"`)
+    const smokeTap = bundle.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", cask))
+
+    return dag
+      .container()
+      .from(BREW_IMAGE)
+      .withUser("linuxbrew")
+      .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+      .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+      .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+      .withDirectory("/tap", smokeTap)
+      .withFile(`/artifacts/${release.asset_name}`, bundle.file(artifactPath))
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "repo=$(brew --repository)",
+          "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+          ...tapStagingCommands("codex-desktop-linux"),
+          `printf '%s  /artifacts/${release.asset_name}\\n' ${JSON.stringify(release.artifact_sha256)} | sha256sum -c -`,
+          "brew install --cask test/tap/codex-desktop",
+          "test -x \"$(brew --prefix)/bin/codex-desktop\"",
+          "installed_dir=$(find \"$(brew --caskroom)/codex-desktop\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
+          "test -x \"$installed_dir/opt/codex-desktop/ChatGPT\"",
+          "test -x \"$installed_dir/opt/codex-desktop/start.sh\"",
+          "test ! -e \"$installed_dir/usr/bin/codex-update-manager\"",
+          "build_info=$(find \"$installed_dir\" -path '*/.codex-linux/build-info.json' -print -quit)",
+          "test -n \"$build_info\"",
+          "grep -q 'upstream' \"$build_info\"",
+          "staged_features=$(find \"$installed_dir\" -path '*/.codex-linux/linux-features-staged.json' -print -quit)",
+          "test -n \"$staged_features\"",
+          "codex-desktop --help >/tmp/codex-desktop-help.txt",
+          "grep -q 'Codex Desktop' /tmp/codex-desktop-help.txt",
+          "web_report=$(codex-desktop web --inspect)",
+          "grep -q 'loopback_only_default' <<<\"$web_report\"",
+          "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+          "grep -Fq \"Exec=$(brew --prefix)/bin/codex-desktop %u\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
+        ].join("\n"),
+      ])
+      .stdout()
   }
 
 }

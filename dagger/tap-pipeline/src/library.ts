@@ -100,6 +100,22 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "codex-desktop-linux",
+    kind: "codex_desktop_linux_cask",
+    homebrewPath: "Casks/codex-desktop.rb",
+    supportsPrCi: true,
+    supportsReleaseBundle: true,
+    autoUpdate: {
+      kind: "manual",
+      reason: "Pinned to the verified PatchRaptor official Linux package migration.",
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/joshyorko/codex-desktop-linux",
+      ref: "380fb5654dac67a49c3e23849411f5f99a09f93",
+    },
+  },
+  {
     id: "devsy",
     kind: "http_binary_formula",
     homebrewPath: "Formula/devsy.rb",
@@ -378,6 +394,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
   ["chatgpt", ["Casks/chatgpt.rb"]],
+  ["codex-desktop-linux", ["Casks/codex-desktop.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb"]],
   [

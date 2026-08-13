@@ -361,6 +361,22 @@ does not delete ChatGPT or Codex user data. The Linux preview's Wayland
 Computer Use, Remote, Global Dictation, and Record & Replay behavior still
 needs validation on the target Bluefin desktop.
 
+### Codex Desktop (Official Linux Package Architecture)
+
+The normal Codex Desktop flow builds the pinned PatchRaptor source against
+OpenAI's checksummed official Linux `.deb` with `PACKAGE_WITH_UPDATER=0`. It
+retains the release artifact, provenance metadata, and rendered cask, then
+proves an offline Homebrew install in Dagger before any host installation.
+
+```bash
+make codex-desktop-setup
+make codex-desktop-install
+```
+
+`codex-desktop-setup` builds and verifies the offline bundle without installing
+on the host. `codex-desktop-install` runs the same verified setup and installs
+the retained artifact through Homebrew.
+
 ### Legacy Codex Desktop (Linux DMG Conversion Runtime)
 
 The official Linux package above is the preferred ChatGPT Desktop stream. The
@@ -394,18 +410,18 @@ codex-desktop doctor
 codex-desktop web --inspect
 ```
 
-From a repo checkout, the same builder is available directly:
+From a repo checkout, the frozen legacy builder is available only through
+explicitly named legacy targets:
 
 ```bash
 scripts/install-codex-desktop-local.sh
-make codex-desktop-setup
-make codex-desktop-install
-make codex-install
+make codex-desktop-legacy-setup
+make codex-desktop-legacy-install
 make codex-desktop-uninstall
 make codex-desktop-zap
-make codex-desktop-rebuild-dry-run
-make codex-desktop-rebuild-relaunch
-make codex-desktop-rebuild-foreground
+make codex-desktop-legacy-rebuild-dry-run
+make codex-desktop-legacy-rebuild-relaunch
+make codex-desktop-legacy-rebuild-foreground
 ```
 
 For normal interactive use, start with `make codex-desktop-setup`. It opens a
