@@ -54,6 +54,7 @@ python3 "$repo_dir/scripts/codex-desktop-feature-wizard.py" \
     --config "$features_config" \
     --result "$wizard_result" \
     --conversion-commit "$conversion_ref" \
+    --official-linux-package \
     --full-profile "$full_profile" \
     --lean-profile "$lean_profile"
 python3 - "$wizard_result" <<'PY'
