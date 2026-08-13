@@ -1,5 +1,6 @@
 import { dag, CacheSharingMode, Container, Directory, File, Secret, argument, object, func } from "@dagger.io/dagger"
 import { existsSync, readFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import {
   changedCiPackagesFromPaths,
   listAutoUpdateSlots as slotSummaries,
@@ -473,6 +474,8 @@ type CodexDesktopLinuxOfficialBuild = {
   buildMode: string
   commit: string
   container: Container
+  featureProfileSha256: string
+  linuxFeaturesEnabled: string[]
   sha256: string
   upstreamPackagePath: string
   upstreamPackageSha256: string
@@ -1297,6 +1300,8 @@ export class TapPipeline {
       official_package_sha256: build.upstreamPackageSha256,
       architecture: build.architecture,
       build_mode: build.buildMode,
+      feature_profile_sha256: build.featureProfileSha256,
+      linux_features_enabled: build.linuxFeaturesEnabled,
     }
   }
 
@@ -2108,13 +2113,24 @@ end
       version: string
       amd64: { repositoryPath: string, sha256: string }
     }
-    const version = `${pins.version}.patchraptor.${commit.slice(0, 12)}`
+    const featureConfig = JSON.parse(
+      await tap.file("config/codex-desktop-linux-features.json").contents(),
+    ) as { enabled?: unknown }
+    if (!Array.isArray(featureConfig.enabled) || featureConfig.enabled.some((feature) => typeof feature !== "string")) {
+      throw new Error("config/codex-desktop-linux-features.json must contain an enabled string array")
+    }
+    const enabled = [...new Set(featureConfig.enabled as string[])].sort()
+    const canonicalFeatureConfig = json({ enabled })
+    const featureProfileSha256 = createHash("sha256").update(canonicalFeatureConfig).digest("hex")
+    const baseVersion = `${pins.version}.patchraptor.${commit.slice(0, 12)}`
+    const version = enabled.length === 0 ? baseVersion : `${baseVersion}.features.${featureProfileSha256.slice(0, 12)}`
     const assetName = `codex-desktop-linux-${version}-amd64.deb`
     const artifactPath = `/tmp/${assetName}`
     const upstreamUrl = `https://persistent.oaistatic.com/codex-app-prod/linux/deb/${pins.amd64.repositoryPath}`
     const container = this.codexDesktopBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
+      .withNewFile("/upstream/linux-features/features.homebrew.json", canonicalFeatureConfig)
       .withWorkdir("/upstream")
       .withExec([
         "bash",
@@ -2124,8 +2140,8 @@ end
           "mkdir -p /work",
           `curl -fL --retry 3 -o /work/chatgpt.deb ${JSON.stringify(upstreamUrl)}`,
           `printf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(pins.amd64.sha256)} | sha256sum -c -`,
-          "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.example.json make build-native-feature-helpers",
-          "PACKAGE_WITH_UPDATER=0 CODEX_INSTALL_DIR=/upstream/codex-app ./install.sh /work/chatgpt.deb",
+          "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json make build-native-feature-helpers",
+          "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json PACKAGE_WITH_UPDATER=0 CODEX_INSTALL_DIR=/upstream/codex-app ./install.sh /work/chatgpt.deb",
           `PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION=${JSON.stringify(version)} make deb`,
           "deb=$(find dist -maxdepth 1 -type f -name 'codex-desktop_*.deb' -print -quit)",
           "test -n \"$deb\"",
@@ -2143,6 +2159,8 @@ end
       buildMode: "patchraptor-main-official-deb-no-updater",
       commit,
       container,
+      featureProfileSha256,
+      linuxFeaturesEnabled: enabled,
       sha256,
       upstreamPackagePath: pins.amd64.repositoryPath,
       upstreamPackageSha256: pins.amd64.sha256,
