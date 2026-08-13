@@ -3121,6 +3121,7 @@ end
         return dag
           .container()
           .from(BREW_IMAGE)
+          .withUser("linuxbrew")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
@@ -3465,7 +3466,7 @@ end
         return dag
           .container()
           .from(BREW_IMAGE)
-          .withUser("root")
+          .withUser("linuxbrew")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")

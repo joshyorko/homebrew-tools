@@ -423,6 +423,10 @@ test("codex desktop is not registered for tap auto-update or release publishing"
 test("Headroom self-hosted retains an offline proxy wheelhouse with complete provenance", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "headroom-self-hosted")
   const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+  const headroomCi = pipeline.slice(
+    pipeline.indexOf('case "headroom-self-hosted": {', pipeline.indexOf("async ciCheck")),
+    pipeline.indexOf('case "codex-desktop-linux": {', pipeline.indexOf("async ciCheck")),
+  )
 
   assert.ok(entry)
   assert.equal(entry.kind, "headroom_self_hosted_formula")
@@ -445,6 +449,7 @@ test("Headroom self-hosted retains an offline proxy wheelhouse with complete pro
   assert.match(pipeline, /--no-index/)
   assert.match(pipeline, /--find-links=#\{libexec\}\/wheelhouse/)
   assert.doesNotMatch(pipeline, /rm_rf libexec\/"wheelhouse"/)
+  assert.match(headroomCi, /\.from\(BREW_IMAGE\)\s*\.withUser\("linuxbrew"\)/)
 })
 
 test("Headroom self-hosted has a daily and explicitly dispatchable update slot", () => {
