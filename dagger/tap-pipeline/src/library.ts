@@ -112,7 +112,7 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     upstream: {
       kind: "git",
       repo: "https://github.com/joshyorko/codex-desktop-linux",
-      ref: "380fb5654dac67a49c3e23849411f5f99a09f93",
+      ref: "380fb5654dac67a49c3e23849411f5f99a09f93a",
     },
   },
   {

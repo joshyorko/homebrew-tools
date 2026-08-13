@@ -2102,10 +2102,11 @@ end
         "-lc",
         [
           "set -euo pipefail",
+          "mkdir -p /work",
           `curl -fL --retry 3 -o /work/chatgpt.deb ${JSON.stringify(upstreamUrl)}`,
           `printf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(pins.amd64.sha256)} | sha256sum -c -`,
           "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.example.json make build-native-feature-helpers",
-          "UPSTREAM_DEB=/work/chatgpt.deb PACKAGE_WITH_UPDATER=0 make build-app",
+          "PACKAGE_WITH_UPDATER=0 CODEX_INSTALL_DIR=/upstream/codex-app ./install.sh /work/chatgpt.deb",
           `PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION=${JSON.stringify(version)} make deb`,
           "deb=$(find dist -maxdepth 1 -type f -name 'codex-desktop_*.deb' -print -quit)",
           "test -n \"$deb\"",
@@ -3547,7 +3548,7 @@ end
           .replace(/^  depends_on formula: "desktop-file-utils"\n/m, "")
           .replace('url "file://#{ENV.fetch("CODEX_DESKTOP_LOCAL_ARTIFACT")}"', `url "file:///artifacts/${build.assetName}"`)
           .replace(/  preflight do[\s\S]*?  end\n\n  postflight do/, "  postflight do")
-        const smokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
+        const legacySmokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
 
         return dag
           .container()
@@ -3557,7 +3558,7 @@ end
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
           .withEnvVariable("CODEX_DESKTOP_SKIP_CLI_INSTALL", "1")
           .withEnvVariable("CODEX_DESKTOP_LOCAL_ARTIFACT", `/artifacts/${build.assetName}`)
-          .withDirectory("/tap", smokeTap)
+          .withDirectory("/tap", legacySmokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
             "bash",

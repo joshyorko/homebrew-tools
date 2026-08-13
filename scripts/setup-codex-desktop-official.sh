@@ -104,4 +104,3 @@ dagger -m "$repo_dir/dagger/tap-pipeline" call \
     codex-desktop-offline-smoke \
     --bundle="$bundle_dir"
 echo "Codex Desktop official-package setup passed for version $version"
-
