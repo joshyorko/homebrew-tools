@@ -2154,7 +2154,7 @@ end
           `printf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(pins.amd64.sha256)} | sha256sum -c -`,
           "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json make build-native-feature-helpers",
           "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json PACKAGE_WITH_UPDATER=0 CODEX_INSTALL_DIR=/upstream/codex-app ./install.sh /work/chatgpt.deb",
-          `PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION=${JSON.stringify(version)} make deb`,
+          `CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION=${JSON.stringify(version)} make deb`,
           "deb=$(find dist -maxdepth 1 -type f -name 'codex-desktop_*.deb' -print -quit)",
           "test -n \"$deb\"",
           "test \"$(dpkg-deb -f \"$deb\" Package)\" = chatgpt || test \"$(dpkg-deb -f \"$deb\" Package)\" = codex-desktop",
