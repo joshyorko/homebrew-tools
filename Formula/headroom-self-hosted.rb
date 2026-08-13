@@ -3,7 +3,7 @@ class HeadroomSelfHosted < Formula
   homepage "https://github.com/joshyorko/headroom"
   url "https://github.com/joshyorko/homebrew-tools/releases/download/headroom-self-hosted-selfhosted.ad7eea0d310c/headroom-self-hosted-selfhosted.ad7eea0d310c.tar.gz"
   version "selfhosted.ad7eea0d310c"
-  sha256 "43bcad1d613c56de9ac14e6b3801ac22bb152bee20c716a046c0571ad7117388"
+  sha256 "716ced286c7c655f6690f375528a2315e91e619a08e7747913de2279da8c8fb2"
   license "Apache-2.0"
 
   livecheck do
