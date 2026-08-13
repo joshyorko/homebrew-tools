@@ -17,7 +17,6 @@ FEATURE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 CATEGORY_FEATURES = {
     "Voice & conversation": {
-        "conversation-mode",
         "global-dictation",
         "read-aloud",
         "read-aloud-mcp",
@@ -25,11 +24,12 @@ CATEGORY_FEATURES = {
     "Computer use": {
         "agent-workspace",
         "appshots",
-        "x11-ewmh-computer-use",
+        "computer-use-linux",
     },
     "Remote access": {
         "remote-control-ui",
         "remote-mobile-control",
+        "shared-app-server-socket",
     },
     "Capture & memory": {
         "chronicle-skysight",
@@ -45,13 +45,20 @@ CATEGORY_FEATURES = {
         "api-key-model-visibility",
         "api-key-service-tier",
         "authenticated-proxy",
-        "codex-wrapper-updater",
+        "automation-extensions",
         "copilot-reasoning-effort",
+        "directory-only-working-tree-watch",
+        "linux-performance-workarounds",
         "mcp-helper-reaper",
         "node-repl-reaper",
-        "open-target-discovery",
         "persistent-status-panel",
+        "project-group-last-updated-sort",
         "project-task-sort",
+        "shallow-repository-watches",
+    },
+    "Hardware & browser integration": {
+        "codex-micro",
+        "thorium-chrome-plugin",
     },
 }
 

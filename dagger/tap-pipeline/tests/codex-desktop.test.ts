@@ -43,6 +43,12 @@ function readMakeVariableWords(source: string, name: string): string[] {
   return match[1].trim().split(/\s+/)
 }
 
+function readShellDefaultWords(source: string, name: string): string[] {
+  const match = source.match(new RegExp(`^${name}=.?\\$\\{[^:]+:-([^}]+)\\}.?$`, "m"))
+  assert.ok(match, `${name} shell default not found`)
+  return match[1].trim().split(/\s+/)
+}
+
 function createConvertedAppFixture(root: string): string {
   const appDir = join(root, "codex-app")
   mkdirSync(join(appDir, "resources/node-runtime/bin"), { recursive: true })
@@ -594,34 +600,41 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
     "api-key-service-tier",
     "appshots",
     "authenticated-proxy",
-    "codex-wrapper-updater",
-    "conversation-mode",
+    "automation-extensions",
+    "chronicle-skysight",
+    "computer-use-linux",
     "copilot-reasoning-effort",
+    "directory-only-working-tree-watch",
     "frameless-titlebar",
     "global-dictation",
     "mcp-helper-reaper",
     "node-repl-reaper",
     "omarchy-theme",
-    "open-target-discovery",
     "persistent-status-panel",
     "pet-overlay",
+    "project-group-last-updated-sort",
     "project-task-sort",
     "read-aloud",
     "read-aloud-mcp",
-    "chronicle-skysight",
     "record-and-replay",
     "remote-control-ui",
     "remote-mobile-control",
+    "shared-app-server-socket",
     "ui-tweaks",
-    "x11-ewmh-computer-use",
   ]
 
   const officialSetup = readFileSync(new URL("../../../scripts/setup-codex-desktop-official.sh", import.meta.url), "utf8")
+  const setupFullFeatures = readShellDefaultWords(officialSetup, "full_profile")
+  const setupLeanFeatures = readShellDefaultWords(officialSetup, "lean_profile")
   const officialInstall = readFileSync(new URL("../../../scripts/install-codex-desktop-official.sh", import.meta.url), "utf8")
   const releaseFeatures = readFileSync(new URL("../../../config/codex-desktop-linux-features.json", import.meta.url), "utf8")
   const officialCaskRenderer = pipeline.slice(
     pipeline.indexOf("private renderCodexDesktopOfficialCask"),
     pipeline.indexOf("private renderCodexDesktopOfficialCask") + 12_000,
+  )
+  const codexDesktopBaseContainer = pipeline.slice(
+    pipeline.indexOf("private codexDesktopBaseContainer"),
+    pipeline.indexOf("private goBaseContainer"),
   )
   assert.deepEqual(JSON.parse(releaseFeatures), { enabled: [] })
   assert.match(officialSetup, /release-bundle/)
@@ -657,6 +670,9 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.match(pipeline, /feature_profile_sha256: build\.featureProfileSha256/)
   assert.match(pipeline, /linux_features_enabled: build\.linuxFeaturesEnabled/)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG=linux-features\/features\.homebrew\.json make build-native-feature-helpers/)
+  assert.match(codexDesktopBaseContainer, /from\(RUST_IMAGE\)/)
+  assert.match(codexDesktopBaseContainer, /withFile\("\/usr\/local\/cargo\/bin\/rustup"/)
+  assert.doesNotMatch(codexDesktopBaseContainer, /withMountedCache\(\s*"\/usr\/local\/cargo\//)
   assert.match(pipeline, /CODEX_LINUX_FEATURES_CONFIG=linux-features\/features\.homebrew\.json[^\n]+\.\/install\.sh \/work\/chatgpt\.deb/)
   assert.match(pipeline, /launcher_path = "#\{staged_path\}\/usr\/bin\/codex-desktop"/)
   assert.match(pipeline, /readlink -f/)
@@ -771,13 +787,12 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.match(pipeline, /scripts\/install-deps\.sh/)
   assert.match(pipeline, /CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1"/)
   assert.deepEqual(leanFeatures, [
+    "computer-use-linux",
     "node-repl-reaper",
-    "open-target-discovery",
     "read-aloud",
     "read-aloud-mcp",
     "chronicle-skysight",
     "record-and-replay",
-    "x11-ewmh-computer-use",
   ])
   assert.match(pipeline, /const DEFAULT_CODEX_DESKTOP_LINUX_FEATURES = FULL_CODEX_DESKTOP_LINUX_FEATURES/)
   assert.match(pipeline, /normalized === "lean"/)
@@ -785,6 +800,8 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.match(pipeline, /normalized === "none"/)
   assert.deepEqual(fullFeatures, expectedFullFeatures)
   assert.deepEqual(makeFullFeatures, expectedFullFeatures)
+  assert.deepEqual(setupFullFeatures, expectedFullFeatures)
+  assert.deepEqual(setupLeanFeatures, leanFeatures)
   for (const feature of leanFeatures) {
     assert.ok(fullFeatures.includes(feature), `${feature} must be included in the full profile`)
   }
@@ -793,18 +810,28 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
     "api-key-service-tier",
     "appshots",
     "authenticated-proxy",
-    "codex-wrapper-updater",
-    "conversation-mode",
+    "automation-extensions",
+    "computer-use-linux",
     "copilot-reasoning-effort",
     "persistent-status-panel",
     "remote-control-ui",
     "remote-mobile-control",
+    "shared-app-server-socket",
     "ui-tweaks",
   ]) {
     assert.ok(fullFeatures.includes(feature), `${feature} must remain available in the full profile`)
   }
   for (const feature of fullFeatures) {
     assert.match(pipeline, new RegExp(`"${feature}"`))
+  }
+  for (const retiredFeature of [
+    "codex-wrapper-updater",
+    "conversation-mode",
+    "open-target-discovery",
+    "x11-ewmh-computer-use",
+  ]) {
+    assert.ok(!fullFeatures.includes(retiredFeature), `${retiredFeature} must not remain in the full profile`)
+    assert.ok(!leanFeatures.includes(retiredFeature), `${retiredFeature} must not remain in the lean profile`)
   }
   assert.doesNotMatch(pipeline, /"thorium-chrome-plugin"/)
   assert.doesNotMatch(pipeline, /"example-feature"/)

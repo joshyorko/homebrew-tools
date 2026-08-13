@@ -58,8 +58,8 @@ class FeatureWizardModelTests(unittest.TestCase):
 
     def test_discovers_feature_metadata_and_categories(self):
         self.add_feature(
-            "conversation-mode",
-            title="Conversation Mode",
+            "global-dictation",
+            title="Global Dictation",
             description="Hands-free conversation.",
             requires=("read-aloud",),
         )
@@ -67,9 +67,31 @@ class FeatureWizardModelTests(unittest.TestCase):
 
         features = WIZARD.discover_features(self.root)
 
-        self.assertEqual(list(features), ["conversation-mode", "read-aloud"])
-        self.assertEqual(features["conversation-mode"].requires, ("read-aloud",))
-        self.assertEqual(features["conversation-mode"].category, "Voice & conversation")
+        self.assertEqual(list(features), ["global-dictation", "read-aloud"])
+        self.assertEqual(features["global-dictation"].requires, ("read-aloud",))
+        self.assertEqual(features["global-dictation"].category, "Voice & conversation")
+
+    def test_current_patchraptor_features_have_product_categories(self):
+        expected = {
+            "automation-extensions": "Developer tools",
+            "codex-micro": "Hardware & browser integration",
+            "computer-use-linux": "Computer use",
+            "directory-only-working-tree-watch": "Developer tools",
+            "linux-performance-workarounds": "Developer tools",
+            "project-group-last-updated-sort": "Developer tools",
+            "shallow-repository-watches": "Developer tools",
+            "shared-app-server-socket": "Remote access",
+            "thorium-chrome-plugin": "Hardware & browser integration",
+        }
+        for feature_id in expected:
+            self.add_feature(feature_id)
+
+        features = WIZARD.discover_features(self.root)
+
+        self.assertEqual(
+            {feature_id: features[feature_id].category for feature_id in expected},
+            expected,
+        )
 
     def test_rejects_duplicate_feature_ids(self):
         self.add_feature("first", feature_id="duplicate")
