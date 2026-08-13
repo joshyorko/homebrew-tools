@@ -28,6 +28,7 @@ test("package registry covers every planned adapter kind", () => {
       "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",
+      "headroom_self_hosted_formula",
       "http_binary_formula",
     "rpm_repack_cask",
       "source_build_go_formula",
@@ -101,6 +102,7 @@ test("auto-update slots cover the expected package set", () => {
       "fizzy-cli-master",
       "fizzy-popper-self-hosted",
       "fizzy-symphony",
+      "headroom-self-hosted",
       "rcc",
       "t3-code-linux",
       "t3code-cli-main",
@@ -416,6 +418,44 @@ test("codex desktop is not registered for tap auto-update or release publishing"
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
 
   assert.equal(entry, undefined)
+})
+
+test("Headroom self-hosted retains an offline proxy wheelhouse with complete provenance", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "headroom-self-hosted")
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+
+  assert.ok(entry)
+  assert.equal(entry.kind, "headroom_self_hosted_formula")
+  assert.equal(entry.homebrewPath, "Formula/headroom-self-hosted.rb")
+  assert.equal(entry.supportsPrCi, true)
+  assert.equal(entry.supportsReleaseBundle, true)
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+  assert.equal(entry.autoUpdate.ref, "self-hosted")
+  assert.equal(entry.upstream.kind, "git")
+  assert.equal(entry.upstream.repo, "https://github.com/joshyorko/headroom")
+  assert.equal(entry.upstream.ref, "ad7eea0d310c13278965a54488dbb6a9e3162d33")
+  assert.match(pipeline, /python:3\.13-bookworm/)
+  assert.match(pipeline, /python -m pip wheel[^\n]+\.\[proxy\]/)
+  assert.match(pipeline, /source_tree: treeHash/)
+  assert.match(pipeline, /artifact_sha256: build\.sha256/)
+  assert.match(pipeline, /withNewFile\("provenance\.json"/)
+  assert.match(pipeline, /brew test test\/tap\/headroom-self-hosted/)
+  assert.match(pipeline, /headroom --help/)
+  assert.match(pipeline, /headroom proxy --help/)
+  assert.match(pipeline, /--no-index/)
+  assert.match(pipeline, /--find-links=#\{libexec\}\/wheelhouse/)
+  assert.doesNotMatch(pipeline, /rm_rf libexec\/"wheelhouse"/)
+})
+
+test("Headroom self-hosted has a daily and explicitly dispatchable update slot", () => {
+  const workflow = readFileSync(new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url), "utf8")
+  const slot = AUTO_UPDATE_SLOTS.find((candidate) => candidate.id === "headroom-daily")
+
+  assert.ok(slot)
+  assert.deepEqual(slot.packageIds, ["headroom-self-hosted"])
+  assert.match(workflow, /- cron: "31 10 \* \* \*"/)
+  assert.match(workflow, /- headroom-daily/)
+  assert.match(workflow, /"31 10 \* \* \*"\) slot_id="headroom-daily"/)
 })
 
 test("t3code CLI builders do not rewrite the upstream runtime package version", () => {

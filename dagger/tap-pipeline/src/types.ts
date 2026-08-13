@@ -10,6 +10,7 @@ export type PackageKind =
   | "github_release_binary_cask"
   | "github_release_deb_cask"
   | "github_release_appimage_cask"
+  | "headroom_self_hosted_formula"
   | "codex_desktop_linux_cask"
 
 export type AutoUpdateSlotId =
@@ -24,6 +25,7 @@ export type AutoUpdateSlotId =
   | "fizzy-daily"
   | "buzz-daily"
   | "chatgpt-daily"
+  | "headroom-daily"
 
 export type UpstreamSource =
   | {
