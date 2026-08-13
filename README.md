@@ -80,6 +80,15 @@ brew tap joshyorko/tools
 brew install --cask rcc
 ```
 
+For the desktop and proxy packages covered below:
+
+```bash
+brew tap joshyorko/tools
+brew install --cask chatgpt
+brew install --cask codex-desktop
+brew install headroom-self-hosted
+```
+
 ## Available Packages
 
 ### RCC (Repeatable Contained Code)
@@ -100,7 +109,8 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install --cask joshyorko/tools/chatgpt` | Install ChatGPT Desktop from OpenAI's official Linux package |
-| `brew install --HEAD joshyorko/tools/codex-desktop-linux-builder` | Install Codex Desktop local builder tooling only |
+| `brew install --cask joshyorko/tools/codex-desktop` | Install the PatchRaptor Codex Desktop Linux build |
+| `brew install joshyorko/tools/headroom-self-hosted` | Install the self-hosted Headroom CLI and proxy |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
 | `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
 | `brew install joshyorko/tools/camp` | Install the latest verified Camp Linux release |
@@ -356,31 +366,80 @@ brew install --cask joshyorko/tools/chatgpt
 chatgpt
 ```
 
+```bash
+brew upgrade --cask joshyorko/tools/chatgpt
+brew uninstall --cask joshyorko/tools/chatgpt
+```
+
+From this repository, `make uninstall-chatgpt` removes only the tap-owned
+launcher and desktop integration. Neither uninstall path removes ChatGPT or
+Codex user data.
+
 The cask owns only the launcher and desktop integration files. Removing or upgrading it
 does not delete ChatGPT or Codex user data. The Linux preview's Wayland
 Computer Use, Remote, Global Dictation, and Record & Replay behavior still
 needs validation on the target Bluefin desktop.
 
-### Codex Desktop (Official Linux Package Architecture)
+### Codex Desktop Linux (PatchRaptor Build)
 
-The normal Codex Desktop flow builds the pinned PatchRaptor source against
-OpenAI's checksummed official Linux `.deb` with `PACKAGE_WITH_UPDATER=0`. It
-retains the release artifact, provenance metadata, and rendered cask, then
-proves an offline Homebrew install in Dagger before any host installation.
+The `codex-desktop` cask is the published PatchRaptor Codex Desktop Linux build.
+It starts from OpenAI's checksummed official Linux `.deb`, applies the feature
+profile committed in `config/codex-desktop-linux-features.json`, and omits the
+native updater so Homebrew owns upgrades. CI retains the `.deb`, records source
+and feature provenance, and proves an offline Linuxbrew install before publish.
+
+```bash
+brew install --cask joshyorko/tools/codex-desktop
+codex-desktop
+brew upgrade --cask joshyorko/tools/codex-desktop
+brew uninstall --cask joshyorko/tools/codex-desktop
+```
+
+For a local feature build:
 
 ```bash
 make codex-desktop-setup
 make codex-desktop-install
 ```
 
-`codex-desktop-setup` builds and verifies the offline bundle without installing
-on the host. `codex-desktop-install` runs the same verified setup and installs
-the retained artifact through Homebrew.
+`make codex-desktop-setup` opens the graphical feature picker when available
+and falls back to a terminal picker. It saves the selected release profile to
+the checked-in `config/codex-desktop-linux-features.json`, builds the bundle,
+and verifies an offline Homebrew install without installing on the host.
+`make codex-desktop-install` installs the retained bundle through Homebrew.
+
+The checked-in empty profile is the core build. Commit a changed profile when
+the same selection should matriculate into CI and the next tap release. A
+profile-only commit schedules Codex Desktop package CI, and non-empty profiles
+receive a deterministic version fingerprint and release provenance.
+
+Normal uninstall preserves application and Codex user data. From a checkout,
+`make codex-desktop-uninstall` removes the local package and desktop integration;
+`make codex-desktop-zap` additionally removes Codex Desktop app-local state but
+still preserves `~/.codex`.
+
+### Headroom Self-Hosted
+
+The `headroom-self-hosted` formula packages the pinned `self-hosted` Headroom
+source with `headroom-ai[proxy]`. The immutable release retains a complete
+wheelhouse and provenance, so installation is offline after Homebrew downloads
+the release asset.
+
+```bash
+brew install joshyorko/tools/headroom-self-hosted
+headroom --help
+headroom proxy --help
+brew upgrade joshyorko/tools/headroom-self-hosted
+brew uninstall joshyorko/tools/headroom-self-hosted
+```
+
+The daily tap pipeline checks the self-hosted source lane, validates provenance,
+and builds and tests the formula through Linuxbrew before publishing an update.
 
 ### Legacy Codex Desktop (Linux DMG Conversion Runtime)
 
-The official Linux package above is the preferred ChatGPT Desktop stream. The
-older Codex Desktop conversion remains available as separate local-only
+The published Codex Desktop Linux cask above is the normal install stream. The
+older DMG conversion remains available as separate local-only
 builder tooling for conversion-specific experiments; it is not used by the
 `chatgpt` cask and does not publish converted app payloads. The builder
 downloads the official
@@ -424,12 +483,12 @@ make codex-desktop-legacy-rebuild-relaunch
 make codex-desktop-legacy-rebuild-foreground
 ```
 
-For normal interactive use, start with `make codex-desktop-setup`. It opens a
+For legacy conversion experiments, start with `make codex-desktop-legacy-setup`. It opens a
 native GTK/libadwaita window on supported Linux desktops with Daily driver,
 Minimal, and Custom profiles; searchable feature switches; dependency and
 conflict guidance; and a final choice to save or build and install. The saved
 selection lives under `${XDG_CONFIG_HOME:-~/.config}/homebrew-tools/` and is
-used automatically by later `make codex-desktop-install` runs. A concise
+used automatically by later `make codex-desktop-legacy-install` runs. A concise
 terminal picker is used when no graphical session is available.
 
 The graphical wizard depends on the device's native Python GObject bindings for
@@ -441,10 +500,10 @@ selected interpreter with:
 python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); from gi.repository import Adw, Gtk'
 ```
 
-`make codex-desktop-setup` recreates `.venv-codex-desktop-setup` with access to
+`make codex-desktop-legacy-setup` recreates `.venv-codex-desktop-setup` with access to
 the system Python packages, verifies the native bindings, and runs the wizard
 with that interpreter. Use
-`CODEX_DESKTOP_SETUP_BASE_PYTHON=/path/to/python3 make codex-desktop-setup-env`
+`CODEX_DESKTOP_SETUP_BASE_PYTHON=/path/to/python3 make codex-desktop-legacy-setup-env`
 when another system Python owns the bindings. There is no `requirements.txt`:
 the wizard's Python code uses only the standard library, while GTK,
 libadwaita, and PyGObject remain native per-device dependencies that a PyPI
@@ -468,7 +527,7 @@ evidence path under
 That directory contains the acceptance decision and any exported patch and
 rebuild reports.
 
-`make codex-desktop-install` and `make codex-install` use the checked-in
+`make codex-desktop-legacy-install` uses the checked-in
 `codex-desktop-conversion.ref` by default, so local rebuilds follow the current
 test branch without pasting a commit SHA. Override with
 `CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
@@ -497,21 +556,21 @@ Override the pinned default with a local DMG whenever you need a one-off test:
 
 ```bash
 scripts/install-codex-desktop-local.sh --codex-dmg /path/to/Codex.dmg
-CODEX_DESKTOP_CODEX_DMG=/path/to/Codex.dmg make codex-desktop-install
+CODEX_DESKTOP_CODEX_DMG=/path/to/Codex.dmg make codex-desktop-legacy-install
 ```
 
 
 The local Codex Desktop builder writes a Linux feature config during conversion.
 Before the guided wizard has saved a selection, the default test set enables
 every shipped Codex Desktop Linux feature except the template feature and
-Thorium browser support. Afterward, `make codex-desktop-install` reuses the
+Thorium browser support. Afterward, `make codex-desktop-legacy-install` reuses the
 wizard selection automatically.
 
 Use the smaller troubleshooting profile explicitly when you need a lower-surface
 Desktop build:
 
 ```bash
-CODEX_DESKTOP_LINUX_FEATURES=lean make codex-desktop-install
+CODEX_DESKTOP_LINUX_FEATURES=lean make codex-desktop-legacy-install
 ```
 
 Override with a one-off feature list such as
@@ -523,13 +582,13 @@ helpers are not left running after a reinstall. From an external terminal, set
 `CODEX_DESKTOP_STOP_RUNNING=1` or pass `--stop-running` to stop them first. Use
 `CODEX_DESKTOP_ALLOW_RUNNING_INSTALL=1` only for deliberate diagnostics.
 
-`make codex-desktop-rebuild-relaunch` is the local daily-driver loop designed to
+`make codex-desktop-legacy-rebuild-relaunch` is the local conversion loop designed to
 be safe when launched from inside Codex Desktop: it starts a detached worker,
 returns a PID and log path, then that worker fast-forwards this checkout, stops
 Codex Desktop, rebuilds and reinstalls the local cask, and launches Codex
-Desktop again. Use `make codex-desktop-rebuild-dry-run` first to print the
+Desktop again. Use `make codex-desktop-legacy-rebuild-dry-run` first to print the
 detached worker command without closing the app or starting a build. Use
-`make codex-desktop-rebuild-foreground` only from an external terminal when you
+`make codex-desktop-legacy-rebuild-foreground` only from an external terminal when you
 want the rebuild to stay attached to that terminal.
 
 `codex-desktop-uninstall` removes the local-only Homebrew cask, Caskroom payload,
