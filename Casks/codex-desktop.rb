@@ -3,7 +3,7 @@ cask "codex-desktop" do
   os linux: "linux"
 
   version "26.803.81509.patchraptor.380fb5654dac"
-  sha256 x86_64_linux: "5fadb1d854805f98dd936fd696e279edf78d1a52d1802fa2fafb0d265d21bf66"
+  sha256 x86_64_linux: "970196218026fff1427f511a3974609253b4667b118377c4b92e9e525f0edeb5"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac-amd64.deb"
   name "Codex Desktop"
