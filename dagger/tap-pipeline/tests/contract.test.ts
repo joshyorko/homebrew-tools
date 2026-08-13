@@ -25,6 +25,7 @@ test("package registry covers every planned adapter kind", () => {
   assert.deepEqual(
     [...kinds].sort(),
     [
+      "codex_desktop_linux_cask",
       "github_release_appimage_cask",
       "github_release_binary_cask",
       "github_release_deb_cask",
@@ -414,10 +415,27 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.match(readme, /updater alone[\s\S]*latest/)
 })
 
-test("codex desktop is not registered for tap auto-update or release publishing", () => {
+test("Codex Desktop consumes the pinned PatchRaptor official-package build", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+  const buildStart = pipeline.indexOf("private async buildCodexDesktopLinuxOfficialArtifact")
+  const buildEnd = pipeline.indexOf("private async", buildStart + 1)
+  const officialBuild = pipeline.slice(buildStart, buildEnd)
 
-  assert.equal(entry, undefined)
+  assert.ok(entry)
+  assert.equal(entry.kind, "codex_desktop_linux_cask")
+  assert.equal(entry.homebrewPath, "Casks/codex-desktop.rb")
+  assert.equal(entry.supportsReleaseBundle, true)
+  assert.equal(entry.autoUpdate.kind, "manual")
+  assert.equal(entry.upstream.kind, "git")
+  assert.equal(entry.upstream.repo, "https://github.com/joshyorko/codex-desktop-linux")
+  assert.equal(entry.upstream.ref, "380fb5654dac67a49c3e23849411f5f99a09f93a")
+  assert.match(officialBuild, /"mkdir -p \/work",[\s\S]*curl -fL --retry 3 -o \/work\/chatgpt\.deb/)
+  assert.match(officialBuild, /PACKAGE_WITH_UPDATER=0 CODEX_INSTALL_DIR=\/upstream\/codex-app \.\/install\.sh \/work\/chatgpt\.deb/)
+  assert.doesNotMatch(officialBuild, /UPSTREAM_DEB=\/work\/chatgpt\.deb[^\n]*make build-app/)
+  assert.match(pipeline, /PACKAGE_WITH_UPDATER=0/)
+  assert.match(pipeline, /nix\/upstream-linux-packages\.json/)
+  assert.doesNotMatch(pipeline, /codex-desktop-linux is local-only and must not be published/)
 })
 
 test("Headroom self-hosted retains an offline proxy wheelhouse with complete provenance", () => {

@@ -1,19 +1,64 @@
 cask "codex-desktop" do
-  version "local-only"
-  sha256 :no_check
+  arch intel: "amd64"
+  os linux: "linux"
 
-  url "https://github.com/joshyorko/homebrew-tools"
+  version "26.803.81509.patchraptor.380fb5654dac"
+  sha256 x86_64_linux: "5fadb1d854805f98dd936fd696e279edf78d1a52d1802fa2fafb0d265d21bf66"
+
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac-amd64.deb"
   name "Codex Desktop"
-  desc "Local-only Codex Desktop Linux builder; no converted app payload is distributed"
-  homepage "https://github.com/joshyorko/homebrew-tools"
+  desc "ChatGPT Community Linux desktop app built from PatchRaptor main"
+  homepage "https://github.com/joshyorko/codex-desktop-linux"
 
-  disable! date: "2026-05-20", because: "converted Codex Desktop app artifacts are no longer distributed by this tap"
+  livecheck do
+    skip "Built from the pinned PatchRaptor main commit by the tap release pipeline."
+  end
+
+  binary "usr/bin/codex-desktop"
+  artifact "usr/share/applications/codex-desktop.desktop",
+           target: "#{Dir.home}/.local/share/applications/codex-desktop.desktop"
+  artifact "usr/share/icons/hicolor/256x256/apps/codex-desktop.png",
+           target: "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
+
+  preflight do
+    package = Dir["#{staged_path}/*.deb"].first
+    raise "unable to find Codex Desktop .deb in #{staged_path}" unless package
+
+    system "ar", "x", package, chdir: staged_path
+    data_archive = Dir["#{staged_path}/data.tar.*"].first
+    raise "unable to find data archive in #{package}" unless data_archive
+
+    case data_archive
+    when /\.tar\.gz$/
+      system "tar", "-xzf", data_archive, "-C", staged_path
+    when /\.tar\.xz$/
+      system "tar", "-xJf", data_archive, "-C", staged_path
+    when /\.tar\.zst$/
+      system "sh", "-c", "unzstd -c '#{data_archive}' | tar -xf - -C '#{staged_path}'"
+    else
+      system "tar", "-xf", data_archive, "-C", staged_path
+    end
+
+    desktop_file = "#{staged_path}/usr/share/applications/codex-desktop.desktop"
+    desktop_contents = File.read(desktop_file)
+    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/codex-desktop %u")
+    desktop_contents.gsub!(
+      /^Icon=.*/,
+      "Icon=#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
+    )
+    File.write(desktop_file, desktop_contents)
+  end
+
+  zap trash: [
+    "#{Dir.home}/.local/share/applications/codex-desktop.desktop",
+    "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png",
+  ]
 
   caveats <<~EOS
-    Codex Desktop is local-only in this tap.
+    Launch Codex Desktop with:
+      codex-desktop
 
-    Build from the official OpenAI DMG on this machine and install with:
-      brew install --HEAD joshyorko/tools/codex-desktop-linux-builder
-      codex-desktop-linux-builder
+    This cask is built from the official OpenAI Linux package by PatchRaptor
+    main. Homebrew owns upgrades; the native package updater is omitted.
   EOS
 end
