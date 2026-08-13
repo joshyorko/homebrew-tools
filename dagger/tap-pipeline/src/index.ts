@@ -928,6 +928,7 @@ export class TapPipeline {
         "-lc",
         [
           "set -euo pipefail",
+          "export PATH=/usr/local/cargo/bin:$PATH",
           "ln -sf rustup /usr/local/cargo/bin/cargo",
           "ln -sf rustup /usr/local/cargo/bin/rustc",
           "cargo --version",
@@ -2147,6 +2148,7 @@ end
         "-lc",
         [
           "set -euo pipefail",
+          "export PATH=/usr/local/cargo/bin:$PATH",
           "mkdir -p /work",
           `curl -fL --retry 3 -o /work/chatgpt.deb ${JSON.stringify(upstreamUrl)}`,
           `printf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(pins.amd64.sha256)} | sha256sum -c -`,
