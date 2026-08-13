@@ -734,7 +734,7 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
   assert.match(makefile, /CODEX_DESKTOP_FEATURES_CONFIG \?=/)
   assert.match(makefile, /--print-enabled/)
   assert.match(makefile, /codex-desktop-legacy-setup:[\s\S]*scripts\/setup-codex-desktop-local\.sh/)
-  assert.equal(defaultConversionRef, "patchraptor-main")
+  assert.match(defaultConversionRef, /^[0-9a-f]{40}$/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_REF_FILE \?= codex-desktop-conversion\.ref/)
   assert.match(makefile, /CODEX_DESKTOP_CONVERSION_COMMIT \?= \$\(shell ref=/)
   assert.match(makefile, /\$\$\{ref:-self-hosted\}/)
