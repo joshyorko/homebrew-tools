@@ -116,6 +116,24 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
+    id: "headroom-self-hosted",
+    kind: "headroom_self_hosted_formula",
+    homebrewPath: "Formula/headroom-self-hosted.rb",
+    supportsPrCi: true,
+    supportsReleaseBundle: true,
+    autoUpdate: {
+      kind: "git_head_sha",
+      ref: "self-hosted",
+      prefix: "selfhosted.",
+      shaLength: 12,
+    },
+    upstream: {
+      kind: "git",
+      repo: "https://github.com/joshyorko/headroom",
+      ref: "ad7eea0d310c13278965a54488dbb6a9e3162d33",
+    },
+  },
+  {
     id: "devsy",
     kind: "http_binary_formula",
     homebrewPath: "Formula/devsy.rb",
@@ -395,6 +413,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
   ["chatgpt", ["Casks/chatgpt.rb"]],
   ["codex-desktop-linux", ["Casks/codex-desktop.rb"]],
+  ["headroom-self-hosted", ["Formula/headroom-self-hosted.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb"]],
   [

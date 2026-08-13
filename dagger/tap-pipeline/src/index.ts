@@ -32,6 +32,7 @@ const TAP_DIR = "/tap"
 const BREW_IMAGE = "homebrew/brew:latest"
 const NODE_IMAGE = "node:24-bookworm"
 const NODE_25_IMAGE = "node:25-bookworm"
+const PYTHON_IMAGE = "python:3.13-bookworm"
 const GO_IMAGE = "golang:1.26-bookworm"
 const RUST_IMAGE = "rust:1-bookworm"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
@@ -242,6 +243,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Casks\"",
         "cp /tap/Casks/codex-desktop.rb \"$tap_dir/Casks/\"",
       ]
+    case "headroom-self-hosted":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/headroom-self-hosted.rb \"$tap_dir/Formula/\"",
+      ]
     case "vscode-insiders-linux":
       return [
         "mkdir -p \"$tap_dir/Casks\"",
@@ -426,6 +432,17 @@ type T3CodeBuild = {
   version: string
   container: Container
   sha256: string
+}
+
+type HeadroomBuild = {
+  artifactPath: string
+  assetName: string
+  commit: string
+  container: Container
+  sha256: string
+  sourceRef: string
+  treeHash: string
+  version: string
 }
 
 type CodexDesktopBuild = {
@@ -800,6 +817,8 @@ export class TapPipeline {
         return `t3-code-linux-${version.split(",", 1)[0]}`
       case "codex-desktop-linux":
         return `codex-desktop-linux-${version}`
+      case "headroom-self-hosted":
+        return `headroom-self-hosted-${version}`
       case "vscode-insiders-linux":
         return `vscode-insiders-linux-${version.replace(/,/g, "-")}`
       case "voxtype":
@@ -2834,6 +2853,132 @@ end
     }
   }
 
+  private async buildHeadroomArtifact(): Promise<HeadroomBuild> {
+    const entry = this.packageEntry("headroom-self-hosted")
+    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+      throw new Error("Expected Headroom self-hosted to use a git-head upstream")
+    }
+
+    const sourceRef = entry.autoUpdate.ref
+    const upstreamRef = dag.git(entry.upstream.repo).ref(sourceRef)
+    const commit = await upstreamRef.commit()
+    const commitMetadata = await this.fetchJson(
+      `${githubApiRepoUrl(entry.upstream.repo)}/git/commits/${commit}`,
+    ) as { tree?: { sha?: string } }
+    const treeHash = commitMetadata.tree?.sha
+    if (!treeHash) {
+      throw new Error(`GitHub did not return a source tree hash for Headroom commit ${commit}`)
+    }
+
+    const version = `selfhosted.${commit.slice(0, 12)}`
+    const assetName = `headroom-self-hosted-${version}.tar.gz`
+    const artifactPath = `/tmp/${assetName}`
+    const rustToolchain = dag.container().from(RUST_IMAGE)
+    const buildProvenance = {
+      package: "headroom-self-hosted",
+      source_repository: entry.upstream.repo,
+      source_ref: sourceRef,
+      source_commit: commit,
+      source_tree: treeHash,
+      build_profile: "headroom-ai[proxy]",
+      python: "3.13",
+    }
+    const container = dag
+      .container()
+      .from(PYTHON_IMAGE)
+      .withDirectory("/usr/local/cargo", rustToolchain.directory("/usr/local/cargo"))
+      .withDirectory("/usr/local/rustup", rustToolchain.directory("/usr/local/rustup"))
+      .withEnvVariable("PATH", "/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin")
+      .withDirectory("/source", upstreamRef.tree({ discardGitDir: true }))
+      .withWorkdir("/source")
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /work/package/wheelhouse",
+          "python -m pip wheel --disable-pip-version-check --no-cache-dir --wheel-dir /work/package/wheelhouse '.[proxy]'",
+          "find /work/package/wheelhouse -maxdepth 1 -type f -name 'headroom_ai-*.whl' -print -quit | grep -q .",
+          "test \"$(find /work/package/wheelhouse -maxdepth 1 -type f -name '*.whl' | wc -l)\" -gt 1",
+          `printf '%s\\n' ${JSON.stringify(JSON.stringify(buildProvenance, null, 2))} > /work/package/provenance.json`,
+          `tar -czf ${JSON.stringify(artifactPath)} -C /work/package .`,
+        ].join("\n"),
+      ])
+    const sha256 = await this.sha256For(container, artifactPath)
+
+    return { artifactPath, assetName, commit, container, sha256, sourceRef, treeHash, version }
+  }
+
+  private renderHeadroomFormula(downloadUrl: string, version: string, sha256: string): string {
+    return `class HeadroomSelfHosted < Formula
+  desc "Self-hosted Headroom CLI and proxy from the pinned self-hosted source"
+  homepage "https://github.com/joshyorko/headroom"
+  url "${downloadUrl}"
+  version "${version}"
+  sha256 "${sha256}"
+  license "Apache-2.0"
+
+  livecheck do
+    skip "Built from an exact self-hosted source commit by the tap release pipeline."
+  end
+
+  depends_on :linux
+  depends_on "python@3.13"
+
+  def install
+    libexec.install Dir["*"]
+    python = Formula["python@3.13"].opt_bin/"python3.13"
+    system python, "-m", "venv", libexec/"venv"
+    system libexec/"venv/bin/pip", "install", "--no-index", "--find-links=#{libexec}/wheelhouse", "headroom-ai[proxy]==0.34.0"
+
+    (bin/"headroom").write <<~SH
+      #!/bin/bash
+      exec "#{libexec}/venv/bin/headroom" "$@"
+    SH
+  end
+
+  test do
+    assert_match "Usage", shell_output("#{bin}/headroom --help")
+    assert_match "proxy", shell_output("#{bin}/headroom proxy --help")
+  end
+end
+`
+  }
+
+  private headroomReleaseMetadata(build: HeadroomBuild) {
+    const releaseTag = `headroom-self-hosted-${build.version}`
+    return releaseMetadataForPackage("headroom-self-hosted", {
+      version: build.version,
+      releaseTag,
+      assetName: build.assetName,
+      artifactSha256: build.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`,
+      releaseTitle: `Headroom self-hosted ${build.version}`,
+      releaseNotes: `Built from joshyorko/headroom:${build.sourceRef} commit ${build.commit} with the proxy dependency profile; Homebrew installation is offline from the retained wheelhouse.`,
+      commitMessage: `Build Headroom self-hosted ${build.version}`,
+      upstream: {
+        kind: "git",
+        repo: "https://github.com/joshyorko/headroom",
+        ref: build.sourceRef,
+        version: build.version,
+        commit: build.commit,
+      },
+    })
+  }
+
+  private headroomProvenance(build: HeadroomBuild): Record<string, string> {
+    return {
+      package: "headroom-self-hosted",
+      source_repository: "https://github.com/joshyorko/headroom",
+      source_ref: build.sourceRef,
+      source_commit: build.commit,
+      source_tree: build.treeHash,
+      artifact_sha256: build.sha256,
+      build_profile: "headroom-ai[proxy]",
+      python: "3.13",
+    }
+  }
+
   private renderRccCask(build: RccBuild, releaseTag: string): string {
     return this.renderRccCaskWithUrls(build, {
       linux: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linux.assetName}`,
@@ -3156,6 +3301,7 @@ end
         return dag
           .container()
           .from(BREW_IMAGE)
+          .withUser("linuxbrew")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
@@ -3484,6 +3630,41 @@ end
               "test -f \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
+            ].join("\n"),
+          ])
+          .stdout()
+      }
+      case "headroom-self-hosted": {
+        const build = await this.buildHeadroomArtifact()
+        const formula = this.renderHeadroomFormula(
+          `file:///artifacts/${build.assetName}`,
+          build.version,
+          build.sha256,
+        )
+        const smokeTap = tap.withNewFile("Formula/headroom-self-hosted.rb", formula)
+
+        return dag
+          .container()
+          .from(BREW_IMAGE)
+          .withUser("linuxbrew")
+          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euo pipefail",
+              "repo=$(brew --repository)",
+              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+              ...tapStagingCommands("headroom-self-hosted"),
+              "brew install test/tap/headroom-self-hosted",
+              "brew test test/tap/headroom-self-hosted",
+              "test -x \"$(brew --prefix)/bin/headroom\"",
+              "headroom --help",
+              "headroom proxy --help",
             ].join("\n"),
           ])
           .stdout()
@@ -3886,6 +4067,10 @@ end
         const build = await this.buildT3CodeArtifact(tap, "main")
         return json(this.t3CodeReleaseMetadata(build))
       }
+      case "headroom-self-hosted": {
+        const build = await this.buildHeadroomArtifact()
+        return json(this.headroomReleaseMetadata(build))
+      }
       case "codex-desktop-linux": {
         void codexDesktopConversionCommit
         const build = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
@@ -4152,6 +4337,22 @@ end
           .withFile("homebrew/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
+      }
+      case "headroom-self-hosted": {
+        const build = await this.buildHeadroomArtifact()
+        const release = this.headroomReleaseMetadata(build)
+        const formula = this.renderHeadroomFormula(
+          String(release.download_url),
+          build.version,
+          build.sha256,
+        )
+
+        return dag.directory()
+          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
+          .withNewFile("homebrew/headroom-self-hosted.rb", formula)
+          .withNewFile("release.json", json(release))
+          .withNewFile("provenance.json", json(this.headroomProvenance(build)))
+          .withNewFile("ci.log", ciLog)
       }
       case "codex-desktop-linux": {
         const build = await this.buildCodexDesktopLinuxOfficialArtifact(tap)

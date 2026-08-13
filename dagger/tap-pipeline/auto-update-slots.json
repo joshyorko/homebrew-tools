@@ -53,5 +53,10 @@
     "id": "chatgpt-daily",
     "description": "Daily ChatGPT Linux cask packaging smoke test.",
     "packageIds": ["chatgpt"]
+  },
+  {
+    "id": "headroom-daily",
+    "description": "Daily Headroom self-hosted source build and offline Homebrew acceptance.",
+    "packageIds": ["headroom-self-hosted"]
   }
 ]

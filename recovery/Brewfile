@@ -2,6 +2,7 @@
 brew "joshyorko/tools/t3code-cli-main"
 cask "joshyorko/tools/chatgpt"
 cask "joshyorko/tools/codex-desktop-linux"
+brew "joshyorko/tools/headroom-self-hosted"
 brew "joshyorko/tools/devsy"
 cask "joshyorko/tools/devsy-desktop"
 cask "joshyorko/tools/buzz-linux"

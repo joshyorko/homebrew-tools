@@ -122,6 +122,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
     "devpod-linux": "Casks/devpod-linux.rb",
     "t3-code-linux": "Casks/t3-code-linux.rb",
     "codex-desktop-linux": "Casks/codex-desktop.rb",
+    "headroom-self-hosted": "Formula/headroom-self-hosted.rb",
   }
 
   for (const entry of PACKAGE_REGISTRY.filter((candidate) => candidate.supportsPrCi)) {
