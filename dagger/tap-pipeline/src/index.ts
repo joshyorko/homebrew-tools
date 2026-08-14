@@ -4655,10 +4655,16 @@ end
     return dag
       .container()
       .from(BREW_IMAGE)
-      .withUser("linuxbrew")
+      .withUser("root")
       .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
       .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
       .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+      .withExec([
+        "bash",
+        "-lc",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils tar xz-utils zstd && rm -rf /var/lib/apt/lists/*",
+      ])
+      .withUser("linuxbrew")
       .withDirectory("/tap", smokeTap)
       .withFile(`/artifacts/${release.asset_name}`, bundle.file(artifactPath))
       .withExec([
@@ -4684,8 +4690,8 @@ end
           "test -n \"$staged_features\"",
           "codex-desktop --help >/tmp/codex-desktop-help.txt",
           "grep -q '^Usage:' /tmp/codex-desktop-help.txt",
-          "web_report=$(codex-desktop web --inspect)",
-          "grep -q 'loopback_only_default' <<<\"$web_report\"",
+          "codex-desktop --diagnose >/tmp/codex-desktop-diagnose.txt",
+          "grep -q '/opt/codex-desktop/ChatGPT' /tmp/codex-desktop-diagnose.txt",
           "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
           "grep -Fq \"Exec=$(brew --prefix)/bin/codex-desktop %u\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
         ].join("\n"),

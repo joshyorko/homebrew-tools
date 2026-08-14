@@ -1,3 +1,22 @@
 {
-  "enabled": []
+  "enabled": [
+    "api-key-model-visibility",
+    "api-key-service-tier",
+    "automation-extensions",
+    "computer-use-linux",
+    "copilot-reasoning-effort",
+    "directory-only-working-tree-watch",
+    "global-dictation",
+    "linux-performance-workarounds",
+    "mcp-helper-reaper",
+    "node-repl-reaper",
+    "persistent-status-panel",
+    "project-group-last-updated-sort",
+    "project-task-sort",
+    "read-aloud",
+    "read-aloud-mcp",
+    "remote-control-ui",
+    "remote-mobile-control",
+    "ui-tweaks"
+  ]
 }

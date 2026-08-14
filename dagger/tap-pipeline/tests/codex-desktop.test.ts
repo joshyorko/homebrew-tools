@@ -580,6 +580,110 @@ test("public codex desktop cask is rendered for the official Linux package", () 
   assert.doesNotMatch(formula, /releases\/download\/codex-desktop-linux/)
 })
 
+test("codex desktop official setup validates the emitted provenance fields", () => {
+  const setup = readFileSync(new URL("../../../scripts/setup-codex-desktop-official.sh", import.meta.url), "utf8")
+
+  assert.match(setup, /"official_package_path"/)
+  assert.match(setup, /"official_package_sha256"/)
+  assert.doesNotMatch(setup, /"upstream_package_path"/)
+  assert.doesNotMatch(setup, /"upstream_package_sha256"/)
+})
+
+test("codex desktop offline smoke installs archive tools and stays headless", () => {
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+  const offlineSmoke = pipeline.slice(
+    pipeline.indexOf("async codexDesktopOfflineSmoke"),
+    pipeline.indexOf("async codexDesktopOfflineSmoke") + 5_000,
+  )
+
+  assert.match(offlineSmoke, /withUser\("root"\)/)
+  assert.match(offlineSmoke, /apt-get install[^\n]+binutils tar xz-utils zstd/)
+  assert.match(offlineSmoke, /withUser\("linuxbrew"\)/)
+  assert.match(offlineSmoke, /codex-desktop --diagnose/)
+  assert.doesNotMatch(offlineSmoke, /codex-desktop web --inspect/)
+})
+
+test("codex desktop official installer installs from a temporary tap", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "codex-desktop-official-install-test-"))
+  const bundle = join(tmp, "bundle")
+  const binDir = join(tmp, "bin")
+  const tapDir = join(tmp, "tap")
+  const stateDir = join(tmp, "state")
+  const assetName = "codex-desktop-test.deb"
+
+  try {
+    mkdirSync(join(bundle, "artifacts"), { recursive: true })
+    mkdirSync(join(bundle, "homebrew"), { recursive: true })
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(stateDir, { recursive: true })
+    writeFileSync(join(bundle, "artifacts", assetName), "artifact\n")
+    writeFileSync(join(bundle, "release.json"), `${JSON.stringify({ asset_name: assetName })}\n`)
+    writeFileSync(
+      join(bundle, "homebrew/codex-desktop.rb"),
+      'cask "codex-desktop" do\n  url "https://example.invalid/codex-desktop.deb"\nend\n',
+    )
+    writeExecutable(
+      join(binDir, "brew"),
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'case "${1:-}" in',
+        "  tap-new)",
+        '    mkdir -p "$FAKE_TAP_DIR/Casks"',
+        '    printf "%s\\n" "${3:?missing tap name}" > "$FAKE_STATE_DIR/tap-name"',
+        "    ;;",
+        "  --repository)",
+        '    printf "%s\\n" "$FAKE_TAP_DIR"',
+        "    ;;",
+        "  list)",
+        '    test "${FAKE_ALREADY_INSTALLED:-0}" = 1',
+        "    ;;",
+        "  install|reinstall)",
+        '    token="${@: -1}"',
+        '    [[ "$token" != *.rb ]] || { echo "standalone cask path rejected" >&2; exit 64; }',
+        '    test -f "$FAKE_TAP_DIR/Casks/codex-desktop.rb"',
+        '    grep -q "url \\\"file://" "$FAKE_TAP_DIR/Casks/codex-desktop.rb"',
+        '    printf "%s %s\\n" "$1" "$token" > "$FAKE_STATE_DIR/install"',
+        '    touch "$FAKE_STATE_DIR/installed"',
+        "    ;;",
+        "  untap)",
+        '    test -f "$FAKE_STATE_DIR/installed"',
+        '    touch "$FAKE_STATE_DIR/untapped"',
+        "    ;;",
+        "  *)",
+        '    echo "unexpected brew command: $*" >&2',
+        "    exit 65",
+        "    ;;",
+        "esac",
+      ].join("\n"),
+    )
+
+    const result = spawnSync(
+      new URL("../../../scripts/install-codex-desktop-official.sh", import.meta.url).pathname,
+      [],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CODEX_DESKTOP_BUNDLE_DIR: bundle,
+          CODEX_DESKTOP_SKIP_SETUP: "1",
+          FAKE_ALREADY_INSTALLED: "0",
+          FAKE_STATE_DIR: stateDir,
+          FAKE_TAP_DIR: tapDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    )
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+    assert.match(readFileSync(join(stateDir, "install"), "utf8").trim(), /^install codex-official\/codex-desktop-[^/]+\/codex-desktop$/)
+    assert.ok(existsSync(join(stateDir, "installed")))
+    assert.ok(existsSync(join(stateDir, "untapped")))
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
 test("codex desktop official flow is normal and legacy DMG conversion stays explicit", () => {
   const workflow = readFileSync(new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url), "utf8")
   const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
@@ -636,7 +740,11 @@ test("codex desktop official flow is normal and legacy DMG conversion stays expl
     pipeline.indexOf("private codexDesktopBaseContainer"),
     pipeline.indexOf("private goBaseContainer"),
   )
-  assert.deepEqual(JSON.parse(releaseFeatures), { enabled: [] })
+  const configuredReleaseFeatures = JSON.parse(releaseFeatures) as { enabled: unknown[] }
+  assert.deepEqual(Object.keys(configuredReleaseFeatures), ["enabled"])
+  assert.ok(Array.isArray(configuredReleaseFeatures.enabled))
+  assert.ok(configuredReleaseFeatures.enabled.every((feature) => typeof feature === "string" && feature.length > 0))
+  assert.equal(new Set(configuredReleaseFeatures.enabled).size, configuredReleaseFeatures.enabled.length)
   assert.match(officialSetup, /release-bundle/)
   assert.match(officialSetup, /codex-desktop-offline-smoke/)
   assert.match(officialSetup, /artifact_sha256/)

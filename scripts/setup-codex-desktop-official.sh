@@ -101,8 +101,8 @@ required = {
     "asset_name",
     "artifact_sha256",
     "upstream",
-    "upstream_package_path",
-    "upstream_package_sha256",
+    "official_package_path",
+    "official_package_sha256",
     "build_mode",
 }
 missing = sorted(required.difference(release))

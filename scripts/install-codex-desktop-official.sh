@@ -28,13 +28,20 @@ print(artifact.resolve())
 PY
 )"
 
-temp_dir="$(mktemp -d)"
+temp_tap_name="codex-official/codex-desktop-$(date +%s)-$$"
 cleanup() {
-    rm -rf "$temp_dir"
+    status=$?
+    trap - EXIT
+    HOMEBREW_DEVELOPER=1 brew untap "$temp_tap_name" >/dev/null 2>&1 || true
+    return "$status"
 }
 trap cleanup EXIT
 
-python3 - "$source_cask" "$temp_dir/codex-desktop.rb" "$artifact_path" <<'PY'
+brew tap-new --no-git "$temp_tap_name" >/dev/null
+temp_tap_dir="$(brew --repository "$temp_tap_name")"
+mkdir -p "$temp_tap_dir/Casks"
+
+python3 - "$source_cask" "$temp_tap_dir/Casks/codex-desktop.rb" "$artifact_path" <<'PY'
 import pathlib
 import sys
 
@@ -45,5 +52,10 @@ pathlib.Path(sys.argv[2]).write_text(rendered)
 PY
 
 echo "Installing the retained official-package Codex Desktop artifact through Homebrew..."
-HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask --force "$temp_dir/codex-desktop.rb"
+local_cask="$temp_tap_name/codex-desktop"
+if brew list --cask codex-desktop >/dev/null 2>&1; then
+    HOMEBREW_NO_AUTO_UPDATE=1 brew reinstall --cask --force "$local_cask"
+else
+    HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask "$local_cask"
+fi
 echo "Codex Desktop installed from $artifact_path"
