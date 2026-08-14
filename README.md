@@ -488,26 +488,27 @@ native GTK/libadwaita window on supported Linux desktops with Daily driver,
 Minimal, and Custom profiles; searchable feature switches; dependency and
 conflict guidance; and a final choice to save or build and install. The saved
 selection lives under `${XDG_CONFIG_HOME:-~/.config}/homebrew-tools/` and is
-used automatically by later `make codex-desktop-legacy-install` runs. A concise
-terminal picker is used when no graphical session is available.
+used automatically by later `make codex-desktop-legacy-install` runs. When no
+graphical session is available, the wizard provides a keyboard-driven terminal
+interface with profiles, search, grouped feature toggles, dependency/conflict
+feedback, review, and save/build actions.
 
-The graphical wizard depends on the device's native Python GObject bindings for
-GTK 4 and libadwaita. These bindings and the saved feature selection are host
-state, so syncing this checkout does not copy them to another device. Verify the
-selected interpreter with:
+The graphical wizard uses `uv run --script` with an inline `PyGObject` dependency,
+so its Python package environment is recreated automatically. GTK 4, libadwaita,
+GObject Introspection, and the saved feature selection remain host state, so
+syncing this checkout does not copy the native libraries or selection to another
+device. Verify the native runtime with:
 
 ```bash
 python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); from gi.repository import Adw, Gtk'
 ```
 
-`make codex-desktop-legacy-setup` recreates `.venv-codex-desktop-setup` with access to
-the system Python packages, verifies the native bindings, and runs the wizard
-with that interpreter. Use
+`make codex-desktop-legacy-setup` retains the explicit system-package venv path for
+legacy/local conversion experiments. Use
 `CODEX_DESKTOP_SETUP_BASE_PYTHON=/path/to/python3 make codex-desktop-legacy-setup-env`
-when another system Python owns the bindings. There is no `requirements.txt`:
-the wizard's Python code uses only the standard library, while GTK,
-libadwaita, and PyGObject remain native per-device dependencies that a PyPI
-lockfile cannot supply reproducibly.
+when another system Python owns the native bindings. The official setup path does
+not require a `requirements.txt`; its Python dependency is declared in the wizard
+with PEP 723 inline metadata and resolved by `uv`.
 The saved selection remains local under the XDG config path above; set
 `CODEX_DESKTOP_FEATURES_CONFIG` to an intentional synced path only when the
 same selection should be shared across devices. Do not sync build caches,

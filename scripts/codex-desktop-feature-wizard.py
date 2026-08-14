@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "PyGObject>=3.50",
+# ]
+# ///
+
 from __future__ import annotations
 
 import argparse
@@ -590,6 +597,86 @@ def _terminal_custom_selection(
     return _validated_profile(features, requested)
 
 
+def terminal_feature_rows(
+    features: dict[str, Feature], selected: set[str], query: str = ""
+) -> list[tuple[str, int, bool, str, str, str]]:
+    query = query.strip().lower()
+    rows = []
+    for index, feature in enumerate(features.values(), start=1):
+        haystack = f"{feature.category} {feature.id} {feature.title} {feature.description}".lower()
+        if query and query not in haystack:
+            continue
+        rows.append(
+            (
+                feature.category,
+                index,
+                feature.id in selected,
+                feature.title,
+                feature.id,
+                feature.description,
+            )
+        )
+    return rows
+
+
+def _terminal_clear() -> None:
+    if sys.stdout.isatty() and os.environ.get("TERM"):
+        print("\033[2J\033[H", end="")
+
+
+def _terminal_print_screen(
+    args: argparse.Namespace,
+    features: dict[str, Feature],
+    selected: set[str],
+    query: str,
+    notice: str,
+) -> None:
+    _terminal_clear()
+    print("Codex Desktop setup  ·  terminal mode")
+    print(f"Conversion: {args.conversion_commit}  ·  {len(selected)}/{len(features)} enabled")
+    print("Search: " + (query or "all features"))
+    print("─" * 78)
+    current_category = None
+    rows = terminal_feature_rows(features, selected, query)
+    if not rows:
+        print("No matching features. Press / to change the search.")
+    for category, index, enabled, title, feature_id, description in rows:
+        if category != current_category:
+            current_category = category
+            print(f"\n{category}")
+        marker = "✓" if enabled else "·"
+        detail = f" — {description}" if description else ""
+        print(f"  {index:>2} [{marker}] {title} ({feature_id}){detail}")
+    if notice:
+        print(f"\n! {notice}")
+    print(
+        "\nCommands: number toggle · p profile · / search · a all visible · n none "
+        "· r review · s save · i build/install · q quit"
+    )
+
+
+def _terminal_toggle_numbers(
+    raw: str,
+    features: dict[str, Feature],
+    selected: set[str],
+) -> tuple[set[str], str]:
+    feature_ids = list(features)
+    updated = set(selected)
+    notices = []
+    for item in re.split(r"[\s,]+", raw.strip()):
+        if not item:
+            continue
+        if not item.isdigit():
+            raise ValueError("Toggle features by number, separated by commas")
+        index = int(item) - 1
+        if index < 0 or index >= len(feature_ids):
+            raise ValueError(f"Feature number {item} is out of range 1-{len(feature_ids)}")
+        updated, notice = toggle_feature(features, updated, feature_ids[index], feature_ids[index] not in updated)
+        if notice:
+            notices.append(notice)
+    return updated, " ".join(notices)
+
+
 def run_terminal_wizard(
     args: argparse.Namespace,
     features: dict[str, Feature],
@@ -602,53 +689,58 @@ def run_terminal_wizard(
         print("Codex Desktop setup needs an interactive terminal or graphical session.", file=sys.stderr)
         return 2
 
-    print("\nCodex Desktop Homebrew setup")
-    print(f"Conversion: {args.conversion_commit}")
-    print(f"Saved selection: {len(selected)} feature(s)\n")
-    print("Profiles: [k]eep saved  [d]aily driver  [m]inimal  [c]ustom  [q]uit")
-    profile = input("Choose profile [k]: ").strip().lower() or "k"
-    if profile in {"q", "quit"}:
-        complete_action("cancel", args.config, args.result, selected)
-        return 0
-    if profile in {"d", "daily", "full"}:
-        selected = _validated_profile(features, full_profile)
-    elif profile in {"m", "minimal", "lean"}:
-        selected = _validated_profile(features, lean_profile)
-    elif profile in {"c", "custom"}:
-        for index, feature in enumerate(features.values(), start=1):
-            marker = "x" if feature.id in selected else " "
-            print(f"{index:2}. [{marker}] {feature.title} ({feature.id})")
-        raw = input("Feature ids or numbers (comma-separated, blank keeps saved): ").strip()
-        if raw:
-            selected = _terminal_custom_selection(raw, features)
-    elif profile not in {"k", "keep"}:
-        raise ValueError(f"Unknown profile choice: {profile}")
-
-    print(f"\nSelected {len(selected)} feature(s): {selection_argument(selected)}")
     dmg_source = "pinned"
-    if args.official_linux_package:
-        print("Build source: Official signed Linux package")
-    else:
-        latest_dmg_summary = build_latest_dmg_summary_from_args(args)
-        print(f"Newest upstream DMG: {latest_dmg_summary['subtitle']}")
-        print("Build source: [p]inned tested DMG  [l]atest upstream DMG")
-        source = input("Choose build source [p]: ").strip().lower() or "p"
-        if source in {"p", "pinned"}:
-            dmg_source = "pinned"
-        elif source in {"l", "latest"}:
-            dmg_source = "latest"
+    query = ""
+    notice = ""
+    while True:
+        _terminal_print_screen(args, features, selected, query, notice)
+        command = input("\nCommand: ").strip().lower()
+        notice = ""
+        if not command:
+            continue
+        if command in {"q", "quit"}:
+            complete_action("cancel", args.config, args.result, selected, dmg_source)
+            return 0
+        if command in {"?", "h", "help"}:
+            notice = "Enter a feature number to toggle it; use / for a title/id search."
+        elif command in {"/", "search"}:
+            query = input("Search text (blank clears): ").strip()
+        elif command in {"c", "clear"}:
+            query = ""
+        elif command in {"p", "profile"}:
+            profile = input("Profile: [k]eep [d]aily driver [m]inimal [c]ustom: ").strip().lower()
+            if profile in {"d", "daily", "full"}:
+                selected = _validated_profile(features, full_profile)
+            elif profile in {"m", "minimal", "lean"}:
+                selected = _validated_profile(features, lean_profile)
+            elif profile not in {"k", "keep", "c", "custom"}:
+                notice = "Unknown profile. Choose keep, daily driver, minimal, or custom."
+        elif command in {"a", "all"}:
+            for _, _, _, _, feature_id, _ in terminal_feature_rows(features, selected, query):
+                selected, notice = toggle_feature(features, selected, feature_id, True)
+                if "conflicts" in notice:
+                    break
+        elif command in {"n", "none"}:
+            selected = set()
+        elif command in {"r", "review"}:
+            titles = [features[item].title for item in sorted(selected)]
+            notice = "Selected: " + (", ".join(titles) if titles else "no optional features")
+        elif command in {"s", "save", "i", "install"}:
+            action = "install" if command in {"i", "install"} else "save"
+            if action == "install" and not args.official_linux_package:
+                latest_dmg_summary = build_latest_dmg_summary_from_args(args)
+                print(f"\nNewest upstream DMG: {latest_dmg_summary['subtitle']}")
+                source = input("Build source [p]inned tested / [l]atest upstream [p]: ").strip().lower() or "p"
+                if source in {"l", "latest"}:
+                    dmg_source = "latest"
+                elif source not in {"p", "pinned"}:
+                    raise ValueError(f"Unknown DMG source choice: {source}")
+            complete_action(action, args.config, args.result, selected, dmg_source)
+            return 0
+        elif command.replace(",", "").replace(" ", "").isdigit():
+            selected, notice = _terminal_toggle_numbers(command, features, selected)
         else:
-            raise ValueError(f"Unknown DMG source choice: {source}")
-    action = input("[s]ave only, [i]build & install, or [q]uit [s]: ").strip().lower() or "s"
-    if action in {"i", "install"}:
-        complete_action("install", args.config, args.result, selected, dmg_source)
-    elif action in {"s", "save"}:
-        complete_action("save", args.config, args.result, selected, dmg_source)
-    elif action in {"q", "quit"}:
-        complete_action("cancel", args.config, args.result, selected, dmg_source)
-    else:
-        raise ValueError(f"Unknown setup action: {action}")
-    return 0
+            notice = "Unknown command. Use ? for help."
 
 
 def run_gtk_wizard(

@@ -11,6 +11,9 @@ offline Homebrew install from that bundle in an isolated container.
 
 This command never installs on the host, publishes a release, or mutates a
 remote tap.
+
+Environment:
+  CODEX_DESKTOP_SETUP_PYTHON  Python used for the non-uv fallback wizard.
 EOF
 }
 
@@ -49,7 +52,8 @@ wizard_result="$wizard_dir/result.json"
 trap 'rm -rf "$wizard_dir"' EXIT
 git clone --quiet --filter=blob:none https://github.com/joshyorko/codex-desktop-linux "$wizard_dir/source"
 git -C "$wizard_dir/source" checkout --quiet "$conversion_ref"
-python3 "$repo_dir/scripts/codex-desktop-feature-wizard.py" \
+wizard_args=(
+    "$repo_dir/scripts/codex-desktop-feature-wizard.py"
     --features-root "$wizard_dir/source/linux-features" \
     --config "$features_config" \
     --result "$wizard_result" \
@@ -57,6 +61,18 @@ python3 "$repo_dir/scripts/codex-desktop-feature-wizard.py" \
     --official-linux-package \
     --full-profile "$full_profile" \
     --lean-profile "$lean_profile"
+)
+if command -v uv >/dev/null 2>&1 && uv run --script "${wizard_args[@]}"; then
+    :
+else
+    fallback_python="${CODEX_DESKTOP_SETUP_PYTHON:-}"
+    if [ -z "$fallback_python" ] && [ -x /usr/bin/python3 ]; then
+        fallback_python=/usr/bin/python3
+    fi
+    fallback_python="${fallback_python:-python3}"
+    echo "uv could not prepare the GTK environment; using the terminal wizard with $fallback_python." >&2
+    "$fallback_python" "${wizard_args[@]}"
+fi
 python3 - "$wizard_result" <<'PY'
 import json
 import pathlib
@@ -67,6 +83,18 @@ if result.get("action") == "cancel":
     raise SystemExit("Codex Desktop setup cancelled.")
 PY
 echo "Saved release feature choices to $features_config"
+setup_action="$(python3 - "$wizard_result" <<'PY'
+import json
+import pathlib
+import sys
+
+print(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("action", ""))
+PY
+)"
+if [ "$setup_action" = "save" ]; then
+    echo "Save for later selected; skipping the Codex Desktop build."
+    exit 0
+fi
 
 git_dir="${DAGGER_GIT_DIR:-$(git -C "$repo_dir" rev-parse --git-common-dir)}"
 case "$git_dir" in

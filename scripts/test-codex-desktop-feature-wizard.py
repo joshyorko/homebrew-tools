@@ -439,6 +439,47 @@ class FeatureWizardModelTests(unittest.TestCase):
         self.assertIn("GTK 4/libadwaita Python bindings", error.getvalue())
         self.assertIn("CODEX_DESKTOP_SETUP_PYTHON", error.getvalue())
 
+    def test_terminal_feature_rows_group_and_filter_features(self):
+        self.add_feature("read-aloud", title="Read Aloud", description="Speech output")
+        self.add_feature("pet-overlay", title="Pet Overlay", description="A desktop companion")
+        features = WIZARD.discover_features(self.root)
+
+        rows = WIZARD.terminal_feature_rows(features, {"read-aloud"}, "speech")
+
+        self.assertEqual(
+            rows,
+            [("Voice & conversation", 2, True, "Read Aloud", "read-aloud", "Speech output")],
+        )
+
+    def test_terminal_command_can_toggle_feature_and_show_review(self):
+        self.add_feature("read-aloud", title="Read Aloud")
+        config = self.root / "features.json"
+        result = self.root / "result.json"
+        args = WIZARD.parse_arguments(
+            [
+                "--features-root",
+                str(self.root),
+                "--config",
+                str(config),
+                "--result",
+                str(result),
+            ]
+        )
+        features = WIZARD.discover_features(self.root)
+        inputs = iter(["1", "v", "s"])
+        output = io.StringIO()
+
+        with (
+            mock.patch.object(sys.stdin, "isatty", return_value=True),
+            mock.patch.object(WIZARD, "input", side_effect=lambda _prompt: next(inputs), create=True),
+            redirect_stdout(output),
+        ):
+            status = WIZARD.run_terminal_wizard(args, features, set(), set(), set())
+
+        self.assertEqual(status, 0)
+        self.assertEqual(json.loads(config.read_text()), {"enabled": ["read-aloud"]})
+        self.assertIn("Read Aloud", output.getvalue())
+
     def test_cancel_preserves_saved_selection(self):
         config = self.root / "features.json"
         result = self.root / "result.json"
