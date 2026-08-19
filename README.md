@@ -380,9 +380,11 @@ does not delete ChatGPT or Codex user data. The Linux preview's Wayland
 Computer Use, Remote, Global Dictation, and Record & Replay behavior still
 needs validation on the target Bluefin desktop.
 
-### Codex Desktop Linux (PatchRaptor Build)
+### ChatGPT Community Linux (ilysenko/PatchRaptor Build)
 
-The `codex-desktop` cask is the published PatchRaptor Codex Desktop Linux build.
+The `codex-desktop` cask is the unofficial ChatGPT Community Linux build from
+[`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux).
+It is a separate stream from the untouched official `chatgpt` cask above.
 It starts from OpenAI's checksummed official Linux `.deb`, applies the feature
 profile committed in `config/codex-desktop-linux-features.json`, and omits the
 native updater so Homebrew owns upgrades. CI retains the `.deb`, records source
@@ -436,188 +438,32 @@ brew uninstall joshyorko/tools/headroom-self-hosted
 The daily tap pipeline checks the self-hosted source lane, validates provenance,
 and builds and tests the formula through Linuxbrew before publishing an update.
 
-### Legacy Codex Desktop (Linux DMG Conversion Runtime)
+### ChatGPT Community Linux package sources
 
-The published Codex Desktop Linux cask above is the normal install stream. The
-older DMG conversion remains available as separate local-only
-builder tooling for conversion-specific experiments; it is not used by the
-`chatgpt` cask and does not publish converted app payloads. The builder
-downloads the official
-`https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg`, converts that DMG on
-this machine, patches the extracted app for Linux Electron, rebuilds native
-modules, stages bundled resources, renders a temporary local cask, and installs
-that cask through Homebrew.
+`make codex-desktop-setup` opens the feature picker, saves the selected profile,
+and offers two verified OpenAI Linux package sources for the community build:
 
-The rendered cask no longer pulls in a Homebrew `codex` cask. During install it
-runs the official OpenAI installer for the Codex CLI from
-`https://github.com/openai/codex/releases`:
+- **Pinned verified Linux package** uses the package pin from the selected
+  PatchRaptor conversion commit.
+- **Latest signed stable Linux package** resolves `InRelease`, verifies the
+  pinned OpenAI repository key and indexed `Packages` file, then verifies the
+  package SHA-256 before extraction.
 
-```bash
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
-```
-
-The preflight step skips this when a `codex` executable is already on `PATH`
-(or in `~/.local/bin`), and you can force it off with
-`CODEX_DESKTOP_SKIP_CLI_INSTALL=1` if you manage the Codex CLI yourself.
+The conversion ref in `codex-desktop-conversion.ref` is resolved once and used
+for feature discovery, package selection, and the Dagger build. A feature that
+does not exist in that checkout fails before compilation. The retained bundle
+records the immutable conversion commit, package source, package metadata, and
+artifact checksum.
 
 ```bash
-brew install --HEAD joshyorko/tools/codex-desktop-linux-builder
-codex-desktop-linux-builder
-codex-desktop --help
-codex-desktop desktop
-codex-desktop doctor
-codex-desktop web --inspect
+make codex-desktop-setup
+make codex-desktop-install
 ```
 
-From a repo checkout, the frozen legacy builder is available only through
-explicitly named legacy targets:
-
-```bash
-scripts/install-codex-desktop-local.sh
-make codex-desktop-legacy-setup
-make codex-desktop-legacy-install
-make codex-desktop-uninstall
-make codex-desktop-zap
-make codex-desktop-legacy-rebuild-dry-run
-make codex-desktop-legacy-rebuild-relaunch
-make codex-desktop-legacy-rebuild-foreground
-```
-
-For legacy conversion experiments, start with `make codex-desktop-legacy-setup`. It opens a
-native GTK/libadwaita window on supported Linux desktops with Daily driver,
-Minimal, and Custom profiles; searchable feature switches; dependency and
-conflict guidance; and a final choice to save or build and install. The saved
-selection lives under `${XDG_CONFIG_HOME:-~/.config}/homebrew-tools/` and is
-used automatically by later `make codex-desktop-legacy-install` runs. When no
-graphical session is available, the wizard provides a keyboard-driven terminal
-interface with profiles, search, grouped feature toggles, dependency/conflict
-feedback, review, and save/build actions.
-
-The graphical wizard uses `uv run --script` with an inline `PyGObject` dependency,
-so its Python package environment is recreated automatically. GTK 4, libadwaita,
-GObject Introspection, and the saved feature selection remain host state, so
-syncing this checkout does not copy the native libraries or selection to another
-device. Verify the native runtime with:
-
-```bash
-python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); from gi.repository import Adw, Gtk'
-```
-
-`make codex-desktop-legacy-setup` retains the explicit system-package venv path for
-legacy/local conversion experiments. Use
-`CODEX_DESKTOP_SETUP_BASE_PYTHON=/path/to/python3 make codex-desktop-legacy-setup-env`
-when another system Python owns the native bindings. The official setup path does
-not require a `requirements.txt`; its Python dependency is declared in the wizard
-with PEP 723 inline metadata and resolved by `uv`.
-The saved selection remains local under the XDG config path above; set
-`CODEX_DESKTOP_FEATURES_CONFIG` to an intentional synced path only when the
-same selection should be shared across devices. Do not sync build caches,
-reports, or installed application state.
-
-The review screen also chooses the DMG source. **Tested pinned DMG** is the
-default for repeatable feature work. **Newest upstream DMG** is a one-off build
-that downloads the current OpenAI artifact and runs the selected feature set
-through the shared upstream acceptance gate. Before the wizard opens, a bounded
-HEAD request identifies whether the current upstream artifact matches the tested
-pin and displays its size, Last-Modified value, and ETag without downloading the
-DMG. It does not rewrite the checked-in pin. Rejected or inconclusive candidates
-never reach Homebrew installation.
-After a latest-DMG attempt, the wizard displays the verdict and the local
-evidence path under
-`${XDG_STATE_HOME:-~/.local/state}/homebrew-tools/codex-desktop/reports/`.
-That directory contains the acceptance decision and any exported patch and
-rebuild reports.
-
-`make codex-desktop-legacy-install` uses the checked-in
-`codex-desktop-conversion.ref` by default, so local rebuilds follow the current
-test branch without pasting a commit SHA. Override with
-`CODEX_DESKTOP_CONVERSION_COMMIT=<ref-or-sha>` when needed.
-
-The local Codex Desktop builder also uses the checked-in
-`codex-desktop-dmg.ref` by default. When you do not pass `--codex-dmg` or
-`CODEX_DESKTOP_CODEX_DMG`, the installer downloads that pinned upstream DMG
-into `~/.cache/codex-desktop-dmg/<sha256>/Codex.dmg`, verifies its SHA256 and
-content length, and then passes that local file into Dagger so rebuilds stay
-reproducible even if the upstream `Codex.dmg` URL later changes in place.
-
-Refresh the upstream DMG pin only after you have rechecked the current upstream
-artifact and metadata, then update `codex-desktop-dmg.ref` in the repo:
-
-
-```bash
-curl -fsSLo /tmp/Codex.dmg https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg
-sha256sum /tmp/Codex.dmg
-wc -c /tmp/Codex.dmg
-curl -fsSIL https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg
-```
-
-
-Override the pinned default with a local DMG whenever you need a one-off test:
-
-
-```bash
-scripts/install-codex-desktop-local.sh --codex-dmg /path/to/Codex.dmg
-CODEX_DESKTOP_CODEX_DMG=/path/to/Codex.dmg make codex-desktop-legacy-install
-```
-
-
-The local Codex Desktop builder writes a Linux feature config during conversion.
-Before the guided wizard has saved a selection, the default test set enables
-every shipped Codex Desktop Linux feature except the template feature and
-Thorium browser support. Afterward, `make codex-desktop-legacy-install` reuses the
-wizard selection automatically.
-
-Use the smaller troubleshooting profile explicitly when you need a lower-surface
-Desktop build:
-
-```bash
-CODEX_DESKTOP_LINUX_FEATURES=lean make codex-desktop-legacy-install
-```
-
-Override with a one-off feature list such as
-`CODEX_DESKTOP_LINUX_FEATURES="record-and-replay"` or pass
-`scripts/install-codex-desktop-local.sh --linux-feature record-and-replay`.
-The direct install path refuses to install over live Codex Desktop
-bundle-backed processes by default so old Caskroom-backed app or CLI/MCP
-helpers are not left running after a reinstall. From an external terminal, set
-`CODEX_DESKTOP_STOP_RUNNING=1` or pass `--stop-running` to stop them first. Use
-`CODEX_DESKTOP_ALLOW_RUNNING_INSTALL=1` only for deliberate diagnostics.
-
-`make codex-desktop-legacy-rebuild-relaunch` is the local conversion loop designed to
-be safe when launched from inside Codex Desktop: it starts a detached worker,
-returns a PID and log path, then that worker fast-forwards this checkout, stops
-Codex Desktop, rebuilds and reinstalls the local cask, and launches Codex
-Desktop again. Use `make codex-desktop-legacy-rebuild-dry-run` first to print the
-detached worker command without closing the app or starting a build. Use
-`make codex-desktop-legacy-rebuild-foreground` only from an external terminal when you
-want the rebuild to stay attached to that terminal.
-
-`codex-desktop-uninstall` removes the local-only Homebrew cask, Caskroom payload,
-desktop entry, app-grid icons, and temporary `codex-local/codex-desktop-local-*`
-taps. `codex-desktop-zap` also removes Codex Desktop app-local
-`~/.config/codex-desktop`, `~/.cache/codex-desktop`, and
-`~/.local/state/codex-desktop`. Both preserve `~/.codex`.
-
-The Dagger function is `codex-desktop-local-bundle`. It is for local export only,
-not release publishing:
-
-```bash
-dagger -m ./dagger/tap-pipeline call codex-desktop-renderer-report --codex-dmg=/path/to/Codex.dmg
-dagger -m ./dagger/tap-pipeline call -o /tmp/codex-bundle codex-desktop-local-bundle
-```
-
-That local bundle keeps the standard tap shape:
-- `artifacts/` contains the tarball Homebrew installs
-- `homebrew/` contains the rendered local cask with a `file://` URL and checksum
-- `release.json` records the DMG hash, conversion commit, Electron version, managed Node runtime,
-  and final artifact hash
-
-Manual GNOME/Bluefin validation checklist:
-- run `codex-desktop doctor` to inspect Codex CLI, browser, and Linux Computer Use readiness
-- confirm the cask installed `~/.local/share/applications/codex-desktop.desktop` and app-grid icon files
-- run `codex-desktop desktop` and confirm the converted Electron app launches
-- keep browser/app-server experiments loopback-only and use `codex-desktop web --inspect` for the
-  current renderer research report
+The setup command builds and verifies an offline Homebrew install from the
+retained bundle. It does not install on the host until the separate install
+step runs. The official cask remains release-backed and installs under
+`/opt/codex-desktop`; user application and Codex data are preserved on removal.
 
 ### Fizzy CLI (Master Formula)
 

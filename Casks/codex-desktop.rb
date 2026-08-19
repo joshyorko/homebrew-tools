@@ -6,9 +6,9 @@ cask "codex-desktop" do
   sha256 x86_64_linux: "970196218026fff1427f511a3974609253b4667b118377c4b92e9e525f0edeb5"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac-amd64.deb"
-  name "Codex Desktop"
-  desc "ChatGPT Community Linux desktop app built from PatchRaptor main"
-  homepage "https://github.com/joshyorko/codex-desktop-linux"
+  name "ChatGPT Community"
+  desc "Unofficial ChatGPT Community Linux desktop app built from ilysenko/codex-desktop-linux"
+  homepage "https://github.com/ilysenko/codex-desktop-linux"
 
   livecheck do
     skip "Built from the pinned PatchRaptor main commit by the tap release pipeline."
@@ -22,7 +22,7 @@ cask "codex-desktop" do
 
   preflight do
     package = Dir["#{staged_path}/*.deb"].first
-    raise "unable to find Codex Desktop .deb in #{staged_path}" unless package
+    raise "unable to find ChatGPT Community .deb in #{staged_path}" unless package
 
     system "ar", "x", package, chdir: staged_path
     data_archive = Dir["#{staged_path}/data.tar.*"].first
@@ -69,7 +69,8 @@ cask "codex-desktop" do
     Launch Codex Desktop with:
       codex-desktop
 
-    This cask is built from the official OpenAI Linux package by PatchRaptor
-    main. Homebrew owns upgrades; the native package updater is omitted.
+    This unofficial ChatGPT Community build is maintained by ilysenko and
+    packaged from the PatchRaptor conversion. It is separate from the official
+    OpenAI ChatGPT cask. Homebrew owns upgrades; the native package updater is omitted.
   EOS
 end

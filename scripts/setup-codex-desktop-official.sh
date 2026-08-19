@@ -5,7 +5,7 @@ usage() {
     cat <<'EOF'
 Usage: scripts/setup-codex-desktop-official.sh [--bundle-dir PATH]
 
-Build the pinned PatchRaptor-main Codex Desktop package through the Homebrew
+Build the selected verified OpenAI Linux package through the Homebrew
 Tools Dagger release-bundle path, retain the bundle locally, and prove an
 offline Homebrew install from that bundle in an isolated container.
 
@@ -58,7 +58,6 @@ wizard_args=(
     --config "$features_config" \
     --result "$wizard_result" \
     --conversion-commit "$conversion_ref" \
-    --official-linux-package \
     --full-profile "$full_profile" \
     --lean-profile "$lean_profile"
 )
@@ -91,6 +90,17 @@ import sys
 print(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("action", ""))
 PY
 )"
+package_source="$(python3 - "$wizard_result" <<'PY'
+import json
+import pathlib
+import sys
+
+source = json.loads(pathlib.Path(sys.argv[1]).read_text()).get("packageSource", "pinned")
+if source not in {"pinned", "latest"}:
+    raise SystemExit(f"Unsupported Linux package source: {source}")
+print(source)
+PY
+)"
 if [ "$setup_action" = "save" ]; then
     echo "Save for later selected; skipping the Codex Desktop build."
     exit 0
@@ -103,12 +113,14 @@ case "$git_dir" in
 esac
 
 mkdir -p "$bundle_dir"
-echo "Building Codex Desktop from the pinned PatchRaptor main source through Dagger..."
+echo "Building Codex Desktop from $package_source signed Linux package through Dagger..."
 dagger -m "$repo_dir/dagger/tap-pipeline" call \
     --git-dir="$git_dir" \
     -o "$bundle_dir" \
     release-bundle \
-    --package-id=codex-desktop-linux
+    --package-id=codex-desktop-linux \
+    --codex-desktop-conversion-commit="$conversion_ref" \
+    --codex-desktop-package-source="$package_source"
 
 release_json="$bundle_dir/release.json"
 [ -f "$release_json" ] || { echo "Dagger did not emit $release_json" >&2; exit 70; }

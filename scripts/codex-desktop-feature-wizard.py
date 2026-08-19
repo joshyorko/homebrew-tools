@@ -291,140 +291,22 @@ def selection_argument(selected: set[str]) -> str:
     return ",".join(sorted(selected)) if selected else "none"
 
 
-def _known_metadata(value: object) -> bool:
-    return bool(value) and str(value).strip().lower() != "unknown"
-
-
-def _format_byte_size(value: object) -> str | None:
-    try:
-        size = int(str(value))
-    except (TypeError, ValueError):
-        return None
-    if size < 0:
-        return None
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    amount = float(size)
-    unit = units[0]
-    for candidate in units:
-        unit = candidate
-        if amount < 1024 or candidate == units[-1]:
-            break
-        amount /= 1024
-    if unit == "B":
-        return f"{size} B"
-    return f"{amount:.1f} {unit}"
-
-
-def build_latest_dmg_summary(pinned: dict, latest: dict) -> dict[str, str]:
-    identity_fields = ("contentLength", "lastModified", "etag")
-    probe_available = latest.get("probeStatus") == "available" and all(
-        _known_metadata(latest.get(field)) for field in identity_fields
-    )
-    if not probe_available:
-        status = "Unable to check newest upstream DMG"
-        return {
-            "status": status,
-            "subtitle": (
-                f"{status}\nNo download has started; selecting this still runs drift acceptance"
-            ),
-        }
-
-    matches_pin = all(
-        _known_metadata(pinned.get(field))
-        and str(latest[field]).strip() == str(pinned[field]).strip()
-        for field in identity_fields
-    )
-    status = "Matches tested pin" if matches_pin else "Different upstream artifact detected"
-    details: list[str] = []
-    if matches_pin and _known_metadata(pinned.get("sha256")):
-        fingerprint = str(pinned["sha256"]).strip()
-        if len(fingerprint) > 16:
-            fingerprint = f"{fingerprint[:16]}…"
-        details.append(f"SHA256 {fingerprint}")
-    formatted_size = _format_byte_size(latest["contentLength"])
-    if formatted_size:
-        details.append(formatted_size)
-    details.append(str(latest["lastModified"]).strip())
-    details.append(f"ETag {str(latest['etag']).strip()}")
-    return {
-        "status": status,
-        "subtitle": f"{status}\n{' · '.join(details)}",
-    }
-
-
-def build_latest_dmg_summary_from_args(args: argparse.Namespace) -> dict[str, str]:
-    return build_latest_dmg_summary(
-        pinned={
-            "sha256": args.pinned_dmg_sha256,
-            "contentLength": args.pinned_dmg_content_length,
-            "lastModified": args.pinned_dmg_last_modified,
-            "etag": args.pinned_dmg_etag,
-        },
-        latest={
-            "probeStatus": args.latest_dmg_probe_status,
-            "contentLength": args.latest_dmg_content_length,
-            "lastModified": args.latest_dmg_last_modified,
-            "etag": args.latest_dmg_etag,
-        },
-    )
-
-
-def build_result_summary(decision: dict, evidence_dir: Path) -> dict:
-    verdict = decision.get("verdict", "inconclusive")
-    titles = {
-        "accepted": "Newest upstream DMG accepted",
-        "accepted_with_warnings": "Accepted with warnings",
-        "rejected": "Newest upstream DMG rejected",
-        "inconclusive": "DMG compatibility check inconclusive",
-    }
-    if verdict not in titles:
-        verdict = "inconclusive"
-
-    if verdict == "rejected":
-        findings = decision.get("blockers", [])
-    else:
-        findings = decision.get("warnings", [])
-    reasons = []
-    if isinstance(findings, list):
-        for finding in findings:
-            if isinstance(finding, dict):
-                reason = finding.get("reason") or finding.get("name")
-                if reason:
-                    reasons.append(str(reason))
-            elif finding:
-                reasons.append(str(finding))
-
-    defaults = {
-        "accepted": "Compatibility checks passed. The selected build may be installed.",
-        "accepted_with_warnings": "Compatibility checks passed with non-blocking warnings.",
-        "rejected": "The working app was preserved because required compatibility checks failed.",
-        "inconclusive": "The working app was preserved because compatibility could not be proven.",
-    }
-    description = "\n".join(reasons) if reasons else defaults[verdict]
-    return {
-        "verdict": verdict,
-        "title": titles[verdict],
-        "description": description,
-        "reportPath": Path(evidence_dir) / "upstream-dmg-decision.json",
-    }
-
-
 def write_result(
     result_path: Path,
     action: str,
     selected: set[str],
-    dmg_source: str = "pinned",
+    package_source: str = "pinned",
 ) -> None:
     if action not in {"save", "install", "cancel"}:
         raise ValueError(f"Unknown setup action: {action}")
-    if dmg_source not in {"pinned", "latest"}:
-        raise ValueError(f"Unknown DMG source: {dmg_source}")
+    if package_source not in {"pinned", "latest"}:
+        raise ValueError(f"Unknown Linux package source: {package_source}")
     features = [] if action == "cancel" else sorted(selected)
     _write_json_atomic(
         Path(result_path),
         {
             "action": action,
-            "dmgSource": dmg_source,
+            "packageSource": package_source,
             "features": features,
         },
     )
@@ -435,11 +317,11 @@ def complete_action(
     config_path: Path,
     result_path: Path,
     selected: set[str],
-    dmg_source: str = "pinned",
+    package_source: str = "pinned",
 ) -> None:
     if action in {"save", "install"}:
         save_selection(config_path, selected)
-    write_result(result_path, action, selected, dmg_source)
+    write_result(result_path, action, selected, package_source)
 
 
 def parse_feature_words(value: str) -> set[str]:
@@ -454,16 +336,6 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--lean-profile", default="")
     parser.add_argument("--result", type=Path)
     parser.add_argument("--conversion-commit", default="unknown")
-    parser.add_argument("--official-linux-package", action="store_true")
-    parser.add_argument("--pinned-dmg-sha256", default="unknown")
-    parser.add_argument("--pinned-dmg-content-length", default="unknown")
-    parser.add_argument("--pinned-dmg-last-modified", default="unknown")
-    parser.add_argument("--pinned-dmg-etag", default="unknown")
-    parser.add_argument("--latest-dmg-probe-status", default="unavailable")
-    parser.add_argument("--latest-dmg-content-length", default="unknown")
-    parser.add_argument("--latest-dmg-last-modified", default="unknown")
-    parser.add_argument("--latest-dmg-etag", default="unknown")
-    parser.add_argument("--show-result", type=Path)
     parser.add_argument("--print-enabled", action="store_true")
     return parser.parse_args(argv)
 
@@ -547,20 +419,6 @@ def run_gtk_result(summary: dict) -> int:
     return ResultApplication().run([])
 
 
-def show_build_result(result_path: Path) -> int:
-    result_path = Path(result_path).resolve()
-    decision = _read_json(result_path, "upstream DMG decision")
-    if not isinstance(decision, dict):
-        raise ValueError(f"Upstream DMG decision {result_path} must be a JSON object")
-    summary = build_result_summary(decision, result_path.parent)
-    if graphical_session_available() and gtk_available():
-        return run_gtk_result(summary)
-    print(summary["title"])
-    print(summary["description"])
-    print(f"Evidence: {summary['reportPath']}")
-    return 0
-
-
 def _validated_profile(
     features: dict[str, Feature],
     requested: set[str],
@@ -632,7 +490,7 @@ def _terminal_print_screen(
     notice: str,
 ) -> None:
     _terminal_clear()
-    print("Codex Desktop setup  ·  terminal mode")
+    print("ChatGPT Community setup  ·  terminal mode")
     print(f"Conversion: {args.conversion_commit}  ·  {len(selected)}/{len(features)} enabled")
     print("Search: " + (query or "all features"))
     print("─" * 78)
@@ -686,10 +544,10 @@ def run_terminal_wizard(
 ) -> int:
     if not sys.stdin.isatty():
         complete_action("cancel", args.config, args.result, selected)
-        print("Codex Desktop setup needs an interactive terminal or graphical session.", file=sys.stderr)
+        print("ChatGPT Community setup needs an interactive terminal or graphical session.", file=sys.stderr)
         return 2
 
-    dmg_source = "pinned"
+    package_source = "pinned"
     query = ""
     notice = ""
     while True:
@@ -699,7 +557,7 @@ def run_terminal_wizard(
         if not command:
             continue
         if command in {"q", "quit"}:
-            complete_action("cancel", args.config, args.result, selected, dmg_source)
+            complete_action("cancel", args.config, args.result, selected, package_source)
             return 0
         if command in {"?", "h", "help"}:
             notice = "Enter a feature number to toggle it; use / for a title/id search."
@@ -727,15 +585,13 @@ def run_terminal_wizard(
             notice = "Selected: " + (", ".join(titles) if titles else "no optional features")
         elif command in {"s", "save", "i", "install"}:
             action = "install" if command in {"i", "install"} else "save"
-            if action == "install" and not args.official_linux_package:
-                latest_dmg_summary = build_latest_dmg_summary_from_args(args)
-                print(f"\nNewest upstream DMG: {latest_dmg_summary['subtitle']}")
-                source = input("Build source [p]inned tested / [l]atest upstream [p]: ").strip().lower() or "p"
+            if action == "install":
+                source = input("Linux package [p]inned verified / [l]atest signed stable [p]: ").strip().lower() or "p"
                 if source in {"l", "latest"}:
-                    dmg_source = "latest"
+                    package_source = "latest"
                 elif source not in {"p", "pinned"}:
-                    raise ValueError(f"Unknown DMG source choice: {source}")
-            complete_action(action, args.config, args.result, selected, dmg_source)
+                    raise ValueError(f"Unknown package source choice: {source}")
+            complete_action(action, args.config, args.result, selected, package_source)
             return 0
         elif command.replace(",", "").replace(" ", "").isdigit():
             selected, notice = _terminal_toggle_numbers(command, features, selected)
@@ -758,9 +614,9 @@ def run_gtk_wizard(
 
     class WizardApplication(Adw.Application):
         def __init__(self):
-            super().__init__(application_id="dev.joshyorko.CodexDesktopSetup")
+            super().__init__(application_id="dev.ilysenko.ChatGPTCommunitySetup")
             self.selected = set(initial_selected)
-            self.dmg_source = "pinned"
+            self.package_source = "pinned"
             self.completed = False
             self.rows: dict[str, Adw.SwitchRow] = {}
             self.groups: dict[str, Adw.PreferencesGroup] = {}
@@ -768,7 +624,7 @@ def run_gtk_wizard(
 
         def do_activate(self):
             self.window = Adw.ApplicationWindow(application=self)
-            self.window.set_title("Codex Desktop Setup")
+            self.window.set_title("ChatGPT Community Setup")
             self.window.set_default_size(900, 720)
             self.window.connect("close-request", self.on_close)
 
@@ -776,7 +632,7 @@ def run_gtk_wizard(
             header = Adw.HeaderBar()
             header.set_title_widget(
                 Adw.WindowTitle(
-                    title="Codex Desktop Setup",
+                    title="ChatGPT Community Setup",
                     subtitle=f"Homebrew build · {args.conversion_commit[:12]}",
                 )
             )
@@ -797,7 +653,7 @@ def run_gtk_wizard(
             page.set_margin_start(28)
             page.set_margin_end(28)
 
-            title = Gtk.Label(label="Choose what Codex Desktop includes", xalign=0)
+            title = Gtk.Label(label="Choose what ChatGPT Community includes", xalign=0)
             title.add_css_class("title-1")
             page.append(title)
             subtitle = Gtk.Label(
@@ -943,15 +799,13 @@ def run_gtk_wizard(
             self.review_summary = Gtk.Label(xalign=0, wrap=True, selectable=True)
             page.append(self.review_summary)
             source_group = Adw.PreferencesGroup(title="Build source")
-            if args.official_linux_package:
-                source_group.add(Adw.ActionRow(
-                    title="Official signed Linux package",
-                    subtitle="Verified package from OpenAI's stable Linux repository",
-                ))
-                page.append(source_group)
-            else:
-                self.add_dmg_source_rows(source_group)
-                page.append(source_group)
+            source_group.add(Adw.ActionRow(
+                title="Official signed Linux package",
+                subtitle="Verified package from OpenAI's stable Linux repository",
+            ))
+            self.add_linux_package_source_rows(source_group)
+            page.append(source_group)
+            page.append(source_group)
             note = Adw.StatusPage(
                 title="Your running app stays untouched",
                 description="Build &amp; install uses the existing safety guard and refuses to replace a live Codex Desktop bundle.",
@@ -974,40 +828,31 @@ def run_gtk_wizard(
             page.append(actions)
             return page
 
-        def add_dmg_source_rows(self, source_group):
-            pinned_fingerprint = args.pinned_dmg_sha256
-            if len(pinned_fingerprint) > 16:
-                pinned_fingerprint = f"{pinned_fingerprint[:16]}…"
+        def add_linux_package_source_rows(self, source_group):
             pinned = Adw.ActionRow(
-                title="Tested pinned DMG",
-                subtitle=(
-                    f"Recommended · SHA256 {pinned_fingerprint} · "
-                    f"{args.pinned_dmg_last_modified}"
-                ),
+                title="Pinned verified Linux package",
+                subtitle="Recommended · package pin from the selected conversion commit",
             )
             pinned_choice = Gtk.CheckButton()
             pinned_choice.set_active(True)
             pinned.add_suffix(pinned_choice)
             pinned.set_activatable_widget(pinned_choice)
-            latest_dmg_summary = build_latest_dmg_summary_from_args(args)
             latest = Adw.ActionRow(
-                title="Newest upstream DMG",
-                subtitle=latest_dmg_summary["subtitle"],
+                title="Latest signed stable Linux package",
+                subtitle="Resolve current stable metadata through the pinned OpenAI repository key",
             )
-            latest.set_subtitle_lines(2)
-            latest.set_subtitle_selectable(True)
             latest_choice = Gtk.CheckButton()
             latest_choice.set_group(pinned_choice)
             latest.add_suffix(latest_choice)
             latest.set_activatable_widget(latest_choice)
-            pinned_choice.connect("toggled", self.on_dmg_source_toggled, "pinned")
-            latest_choice.connect("toggled", self.on_dmg_source_toggled, "latest")
+            pinned_choice.connect("toggled", self.on_package_source_toggled, "pinned")
+            latest_choice.connect("toggled", self.on_package_source_toggled, "latest")
             source_group.add(pinned)
             source_group.add(latest)
 
-        def on_dmg_source_toggled(self, button, dmg_source):
+        def on_package_source_toggled(self, button, package_source):
             if button.get_active():
-                self.dmg_source = dmg_source
+                self.package_source = package_source
 
         def show_review(self, _button):
             titles = [features[item].title for item in sorted(self.selected)]
@@ -1015,7 +860,7 @@ def run_gtk_wizard(
             self.review_summary.set_label(
                 f"Conversion commit\n{args.conversion_commit}\n\n"
                 f"Build source\n"
-                f"{'Official signed Linux package' if args.official_linux_package else ('Tested pinned DMG' if self.dmg_source == 'pinned' else 'Newest upstream DMG')}\n\n"
+                f"Official signed Linux package ({self.package_source})\n\n"
                 f"Enabled features ({len(self.selected)})\n{feature_text}"
             )
             self.stack.set_visible_child_name("review")
@@ -1026,7 +871,7 @@ def run_gtk_wizard(
                 args.config,
                 args.result,
                 self.selected,
-                self.dmg_source,
+                self.package_source,
             )
             self.completed = True
             self.quit()
@@ -1061,8 +906,6 @@ def run_wizard(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv if argv is not None else sys.argv[1:])
-    if args.show_result is not None:
-        return show_build_result(args.show_result)
     if args.config is None:
         raise ValueError("--config is required")
     if args.print_enabled:

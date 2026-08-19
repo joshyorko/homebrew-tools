@@ -8,3 +8,5 @@ dist/
 .crabbox.yaml
 .clawpatch
 .venv-codex-desktop-setup/
+__pycache__/
+*.py[cod]

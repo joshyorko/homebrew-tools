@@ -40,11 +40,9 @@ const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
-const CODEX_DESKTOP_LINUX_REPO = "https://github.com/joshyorko/codex-desktop-linux"
 const CODEX_DESKTOP_CONVERSION_COMMIT =
   process.env.CODEX_DESKTOP_CONVERSION_COMMIT || readDefaultCodexDesktopConversionRef()
-const CODEX_DESKTOP_DMG_URL = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg"
-const CODEX_DESKTOP_MANUAL_VERSION = "research.20260514171029.43c8bd1b5d4a"
+const CODEX_DESKTOP_PACKAGE_SOURCE = process.env.CODEX_DESKTOP_PACKAGE_SOURCE || "pinned"
 const LEAN_CODEX_DESKTOP_LINUX_FEATURES = [
   "computer-use-linux",
   "node-repl-reaper",
@@ -132,31 +130,16 @@ function codexDesktopLinuxFeatureList(value?: string): string[] {
   return value === undefined ? CODEX_DESKTOP_LINUX_FEATURES : parseLinuxFeatureList(value)
 }
 
-function compactHttpTimestamp(value: string): string {
-  if (!value || value === "unknown") {
-    return "00000000000000"
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return "00000000000000"
-  }
-
-  return date.toISOString().replace(/\D/g, "").slice(0, 14)
-}
-
-function compactVersionSegment(value: string): string {
-  const segment = value.replace(/[^0-9A-Za-z]+/g, "").slice(0, 12)
-  return segment.length > 0 ? segment : "unknown"
-}
-
 function codexDesktopConversionCommit(value?: string): string {
   return value && value.length > 0 ? value : CODEX_DESKTOP_CONVERSION_COMMIT
 }
 
-function codexDesktopPackageVersion(dmgVersion: string, conversionCommit?: string): string {
-  return `${dmgVersion}.conv.${compactVersionSegment(codexDesktopConversionCommit(conversionCommit))}`
+function codexDesktopPackageSource(value?: string): "pinned" | "latest" {
+  const source = (value && value.length > 0 ? value : CODEX_DESKTOP_PACKAGE_SOURCE).trim().toLowerCase()
+  if (source !== "pinned" && source !== "latest") {
+    throw new Error(`Unsupported Codex Desktop Linux package source '${source}'; expected pinned or latest`)
+  }
+  return source
 }
 
 function stripRequiredPrefix(value: string, prefix?: string): string {
@@ -446,27 +429,6 @@ type HeadroomBuild = {
   version: string
 }
 
-type CodexDesktopBuild = {
-  ok: true
-  artifactPath: string
-  assetName: string
-  container: Container
-  conversionCommit: string
-  metadata: Record<string, unknown>
-  metadataPath: string
-  version: string
-}
-
-type CodexDesktopBuildFailure = {
-  ok: false
-  container: Container
-  conversionCommit: string
-  exitCode: number
-  version: string
-}
-
-type CodexDesktopBuildAttempt = CodexDesktopBuild | CodexDesktopBuildFailure
-
 type CodexDesktopLinuxOfficialBuild = {
   artifactPath: string
   assetName: string
@@ -476,6 +438,7 @@ type CodexDesktopLinuxOfficialBuild = {
   container: Container
   featureProfileSha256: string
   linuxFeaturesEnabled: string[]
+  packageSource: "pinned" | "latest"
   sha256: string
   upstreamPackagePath: string
   upstreamPackageSha256: string
@@ -483,25 +446,6 @@ type CodexDesktopLinuxOfficialBuild = {
   upstreamVersion: string
   version: string
 }
-
-type CodexDesktopDmgMetadata = {
-  cacheSegment: string
-  contentLength: string
-  etag: string
-  lastModified: string
-  resolvedUrl: string
-  sourceUrl: string
-  version: string
-}
-
-type CodexDesktopDmgProbeResult =
-  | ({ ok: true } & Omit<CodexDesktopDmgMetadata, "version">)
-  | {
-      ok: false
-      reason: string
-      sourceUrl: string
-      transient: true
-    }
 
 type AutoUpdatePackageStatus = {
   id: string
@@ -616,152 +560,6 @@ export class TapPipeline {
   async packagesNeedingAutoUpdate(slotId: string, githubToken?: Secret): Promise<string> {
     const entries = JSON.parse(await this.autoUpdateStatus(slotId, githubToken)) as AutoUpdatePackageStatus[]
     return json(entries.filter((entry) => entry.needs_update).map((entry) => entry.id))
-  }
-
-  private async resolveCodexDesktopDmgMetadata(
-    sourceUrl = CODEX_DESKTOP_DMG_URL,
-    conversionCommit?: string,
-    dmgCacheBuster?: string,
-  ): Promise<CodexDesktopDmgMetadata> {
-    const raw = JSON.parse((await dag
-      .container()
-      .from(NODE_IMAGE)
-      .withEnvVariable("CODEX_DESKTOP_DMG_CACHE_BUSTER", dmgCacheBuster || "default")
-      .withExec([
-        "node",
-        "--input-type=module",
-        "-e",
-        [
-          "import { createHash } from 'node:crypto'",
-          "const sourceUrl = process.argv[1]",
-          "async function probe(url) {",
-          "  const attempts = [",
-          "    { method: 'HEAD', timeout: 10_000 },",
-          "    { method: 'HEAD', timeout: 20_000 },",
-          "    { method: 'GET', timeout: 20_000 },",
-          "  ]",
-          "  let lastError",
-          "  for (const attempt of attempts) {",
-          "    try {",
-          "      const response = await fetch(url, {",
-          "        method: attempt.method,",
-          "        redirect: 'follow',",
-          "        signal: AbortSignal.timeout(attempt.timeout),",
-          "      })",
-          "      if (!response.ok) {",
-          "        throw new Error(`Failed to resolve ${url}: ${response.status} ${response.statusText}`)",
-          "      }",
-          "      return response",
-          "    } catch (error) {",
-          "      lastError = error",
-          "    }",
-          "  }",
-          "  throw lastError",
-          "}",
-          "let response",
-          "try {",
-          "  response = await probe(sourceUrl)",
-          "} catch (error) {",
-          "  process.stdout.write(JSON.stringify({",
-          "    ok: false,",
-          "    transient: true,",
-          "    sourceUrl,",
-          "    reason: error instanceof Error ? `${error.name}: ${error.message}` : String(error),",
-          "  }))",
-          "  process.exit(0)",
-          "}",
-          "const normalizedHeader = (name, fallback) => {",
-          "  const value = response.headers.get(name)",
-          "  return value && value.length > 0 ? value : fallback",
-          "}",
-          "const lastModified = normalizedHeader('last-modified', 'unknown')",
-          "const etag = normalizedHeader('etag', 'no-etag').replace(/^\"|\"$/g, '')",
-          "const contentLength = normalizedHeader('content-length', 'unknown')",
-          "const cacheSegment = createHash('sha256')",
-          "  .update(`${lastModified}|${etag}|${contentLength}\\n`)",
-          "  .digest('hex')",
-          "process.stdout.write(JSON.stringify({",
-          "  ok: true,",
-          "  sourceUrl,",
-          "  resolvedUrl: response.url,",
-          "  lastModified,",
-          "  etag,",
-          "  contentLength,",
-          "  cacheSegment,",
-          "}))",
-        ].join("\n"),
-        sourceUrl,
-      ])
-      .stdout()).trim()) as CodexDesktopDmgProbeResult
-
-    if (!raw.ok) {
-      throw new TransientUpstreamProbeError(`Skipped upstream probe for ${sourceUrl}: ${raw.reason}`)
-    }
-
-    return {
-      cacheSegment: raw.cacheSegment,
-      contentLength: raw.contentLength,
-      etag: raw.etag,
-      lastModified: raw.lastModified,
-      resolvedUrl: raw.resolvedUrl,
-      sourceUrl: raw.sourceUrl,
-      version: codexDesktopPackageVersion(
-        `dmg.${compactHttpTimestamp(raw.lastModified)}.${raw.cacheSegment.slice(0, 12)}`,
-        conversionCommit,
-      ),
-    }
-  }
-
-  @func()
-  async codexDesktopDmgReport(codexDmg: File): Promise<string> {
-    return dag
-      .container()
-      .from(NODE_IMAGE)
-      .withExec([
-        "bash",
-        "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file jq p7zip-full && rm -rf /var/lib/apt/lists/*",
-      ])
-      .withFile("/inputs/Codex.dmg", codexDmg)
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "sha=$(sha256sum /inputs/Codex.dmg | awk '{print $1}')",
-          "bytes=$(wc -c < /inputs/Codex.dmg | tr -d ' ')",
-          "kind=$(file -b /inputs/Codex.dmg)",
-          "entries=$({ 7zz l -ba /inputs/Codex.dmg || 7z l -ba /inputs/Codex.dmg || true; } 2>/dev/null | awk 'NR <= 200 {$1=$1; print}' | jq -R -s 'split(\"\\n\")[:-1]')",
-          "jq -n --arg package codex-desktop-linux --arg repo \"" + CODEX_DESKTOP_CONVERSION_REPO + "\" --arg commit \"" + CODEX_DESKTOP_CONVERSION_COMMIT + "\" --arg sha \"$sha\" --arg bytes \"$bytes\" --arg kind \"$kind\" --argjson entries \"$entries\" '{package: $package, upstream_conversion_repo: $repo, upstream_conversion_commit: $commit, codex_dmg_sha256: $sha, codex_dmg_bytes: ($bytes | tonumber), codex_dmg_file_type: $kind, dmg_listing_sample: $entries}'",
-        ].join("\n"),
-      ])
-      .stdout()
-  }
-
-  @func()
-  async codexDesktopRendererReport(codexDmg?: File): Promise<string> {
-    if (!codexDmg) {
-      return json({
-        package: "codex-desktop-linux",
-        status: "not_started",
-        browser_mode_status: "research",
-        requires_codex_dmg_input: true,
-        loopback_only_default: true,
-      })
-    }
-
-    const dmgReport = JSON.parse(await this.codexDesktopDmgReport(codexDmg)) as Record<string, unknown>
-    return json({
-      ...dmgReport,
-      status: "inspection_only",
-      browser_mode_status: "research",
-      serves_extracted_renderer: false,
-      required_next_steps: [
-        "Extract app metadata and detect Electron version from the explicit DMG input.",
-        "Generate a renderer/preload surface inventory.",
-        "Test a loopback-only browser shim against codex app-server.",
-      ],
-    })
   }
 
   private setGithubToken(githubToken?: Secret): void {
@@ -1243,29 +1041,6 @@ export class TapPipeline {
     })
   }
 
-  private codexDesktopReleaseMetadata(build: CodexDesktopBuild, sha256: string): Record<string, unknown> {
-    return {
-      package: "codex-desktop-linux",
-      kind: "codex_desktop_linux_cask",
-      homebrew_path: "Casks/codex-desktop.rb",
-      version: build.version,
-      release_tag: `codex-desktop-linux-${build.version}`,
-      asset_name: build.assetName,
-      artifact_sha256: sha256,
-      download_url: "file://${CODEX_DESKTOP_LOCAL_ARTIFACT}",
-      release_title: `Codex Desktop Linux ${build.version}`,
-      release_notes: `Local-only Homebrew artifact built by converting the official upstream Codex.dmg from ${CODEX_DESKTOP_DMG_URL} into a Linux Electron runtime on this machine.`,
-      commit_message: `Build local codex-desktop cask ${build.version}`,
-      upstream: {
-        kind: "http_file",
-        url: CODEX_DESKTOP_DMG_URL,
-        version: build.version,
-        commit: build.conversionCommit,
-      },
-      ...build.metadata,
-    }
-  }
-
   private codexDesktopOfficialReleaseMetadata(
     build: CodexDesktopLinuxOfficialBuild,
   ): Record<string, unknown> {
@@ -1283,202 +1058,28 @@ export class TapPipeline {
       commit_message: `Build Codex Desktop Linux cask ${build.version}`,
       upstream: {
         kind: "git",
-        repo: CODEX_DESKTOP_LINUX_REPO,
+        repo: CODEX_DESKTOP_CONVERSION_REPO,
         ref: build.commit,
         commit: build.commit,
         official_package_version: build.upstreamVersion,
         official_package_path: build.upstreamPackagePath,
         official_package_url: build.upstreamPackageUrl,
         official_package_sha256: build.upstreamPackageSha256,
+        package_source: build.packageSource,
         architecture: build.architecture,
       },
-      source_repository: CODEX_DESKTOP_LINUX_REPO,
+      source_repository: CODEX_DESKTOP_CONVERSION_REPO,
       source_commit: build.commit,
       official_package_version: build.upstreamVersion,
       official_package_path: build.upstreamPackagePath,
       official_package_url: build.upstreamPackageUrl,
       official_package_sha256: build.upstreamPackageSha256,
+      package_source: build.packageSource,
       architecture: build.architecture,
       build_mode: build.buildMode,
       feature_profile_sha256: build.featureProfileSha256,
       linux_features_enabled: build.linuxFeaturesEnabled,
     }
-  }
-
-  private renderCodexDesktopLocalCask(version: string, sha256: string): string {
-    return `cask "codex-desktop" do
-  version "${version}"
-  sha256 "${sha256}"
-
-  url "file://#{ENV.fetch("CODEX_DESKTOP_LOCAL_ARTIFACT")}"
-  name "Codex Desktop"
-  desc "Linux runtime for a locally converted Codex Desktop app"
-  homepage "https://github.com/joshyorko/homebrew-tools"
-
-  livecheck do
-    skip "Built locally from the official upstream Codex.dmg input."
-  end
-
-  depends_on formula: "desktop-file-utils"
-
-  binary "bin/codex-desktop", target: "codex-desktop"
-  artifact "share/applications/codex-desktop.desktop",
-           target: "#{Dir.home}/.local/share/applications/codex-desktop.desktop"
-  artifact "share/icons/hicolor/512x512/apps/codex-desktop.png",
-           target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png"
-  artifact "share/icons/hicolor/256x256/apps/codex-desktop.png",
-           target: "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png"
-
-  preflight do
-    require "json"
-    require "shellwords"
-    require "time"
-    cli_installer_url = "https://chatgpt.com/codex/install.sh"
-    discover_codex_cli_path = lambda do
-      path = which("codex")&.to_s || ["#{Dir.home}/.local/bin/codex", "#{HOMEBREW_PREFIX}/bin/codex"].find { |candidate| File.executable?(candidate) }
-      path&.to_s
-    end
-    cli_path = discover_codex_cli_path.call
-    cli_version_raw = cli_path ? %x{#{cli_path.shellescape} --version 2>&1}.strip : ""
-    cli_version = cli_version_raw[/[0-9]+(?:\.[0-9]+)+(?:[-+][^[:space:]]+)?/] || ""
-    cli_source = "none"
-    cli_result = "failed"
-    cli_version_status = "missing"
-    codex_already_installed =
-      !which("codex").nil? ||
-      ["#{Dir.home}/.local/bin/codex", "#{HOMEBREW_PREFIX}/bin/codex"].any? do |candidate|
-        File.executable?(candidate)
-      end
-
-    if ENV["CODEX_DESKTOP_SKIP_CLI_INSTALL"].to_s == "1"
-      cli_source = "skipped"
-      cli_result = "skipped"
-      cli_version_status = cli_path ? "unknown" : "missing"
-      opoo "Skipping Codex CLI install because CODEX_DESKTOP_SKIP_CLI_INSTALL=1"
-    elsif codex_already_installed
-      cli_source = "existing"
-      cli_result = "existing"
-      cli_version_status = "unknown"
-      ohai "Codex CLI already available; skipping the official installer"
-    else
-      cli_source = "official-installer"
-      ohai "Installing the Codex CLI from #{cli_installer_url}"
-      system_command "/bin/sh",
-                     args:         ["-c", "curl -fsSL #{cli_installer_url} | sh"],
-                     print_stdout: true,
-                     print_stderr: true
-      cli_path = discover_codex_cli_path.call
-      raise "Official Codex CLI installer completed without an executable codex command" unless cli_path && File.executable?(cli_path)
-      cli_version_raw = %x{#{cli_path.shellescape} --version 2>&1}.strip
-      cli_version = cli_version_raw[/[0-9]+(?:\.[0-9]+)+(?:[-+][^[:space:]]+)?/] || ""
-      cli_result = "installed"
-      cli_version_status = "unknown"
-    end
-
-    FileUtils.mkdir_p "#{staged_path}/share/codex-desktop"
-    File.write "#{staged_path}/share/codex-desktop/cli-install-provenance.json",
-               JSON.generate({
-                 cli_path: cli_path,
-                 cli_version: cli_version,
-                 cli_version_raw: cli_version_raw,
-                 cli_version_status: cli_version_status,
-                 cli_source: cli_source,
-                 cli_result: cli_result,
-                 installer_url: cli_installer_url,
-                 timestamp: Time.now.utc.iso8601,
-               }) + "\n"
-
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/256x256/apps"
-
-    desktop_file = "#{staged_path}/share/applications/codex-desktop.desktop"
-    desktop_contents = File.read(desktop_file)
-    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/codex-desktop desktop %U")
-    desktop_contents.gsub!(
-      /^Icon=.*/,
-      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png"
-    )
-    desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=Codex")
-    desktop_contents << "StartupWMClass=Codex\\n" unless desktop_contents.match?(/^StartupWMClass=/)
-    desktop_contents.gsub!(/^X-GNOME-WMClass=.*/, "X-GNOME-WMClass=Codex")
-    desktop_contents << "X-GNOME-WMClass=Codex\\n" unless desktop_contents.match?(/^X-GNOME-WMClass=/)
-    mime_type = "MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;"
-    if desktop_contents.match?(/^MimeType=/)
-      desktop_contents.gsub!(/^MimeType=.*/, mime_type)
-    else
-      desktop_contents << "#{mime_type}\\n"
-    end
-    File.write(desktop_file, desktop_contents)
-  end
-
-  postflight do
-    applications_dir = "#{Dir.home}/.local/share/applications"
-    desktop_id = "codex-desktop.desktop"
-    desktop_target = "#{applications_dir}/#{desktop_id}"
-    xdg_mime = [
-      "/usr/bin/xdg-mime",
-      "/bin/xdg-mime",
-      "#{HOMEBREW_PREFIX}/bin/xdg-mime",
-    ].find { |path| File.executable?(path) }
-    update_desktop_database = [
-      "/usr/bin/update-desktop-database",
-      "/bin/update-desktop-database",
-      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
-    ].find { |path| File.executable?(path) }
-
-    FileUtils.chmod 0755, desktop_target if File.exist?(desktop_target)
-    if xdg_mime
-      system xdg_mime, "default", desktop_id, "x-scheme-handler/codex"
-      system xdg_mime, "default", desktop_id, "x-scheme-handler/codex-browser-sidebar"
-    end
-    system update_desktop_database, applications_dir if update_desktop_database
-  end
-
-  uninstall_postflight do
-    require "socket"
-
-    control_socket = "#{Dir.home}/.codex/app-server-control/app-server-control.sock"
-
-    stale_control_socket = false
-    if File.socket?(control_socket)
-      begin
-        UNIXSocket.open(control_socket).close
-      rescue SystemCallError
-        stale_control_socket = true
-      end
-    end
-
-    if stale_control_socket
-      FileUtils.rm_f control_socket
-    end
-  end
-
-  zap trash: [
-    "#{Dir.home}/.local/share/applications/codex-desktop.desktop",
-    "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/codex-desktop.png",
-    "#{Dir.home}/.local/share/icons/hicolor/256x256/apps/codex-desktop.png",
-  ]
-
-  caveats <<~EOS
-    This cask installs a local artifact generated on this machine from the official OpenAI DMG.
-    No converted Codex Desktop app payload is distributed by the tap.
-
-    The Codex CLI is installed from the official OpenAI installer during preflight:
-      curl -fsSL https://chatgpt.com/codex/install.sh | sh
-    It is no longer pulled in through a Homebrew 'codex' cask. Set
-    CODEX_DESKTOP_SKIP_CLI_INSTALL=1 to skip this step if you manage 'codex' yourself.
-
-    Launch from your app grid as Codex Desktop, or run:
-      codex-desktop
-
-    Logs and diagnostics:
-      codex-desktop logs
-      codex-desktop logs --follow
-      codex-desktop doctor
-  EOS
-end
-`
   }
 
   private renderCodexDesktopOfficialCask(downloadUrl: string, version: string, sha256: string): string {
@@ -1490,9 +1091,9 @@ end
   sha256 x86_64_linux: "${sha256}"
 
   url "${downloadUrl}"
-  name "Codex Desktop"
-  desc "ChatGPT Community Linux desktop app built from PatchRaptor main"
-  homepage "https://github.com/joshyorko/codex-desktop-linux"
+  name "ChatGPT Community"
+  desc "Unofficial ChatGPT Community Linux desktop app built from ilysenko/codex-desktop-linux"
+  homepage "https://github.com/ilysenko/codex-desktop-linux"
 
   livecheck do
     skip "Built from the pinned PatchRaptor main commit by the tap release pipeline."
@@ -1506,7 +1107,7 @@ end
 
   preflight do
     package = Dir["#{staged_path}/*.deb"].first
-    raise "unable to find Codex Desktop .deb in #{staged_path}" unless package
+    raise "unable to find ChatGPT Community .deb in #{staged_path}" unless package
 
     system "ar", "x", package, chdir: staged_path
     data_archive = Dir["#{staged_path}/data.tar.*"].first
@@ -1553,8 +1154,9 @@ end
     Launch Codex Desktop with:
       codex-desktop
 
-    This cask is built from the official OpenAI Linux package by PatchRaptor
-    main. Homebrew owns upgrades; the native package updater is omitted.
+    This unofficial ChatGPT Community build is maintained by ilysenko and
+    packaged from the PatchRaptor conversion. It is separate from the official
+    OpenAI ChatGPT cask. Homebrew owns upgrades; the native package updater is omitted.
   EOS
 end
 `
@@ -1864,260 +1466,15 @@ end
     }
   }
 
-  private async buildCodexDesktopFixtureArtifact(tap: Directory): Promise<CodexDesktopBuild> {
-    const version = "fixture.0"
-    const assetName = `codex-desktop-linux-${version}.tar.gz`
-    const artifactPath = `/tmp/${assetName}`
-    const metadataPath = "/tmp/codex-desktop-linux-metadata.json"
-    const container = dag
-      .container()
-      .from(NODE_IMAGE)
-      .withExec([
-        "bash",
-        "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates tar && rm -rf /var/lib/apt/lists/*",
-      ])
-      .withDirectory("/tap", tap)
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "tar --version | grep -q 'GNU tar'",
-          "mkdir -p /work/fixture-app/resources/node-runtime/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64 /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/scripts /work/fixture-app/.codex-linux /work/fixture-app/content/webview/assets /work/reports",
-          "cat > /work/fixture-app/start.sh <<'SH'",
-          "#!/usr/bin/env bash",
-          "set -euo pipefail",
-          "if [ \"${1:-}\" = web ] && [ \"${2:-}\" = --inspect ]; then",
-          "  printf '%s\\n' '{\"package\":\"codex-desktop-linux\",\"mode\":\"devcontainer-web\",\"loopback_only_default\":true}'",
-          "  exit 0",
-          "fi",
-          "if [ \"${1:-}\" = web ]; then",
-          "  echo 'codex-desktop web is now served by: codex-desktop serve --workspace <path> --profile <path>' >&2",
-          "  exit 64",
-          "fi",
-          "echo \"fixture desktop launch:$*\"",
-          "echo \"fixture codex path:$(command -v codex || true)\"",
-          "echo \"fixture chrome user data:${CODEX_CHROME_USER_DATA_DIR:-}\"",
-          "echo \"fixture editor:${EDITOR:-}\"",
-          "SH",
-          "chmod +x /work/fixture-app/start.sh",
-          "printf '#!/usr/bin/env bash\\necho electron fixture\\n' > /work/fixture-app/electron",
-          "chmod +x /work/fixture-app/electron",
-          "printf '#!/usr/bin/env bash\\ncase \"${1:-}\" in\\n  -v) echo v22.22.2 ;;\\n  *check-extension-installed.js) echo \"{\\\\\\\"installed\\\\\\\":true,\\\\\\\"registered\\\\\\\":true,\\\\\\\"enabled\\\\\\\":true}\" ;;\\n  *) echo node fixture ;;\\nesac\\n' > /work/fixture-app/resources/node-runtime/bin/node",
-          "chmod +x /work/fixture-app/resources/node-runtime/bin/node",
-          "printf '#!/usr/bin/env bash\\necho computer use fixture\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
-          "chmod +x /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-linux",
-          "printf '#!/usr/bin/env bash\\necho cosmic fixture\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic",
-          "chmod +x /work/fixture-app/resources/plugins/openai-bundled/plugins/computer-use/bin/codex-computer-use-cosmic",
-          "printf '#!/usr/bin/env bash\\necho chrome native host fixture\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64/extension-host",
-          "chmod +x /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64/extension-host",
-          "printf '{\"extensionId\":\"hehggadaopoacecdllhhajmbjkdcmajg\",\"extensionHostName\":\"com.openai.codexextension\"}\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/scripts/extension-id.json",
-          "printf '#!/usr/bin/env node\\n' > /work/fixture-app/resources/plugins/openai-bundled/plugins/chrome/scripts/check-extension-installed.js",
-          "printf 'fixture-asar' > /work/fixture-app/resources/app.asar",
-          "printf '41.3.0\\n' > /work/fixture-app/version",
-          "printf 'fixture-png' > /work/fixture-app/.codex-linux/codex-desktop.png",
-          "printf 'official-app-icon' > /work/fixture-app/content/webview/assets/app-fixture_hash.png",
-          "printf 'body{background-color:#0000}\\n[data-codex-window-type=electron]:not([data-codex-os=win32]) body{background:0 0}\\n[data-codex-window-type=electron]:not([data-codex-os=win32]) .app-shell-left-panel{background:color-mix(in srgb, var(--color-token-editor-background) 55%%, transparent)}\\n.main-surface{background-color:var(--color-token-main-surface-primary)}\\n' > /work/fixture-app/content/webview/assets/app-main-fixture.css",
-          "printf 'const sshTitle = `SSH connections from this Mac`\\n' > /work/fixture-app/content/webview/assets/remote-connections-settings-fixture.js",
-          "printf '{\"electronVersion\":\"41.3.0\",\"appDir\":\"/work/fixture-app\"}\\n' > /work/reports/rebuild-report.json",
-          "printf '{\"mainBundle\":\"main.js\",\"patches\":[{\"id\":\"fixture\",\"status\":\"changed\"}]}\\n' > /work/reports/patch-report.json",
-        ].join("\n"),
-      ])
-      .withExec([
-        "node",
-        "/tap/scripts/package-codex-desktop-linux.mjs",
-        "--app-dir",
-        "/work/fixture-app",
-        "--version",
-        version,
-        "--conversion-commit",
-        CODEX_DESKTOP_CONVERSION_COMMIT,
-        "--rebuild-report",
-        "/work/reports/rebuild-report.json",
-        "--patch-report",
-        "/work/reports/patch-report.json",
-        "--metadata-output",
-        metadataPath,
-        "--output",
-        artifactPath,
-      ])
-
-    const metadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
-
-    return {
-      ok: true,
-      artifactPath,
-      assetName,
-      container,
-      conversionCommit: CODEX_DESKTOP_CONVERSION_COMMIT,
-      metadata,
-      metadataPath,
-      version,
-    }
-  }
-
-  private async buildCodexDesktopArtifact(
-    tap: Directory,
-    codexDmg: File,
-    version = CODEX_DESKTOP_MANUAL_VERSION,
-    dmgMetadata?: CodexDesktopDmgMetadata,
-    requestedConversionCommit?: string,
-    requestedLinuxFeatures?: string,
-  ): Promise<CodexDesktopBuildAttempt> {
-    const assetName = `codex-desktop-linux-${version}.tar.gz`
-    const artifactPath = `/tmp/${assetName}`
-    const metadataPath = "/work/codex-desktop-linux-metadata.json"
-    const linuxFeatures = codexDesktopLinuxFeatureList(requestedLinuxFeatures)
-    const conversionRef = dag.git(CODEX_DESKTOP_CONVERSION_REPO).ref(
-      codexDesktopConversionCommit(requestedConversionCommit),
-    )
-    const conversionCommit = await conversionRef.commit()
-    const installContainer = this.codexDesktopBaseContainer()
-      .withDirectory("/tap", tap)
-      .withDirectory("/conversion", conversionRef.tree({ discardGitDir: true }))
-      .withFile("/inputs/Codex.dmg", codexDmg)
-      .withWorkdir("/conversion")
-      .withEnvVariable("CODEX_INSTALL_DIR", "/work/codex-app")
-      .withEnvVariable("CODEX_INSTALL_ALLOW_RUNNING", "1")
-      .withEnvVariable("CODEX_LINUX_ENABLE_COMPUTER_USE_UI", "1")
-      .withEnvVariable("CODEX_LINUX_FEATURES_CONFIG", "/work/linux-features.json")
-      .withEnvVariable("CODEX_ELECTRON_CACHE_DIR", "/root/.cache/codex-desktop/electron")
-      .withEnvVariable("CODEX_MANAGED_NODE_CACHE_DIR", "/root/.cache/codex-desktop/node-runtime")
-      .withEnvVariable("CODEX_PATCH_REPORT_JSON", "/work/reports/patch-report.json")
-      .withEnvVariable("CODEX_REBUILD_REPORT_JSON", "/work/reports/rebuild-report.json")
-      .withEnvVariable("CODEX_ACCEPTANCE_DECISION_JSON", "/work/reports/upstream-dmg-decision.json")
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set +e",
-          "mkdir -p /work/reports",
-          "(",
-          "  set -euo pipefail",
-          `  printf '%s\\n' '${JSON.stringify({ enabled: linuxFeatures })}' > /work/linux-features.json`,
-          "  node /tap/scripts/patch-codex-desktop-conversion.mjs --conversion-dir /conversion",
-          "  bash scripts/install-deps.sh",
-          "  export PATH=\"/root/.local/bin:$PATH\"",
-          "  command -v 7zz",
-          "  ./install.sh --fresh /inputs/Codex.dmg",
-          ") 2>&1 | tee /work/reports/install.log",
-          "install_status=${PIPESTATUS[0]}",
-          "printf '%s\\n' \"$install_status\" > /work/reports/install-exit-code",
-          "exit 0",
-        ].join("\n"),
-      ])
-
-    const exitCode = Number(
-      (await installContainer.file("/work/reports/install-exit-code").contents()).trim(),
-    )
-    if (exitCode !== 0) {
-      return {
-        ok: false,
-        container: installContainer,
-        conversionCommit,
-        exitCode,
-        version,
-      }
-    }
-
-    const container = installContainer.withExec([
-      "node",
-      "/tap/scripts/package-codex-desktop-linux.mjs",
-      "--app-dir",
-      "/work/codex-app",
-      "--version",
-      version,
-      "--conversion-repo",
-      CODEX_DESKTOP_CONVERSION_REPO,
-      "--conversion-commit",
-      conversionCommit,
-      "--codex-dmg",
-      "/inputs/Codex.dmg",
-      "--rebuild-report",
-      "/work/reports/rebuild-report.json",
-      "--patch-report",
-      "/work/reports/patch-report.json",
-      "--metadata-output",
-      metadataPath,
-      "--computer-use-ui-enabled",
-      "true",
-      "--output",
-      artifactPath,
-    ])
-    const packageMetadata = JSON.parse(await container.file(metadataPath).contents()) as Record<string, unknown>
-    const metadata: Record<string, unknown> = {
-      ...packageMetadata,
-      linux_features_enabled: linuxFeatures,
-      linux_computer_use_ui_enabled: true,
-    }
-
-    if (dmgMetadata) {
-      Object.assign(metadata, {
-        codex_dmg_url: dmgMetadata.sourceUrl,
-        codex_dmg_resolved_url: dmgMetadata.resolvedUrl,
-        codex_dmg_last_modified: dmgMetadata.lastModified,
-        codex_dmg_etag: dmgMetadata.etag,
-        codex_dmg_content_length: dmgMetadata.contentLength,
-        codex_dmg_cache_segment: dmgMetadata.cacheSegment,
-      })
-    }
-
-    return {
-      ok: true,
-      artifactPath,
-      assetName,
-      container,
-      conversionCommit,
-      metadata,
-      metadataPath,
-      version,
-    }
-  }
-
-  private async buildCodexDesktopArtifactFromUpstream(
-    tap: Directory,
-    requestedConversionCommit?: string,
-    dmgCacheBuster?: string,
-    requestedLinuxFeatures?: string,
-  ): Promise<CodexDesktopBuildAttempt> {
-    const dmgMetadata = await this.resolveCodexDesktopDmgMetadata(
-      CODEX_DESKTOP_DMG_URL,
-      requestedConversionCommit,
-      dmgCacheBuster,
-    )
-    const downloadContainer = this.codexDesktopBaseContainer()
-      .withEnvVariable("CODEX_DESKTOP_DMG_CACHE_BUSTER", dmgCacheBuster || dmgMetadata.cacheSegment)
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "mkdir -p /inputs",
-          `curl -fL --retry 3 -o /inputs/Codex.dmg "${CODEX_DESKTOP_DMG_URL}"`,
-          "test -s /inputs/Codex.dmg",
-        ].join("\n"),
-      ])
-
-    return this.buildCodexDesktopArtifact(
-      tap,
-      downloadContainer.file("/inputs/Codex.dmg"),
-      dmgMetadata.version,
-      dmgMetadata,
-      requestedConversionCommit,
-      requestedLinuxFeatures,
-    )
-  }
-
   private async buildCodexDesktopLinuxOfficialArtifact(
     tap: Directory,
+    requestedConversionCommit?: string,
+    requestedPackageSource?: string,
   ): Promise<CodexDesktopLinuxOfficialBuild> {
-    const entry = this.packageEntry("codex-desktop-linux")
-    if (entry.upstream.kind !== "git") {
-      throw new Error("Expected Codex Desktop to use a git upstream")
-    }
-
-    const upstreamRef = dag.git(CODEX_DESKTOP_LINUX_REPO).ref(entry.upstream.ref)
+    const packageSource = codexDesktopPackageSource(requestedPackageSource)
+    const upstreamRef = dag.git(CODEX_DESKTOP_CONVERSION_REPO).ref(
+      codexDesktopConversionCommit(requestedConversionCommit),
+    )
     const commit = await upstreamRef.commit()
     const upstreamTree = upstreamRef.tree({ discardGitDir: true })
     const pins = JSON.parse(await upstreamTree.file("nix/upstream-linux-packages.json").contents()) as {
@@ -2133,25 +1490,59 @@ end
     const enabled = [...new Set(featureConfig.enabled as string[])].sort()
     const canonicalFeatureConfig = json({ enabled })
     const featureProfileSha256 = createHash("sha256").update(canonicalFeatureConfig).digest("hex")
-    const baseVersion = `${pins.version}.patchraptor.${commit.slice(0, 12)}`
-    const version = enabled.length === 0 ? baseVersion : `${baseVersion}.features.${featureProfileSha256.slice(0, 12)}`
-    const assetName = `codex-desktop-linux-${version}-amd64.deb`
-    const artifactPath = `/tmp/${assetName}`
-    const upstreamUrl = `https://persistent.oaistatic.com/codex-app-prod/linux/deb/${pins.amd64.repositoryPath}`
-    const container = this.codexDesktopBaseContainer()
+    const featureChecks = enabled
+      .map((feature) => `test -f linux-features/${feature}/feature.json || { echo "Enabled Linux feature id not found in this checkout: ${feature}" >&2; exit 1; }`)
+      .join("\n")
+    let packageVersion = pins.version
+    let upstreamPackagePath = pins.amd64.repositoryPath
+    let upstreamPackageSha256 = pins.amd64.sha256
+    let upstreamPackageUrl = `https://persistent.oaistatic.com/codex-app-prod/linux/deb/${upstreamPackagePath}`
+    let packagePath = "/work/chatgpt.deb"
+    let container = this.codexDesktopBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
       .withNewFile("/upstream/linux-features/features.homebrew.json", canonicalFeatureConfig)
       .withWorkdir("/upstream")
-      .withExec([
+
+    if (packageSource === "latest") {
+      container = container.withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /work/upstream-download",
+          "node scripts/lib/upstream-linux-package.js --output-dir /work/upstream-download --metadata /work/upstream-linux-package.json --key-base64 scripts/assets/openai-codex-linux-repository-key.gpg.base64 --arch amd64 --repository https://persistent.oaistatic.com/codex-app-prod/linux/deb",
+        ].join("\n"),
+      ])
+      const latest = JSON.parse(await container.file("/work/upstream-linux-package.json").contents()) as {
+        version: string
+        repositoryPath: string
+        sha256: string
+        repository: string
+        path: string
+      }
+      packageVersion = latest.version
+      upstreamPackagePath = latest.repositoryPath
+      upstreamPackageSha256 = latest.sha256
+      upstreamPackageUrl = `${latest.repository.replace(/\/+$/, "")}/${latest.repositoryPath}`
+      packagePath = latest.path
+    }
+
+    const baseVersion = `${packageVersion}.patchraptor.${commit.slice(0, 12)}`
+    const version = enabled.length === 0 ? baseVersion : `${baseVersion}.features.${featureProfileSha256.slice(0, 12)}`
+    const assetName = `codex-desktop-linux-${version}-amd64.deb`
+    const artifactPath = `/tmp/${assetName}`
+    container = container.withExec([
         "bash",
         "-lc",
         [
           "set -euo pipefail",
           "export PATH=/usr/local/cargo/bin:$PATH",
           "mkdir -p /work",
-          `curl -fL --retry 3 -o /work/chatgpt.deb ${JSON.stringify(upstreamUrl)}`,
-          `printf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(pins.amd64.sha256)} | sha256sum -c -`,
+          featureChecks,
+          packageSource === "pinned"
+            ? `curl -fL --retry 3 -o /work/chatgpt.deb ${JSON.stringify(upstreamPackageUrl)}\nprintf '%s  /work/chatgpt.deb\\n' ${JSON.stringify(upstreamPackageSha256)} | sha256sum -c -`
+            : `printf '%s  ${packagePath}\\n' ${JSON.stringify(upstreamPackageSha256)} | sha256sum -c -\ncp ${JSON.stringify(packagePath)} /work/chatgpt.deb`,
           "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json make build-native-feature-helpers",
           "CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json PACKAGE_WITH_UPDATER=0 CODEX_INSTALL_DIR=/upstream/codex-app ./install.sh /work/chatgpt.deb",
           `CODEX_LINUX_FEATURES_CONFIG=linux-features/features.homebrew.json PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION=${JSON.stringify(version)} make deb`,
@@ -2174,10 +1565,11 @@ end
       featureProfileSha256,
       linuxFeaturesEnabled: enabled,
       sha256,
-      upstreamPackagePath: pins.amd64.repositoryPath,
-      upstreamPackageSha256: pins.amd64.sha256,
-      upstreamPackageUrl: upstreamUrl,
-      upstreamVersion: pins.version,
+      packageSource,
+      upstreamPackagePath,
+      upstreamPackageSha256,
+      upstreamPackageUrl,
+      upstreamVersion: packageVersion,
       version,
     }
   }
@@ -2547,20 +1939,6 @@ end
         }
 
         return (await this.resolveVscodeMetadata(sourceUrl)).caskVersion
-      }
-      case "http_header_fingerprint": {
-        if (entry.upstream.kind !== "http_file") {
-          throw new Error(`Expected HTTP file upstream for ${packageId}`)
-        }
-
-        if (packageId !== "codex-desktop-linux") {
-          throw new Error(`HTTP header fingerprint auto-update is not implemented for ${packageId}`)
-        }
-
-        return (await this.resolveCodexDesktopDmgMetadata(
-          entry.upstream.url,
-          codexDesktopConversionCommit,
-        )).version
       }
       case "deb_packages_version":
         return this.resolveChatgptVersion()
@@ -3183,7 +2561,12 @@ end
   }
 
   @func()
-  async ciCheck(packageId: string, githubToken?: Secret): Promise<string> {
+  async ciCheck(
+    packageId: string,
+    githubToken?: Secret,
+    codexDesktopConversionCommit?: string,
+    codexDesktopPackageSource?: string,
+  ): Promise<string> {
     this.setGithubToken(githubToken)
 
     const tap = this.source
@@ -3701,7 +3084,11 @@ end
           .stdout()
       }
       case "codex-desktop-linux": {
-        const officialBuild = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
+        const officialBuild = await this.buildCodexDesktopLinuxOfficialArtifact(
+          tap,
+          codexDesktopConversionCommit,
+          codexDesktopPackageSource,
+        )
         const releaseUrl = `file:///artifacts/${officialBuild.assetName}`
         const officialCask = this.renderCodexDesktopOfficialCask(
           releaseUrl,
@@ -3751,135 +3138,8 @@ end
             ].join("\n"),
           ])
           .stdout()
-
-        // The historical fixture implementation below remains frozen until
-        // the official-package lane is fully adopted and the old tests are
-        // retired in a separate cleanup change.
-        const build = await this.buildCodexDesktopFixtureArtifact(tap)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const updatedCask = this.renderCodexDesktopLocalCask(build.version, sha256)
-          .replace(/^  depends_on formula: "desktop-file-utils"\n/m, "")
-          .replace('url "file://#{ENV.fetch("CODEX_DESKTOP_LOCAL_ARTIFACT")}"', `url "file:///artifacts/${build.assetName}"`)
-          .replace(/  preflight do[\s\S]*?  end\n\n  postflight do/, "  postflight do")
-        const legacySmokeTap = tap.withFile("Casks/codex-desktop.rb", dag.file("codex-desktop.rb", updatedCask))
-
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withEnvVariable("CODEX_DESKTOP_SKIP_CLI_INSTALL", "1")
-          .withEnvVariable("CODEX_DESKTOP_LOCAL_ARTIFACT", `/artifacts/${build.assetName}`)
-          .withDirectory("/tap", legacySmokeTap)
-          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("codex-desktop-linux"),
-              "CODEX_DESKTOP_SKIP_CLI_INSTALL=1 brew install --cask test/tap/codex-desktop",
-              "test -x \"$(brew --prefix)/bin/codex-desktop\"",
-              "printf '#!/usr/bin/env bash\\necho codex cli fixture\\n' > \"$(brew --prefix)/bin/codex\"",
-              "chmod +x \"$(brew --prefix)/bin/codex\"",
-              "printf '#!/usr/bin/env bash\\necho code insiders fixture\\n' > \"$(brew --prefix)/bin/code-insiders\"",
-              "chmod +x \"$(brew --prefix)/bin/code-insiders\"",
-              "mkdir -p \"$HOME/.local/bin\" \"$HOME/.var/app/com.google.Chrome/config/google-chrome/Default\" \"$HOME/.var/app/com.google.Chrome/config/google-chrome/NativeMessagingHosts\"",
-              "mkdir -p \"$HOME/.var/app/com.google.Chrome/config/google-chrome/Default/Extensions/hehggadaopoacecdllhhajmbjkdcmajg/1.1.4_0\"",
-              "printf '{\"extensions\":{\"settings\":{\"hehggadaopoacecdllhhajmbjkdcmajg\":{\"state\":1}}}}\\n' > \"$HOME/.var/app/com.google.Chrome/config/google-chrome/Default/Preferences\"",
-              "printf 'NAME=Bluefin\\nVARIANT_ID=bluefin\\nID_LIKE=\"ublue fedora\"\\n' > /tmp/codex-desktop-os-release",
-              "printf '#!/usr/bin/env bash\\nprintf '\\''%s\\\\n'\\'' \"$*\" >> \"$HOME/flatpak.log\"\\ncase \"${1:-}:${2:-}\" in\\n  info:com.google.Chrome) exit 0 ;;\\n  info:--show-permissions)\\n    [ \"${3:-}\" = com.google.Chrome ] || exit 1\\n    printf '\\''[Context]\\\\nfilesystems=home;\\\\n\\\\n[Session Bus Policy]\\\\n'\\''\\n    [ -f \"$HOME/flatpak-host-spawn-enabled\" ] && printf '\\''org.freedesktop.Flatpak=talk\\\\n'\\''\\n    exit 0\\n    ;;\\n  override:--user)\\n    case \"$*\" in\\n      *'\\''--talk-name=org.freedesktop.Flatpak com.google.Chrome'\\''*) touch \"$HOME/flatpak-host-spawn-enabled\"; exit 0 ;;\\n    esac\\n    exit 1\\n    ;;\\n  run:com.google.Chrome) shift 2; echo flatpak chrome launch:\"$@\" ;;\\n  *) exit 1 ;;\\nesac\\n' > \"$HOME/.local/bin/flatpak\"",
-              "chmod +x \"$HOME/.local/bin/flatpak\"",
-              "codex-desktop --help",
-              "codex-desktop desktop --smoke",
-              "bluefin_wayland_env='PATH=/usr/bin:/bin XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=wayland-0 XDG_CURRENT_DESKTOP=GNOME CODEX_DESKTOP_OS_RELEASE_FILE=/tmp/codex-desktop-os-release'",
-              "set +e",
-              "app_grid_output=$(env $bluefin_wayland_env \"$(brew --prefix)/bin/codex-desktop\" desktop --smoke 2>&1)",
-              "app_grid_status=$?",
-              "set -e",
-              "if [ \"$app_grid_status\" -ne 0 ]; then printf '%s\\n' \"$app_grid_output\"; printf '%s\\n' '--- flatpak log ---'; cat \"$HOME/flatpak.log\" 2>/dev/null || true; exit \"$app_grid_status\"; fi",
-              "case \"$app_grid_output\" in *\"fixture desktop launch:--x11 --smoke\"*) ;; *) printf '%s\\n' \"$app_grid_output\"; exit 1 ;; esac",
-              "case \"$app_grid_output\" in *\"fixture codex path:$(brew --prefix)/bin/codex\"*) ;; *) printf '%s\\n' \"$app_grid_output\"; exit 1 ;; esac",
-              "case \"$app_grid_output\" in *\"fixture chrome user data:$HOME/.var/app/com.google.Chrome/config/google-chrome\"*) ;; *) printf '%s\\n' \"$app_grid_output\"; exit 1 ;; esac",
-              "case \"$app_grid_output\" in *\"fixture editor:$(brew --prefix)/bin/code-insiders\"*) ;; *) printf '%s\\n' \"$app_grid_output\"; exit 1 ;; esac",
-              "renderer_copy=$(find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/content/webview/assets/remote-connections-settings-fixture.js' -print -quit 2>/dev/null || true)",
-              "if [ -z \"$renderer_copy\" ]; then find \"$(brew --prefix)/Caskroom/codex-desktop\" -maxdepth 6 -type f | sort | head -40; exit 1; fi",
-              "if ! grep -q 'SSH connections from this computer' \"$renderer_copy\"; then exit 1; fi",
-              "if grep -q 'SSH connections from this Mac' \"$renderer_copy\"; then exit 1; fi",
-              "remote_hosts_helper=$(find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/share/codex-desktop/app/.codex-linux/remote-control-hosts.mjs' -print -quit 2>/dev/null || true)",
-              "if [ -z \"$remote_hosts_helper\" ]; then find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/share/codex-desktop/app/.codex-linux/*' -print | sort; exit 1; fi",
-              "test -x \"$remote_hosts_helper\"",
-              "remote_mobile_marker=$(find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/share/codex-desktop/app/.codex-linux/remote-mobile-control-enabled' -print -quit 2>/dev/null || true)",
-              "if [ -z \"$remote_mobile_marker\" ]; then find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/share/codex-desktop/app/.codex-linux/*' -print | sort; exit 1; fi",
-              "grep -qx 'remote-mobile-control' \"$remote_mobile_marker\"",
-              "release_json=$(find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/share/codex-desktop/release.json' -print -quit 2>/dev/null || true)",
-              "if [ -z \"$release_json\" ]; then find \"$(brew --prefix)/Caskroom/codex-desktop\" -maxdepth 6 -type f | sort | head -40; exit 1; fi",
-              "grep -q '\"linux_remote_mobile_control_autostart_marker\": true' \"$release_json\"",
-              "settings_css=$(find \"$(brew --prefix)/Caskroom/codex-desktop\" -path '*/content/webview/assets/app-main-fixture.css' -print -quit 2>/dev/null || true)",
-              "if [ -z \"$settings_css\" ]; then find \"$(brew --prefix)/Caskroom/codex-desktop\" -maxdepth 6 -type f | sort | head -40; exit 1; fi",
-              "grep -Fq '[data-codex-window-type=electron][data-codex-os=linux] .window-fx-sidebar-surface{background:var(--color-token-bg-primary)}' \"$settings_css\"",
-              "grep -Fq '[data-codex-window-type=electron][data-codex-os=linux] .app-shell-left-panel{background:var(--color-token-bg-primary)}' \"$settings_css\"",
-              "deep_link_cache=/tmp/codex-desktop-deep-link-cache",
-              "set +e",
-              "deep_link_output=$(env $bluefin_wayland_env XDG_CACHE_HOME=\"$deep_link_cache\" \"$(brew --prefix)/bin/codex-desktop\" desktop 'codex://threads/new?prompt=secret&foo=bar' --smoke)",
-              "deep_link_status=$?",
-              "set -e",
-              "if [ \"$deep_link_status\" -ne 0 ]; then printf '%s\\n' \"$deep_link_output\"; exit \"$deep_link_status\"; fi",
-              "case \"$deep_link_output\" in *'fixture desktop launch:--x11 codex://threads/new?prompt=secret&foo=bar --smoke'*) ;; *) printf '%s\\n' \"$deep_link_output\"; exit 1 ;; esac",
-              "grep -q 'deep-link args: codex://threads/new?query_keys=foo,prompt' \"$deep_link_cache/codex-desktop/launcher.log\"",
-              "! grep -q secret \"$deep_link_cache/codex-desktop/launcher.log\"",
-              "test -x \"$HOME/.cache/codex-desktop/flatpak-bin/google-chrome\"",
-              "grep -q 'flatpak run com.google.Chrome' \"$HOME/.cache/codex-desktop/flatpak-bin/google-chrome\"",
-              "test -x \"$HOME/.cache/codex-desktop/flatpak-bin/chrome\"",
-              "grep -q 'flatpak run com.google.Chrome' \"$HOME/.cache/codex-desktop/flatpak-bin/chrome\"",
-              "test -f \"$HOME/flatpak-host-spawn-enabled\"",
-              "test -x \"$HOME/.var/app/com.google.Chrome/config/codex-desktop/com.openai.codexextension\"",
-              "grep -q 'flatpak-spawn --host' \"$HOME/.var/app/com.google.Chrome/config/codex-desktop/com.openai.codexextension\"",
-              "grep -Fq \"$(brew --prefix)/Caskroom/codex-desktop/fixture.0/share/codex-desktop/app/resources/plugins/openai-bundled/plugins/chrome/extension-host/linux/x64/extension-host\" \"$HOME/.var/app/com.google.Chrome/config/codex-desktop/com.openai.codexextension\"",
-              "grep -q 'chrome-extension://hehggadaopoacecdllhhajmbjkdcmajg/' \"$HOME/.var/app/com.google.Chrome/config/google-chrome/NativeMessagingHosts/com.openai.codexextension.json\"",
-              "set +e",
-              "doctor_output=$(env $bluefin_wayland_env \"$(brew --prefix)/bin/codex-desktop\" doctor)",
-              "doctor_status=$?",
-              "set -e",
-              "if [ \"$doctor_status\" -ne 0 ]; then printf '%s\\n' \"$doctor_output\"; exit \"$doctor_status\"; fi",
-              "case \"$doctor_output\" in *\"ok: Codex Chrome extension detected and enabled\"*) ;; *) printf '%s\\n' \"$doctor_output\"; exit 1 ;; esac",
-              "case \"$doctor_output\" in *\"ok: Google Chrome Flatpak host-spawn permission\"*) ;; *) printf '%s\\n' \"$doctor_output\"; exit 1 ;; esac",
-              "case \"$doctor_output\" in *\"ok: Google Chrome Flatpak native host wrapper targets current package\"*) ;; *) printf '%s\\n' \"$doctor_output\"; exit 1 ;; esac",
-              "case \"$doctor_output\" in *\"ok: editor command code-insiders: $(brew --prefix)/bin/code-insiders\"*) ;; *) printf '%s\\n' \"$doctor_output\"; exit 1 ;; esac",
-              "ozone_wayland_output=$(env $bluefin_wayland_env CODEX_DESKTOP_LINUX_OZONE=wayland \"$(brew --prefix)/bin/codex-desktop\" desktop --smoke)",
-              "case \"$ozone_wayland_output\" in *\"fixture desktop launch:--wayland --smoke\"*) ;; *) printf '%s\\n' \"$ozone_wayland_output\"; exit 1 ;; esac",
-              "case \"$ozone_wayland_output\" in *\"fixture desktop launch:--x11 --wayland\"*) printf '%s\\n' \"$ozone_wayland_output\"; exit 1 ;; esac",
-              "explicit_wayland_output=$(env $bluefin_wayland_env \"$(brew --prefix)/bin/codex-desktop\" desktop --wayland --smoke)",
-              "case \"$explicit_wayland_output\" in *\"fixture desktop launch:--wayland --smoke\"*) ;; *) printf '%s\\n' \"$explicit_wayland_output\"; exit 1 ;; esac",
-              "case \"$explicit_wayland_output\" in *\"fixture desktop launch:--x11 --wayland\"*) printf '%s\\n' \"$explicit_wayland_output\"; exit 1 ;; esac",
-              "explicit_x11_output=$(env $bluefin_wayland_env \"$(brew --prefix)/bin/codex-desktop\" desktop --x11 --smoke)",
-              "case \"$explicit_x11_output\" in *\"fixture desktop launch:--x11 --smoke\"*) ;; *) printf '%s\\n' \"$explicit_x11_output\"; exit 1 ;; esac",
-              "case \"$explicit_x11_output\" in *\"--x11 --x11\"*) printf '%s\\n' \"$explicit_x11_output\"; exit 1 ;; esac",
-              "test -f \"$HOME/.local/share/applications/codex-desktop.desktop\"",
-              "test -x \"$HOME/.local/share/applications/codex-desktop.desktop\"",
-              "grep -q \"Exec=$(brew --prefix)/bin/codex-desktop desktop %U\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
-              "grep -q 'x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;' \"$HOME/.local/share/applications/codex-desktop.desktop\"",
-              "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/codex-desktop.png\"",
-              "test -f \"$HOME/.local/share/icons/hicolor/256x256/apps/codex-desktop.png\"",
-              "codex-desktop logs --path",
-              "web_report=$(codex-desktop web --inspect)",
-              "case \"$web_report\" in *'\"mode\":\"devcontainer-web\"'*) ;; *) printf '%s\\n' \"$web_report\"; exit 1 ;; esac",
-              "case \"$web_report\" in *'\"loopback_only_default\":true'*) ;; *) printf '%s\\n' \"$web_report\"; exit 1 ;; esac",
-              "set +e",
-              "codex-desktop web >/tmp/codex-desktop-web.out 2>&1",
-              "web_status=$?",
-              "set -e",
-              "test \"$web_status\" -eq 64",
-              "grep -q 'codex-desktop serve --workspace' /tmp/codex-desktop-web.out",
-            ].join("\n"),
-          ])
-          .stdout()
       }
+
       case "vscode-insiders-linux": {
         const build = await this.buildVscodeArtifact(tap)
         const sha256 = (
@@ -4043,6 +3303,7 @@ end
     packageId: string,
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
+    codexDesktopPackageSource?: string,
   ): Promise<string> {
     this.setGithubToken(githubToken)
 
@@ -4106,8 +3367,11 @@ end
         return json(this.headroomReleaseMetadata(build))
       }
       case "codex-desktop-linux": {
-        void codexDesktopConversionCommit
-        const build = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
+        const build = await this.buildCodexDesktopLinuxOfficialArtifact(
+          tap,
+          codexDesktopConversionCommit,
+          codexDesktopPackageSource,
+        )
         return json(this.codexDesktopOfficialReleaseMetadata(build))
       }
       case "vscode-insiders-linux": {
@@ -4141,10 +3405,9 @@ end
     packageId: string,
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
+    codexDesktopPackageSource?: string,
   ): Promise<Directory> {
     this.setGithubToken(githubToken)
-
-    void codexDesktopConversionCommit
 
     const tap = this.source
 
@@ -4163,7 +3426,12 @@ end
       })
     }
 
-    const ciLog = await this.ciCheck(packageId, githubToken)
+    const ciLog = await this.ciCheck(
+      packageId,
+      githubToken,
+      codexDesktopConversionCommit,
+      codexDesktopPackageSource,
+    )
 
     switch (packageId) {
       case "rcc": {
@@ -4389,7 +3657,11 @@ end
           .withNewFile("ci.log", ciLog)
       }
       case "codex-desktop-linux": {
-        const build = await this.buildCodexDesktopLinuxOfficialArtifact(tap)
+        const build = await this.buildCodexDesktopLinuxOfficialArtifact(
+          tap,
+          codexDesktopConversionCommit,
+          codexDesktopPackageSource,
+        )
         const releaseTag = `codex-desktop-linux-${build.version}`
         const renderedCask = this.renderCodexDesktopOfficialCask(
           `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`,
@@ -4541,98 +3813,6 @@ end
           })),
       })),
     }))
-  }
-
-  @func()
-  async codexDesktopReleaseBundle(
-    codexDmg: File,
-    githubToken?: Secret,
-    codexDesktopConversionCommit?: string,
-  ): Promise<Directory> {
-    void codexDmg
-    void githubToken
-    void codexDesktopConversionCommit
-    throw new Error(
-      "codex-desktop-release-bundle is disabled because converted Codex Desktop app payloads are local-only. Use codex-desktop-local-bundle or scripts/install-codex-desktop-local.sh.",
-    )
-  }
-
-  @func()
-  async codexDesktopLocalBundle(
-    codexDmg?: File,
-    codexDesktopConversionCommit?: string,
-    codexDesktopDmgCacheBuster?: string,
-    codexDesktopLinuxFeatures?: string,
-  ): Promise<Directory> {
-    const build = codexDmg
-      ? await this.buildCodexDesktopArtifact(
-        this.source,
-        codexDmg,
-        CODEX_DESKTOP_MANUAL_VERSION,
-        undefined,
-        codexDesktopConversionCommit,
-        codexDesktopLinuxFeatures,
-      )
-      : await this.buildCodexDesktopArtifactFromUpstream(
-        this.source,
-        codexDesktopConversionCommit,
-        codexDesktopDmgCacheBuster,
-        codexDesktopLinuxFeatures,
-      )
-
-    let decision: Record<string, unknown> = {
-      verdict: "inconclusive",
-      blockers: [],
-      warnings: [],
-      inconclusiveReasons: [
-        `Conversion exited before an acceptance decision was exported (exit ${build.ok ? 0 : build.exitCode})`,
-      ],
-    }
-    try {
-      decision = JSON.parse(
-        await build.container.file("/work/reports/upstream-dmg-decision.json").contents(),
-      ) as Record<string, unknown>
-    } catch {}
-
-    let output = dag.directory()
-      .withFile("result.json", dag.file("result.json", json(decision)))
-    for (const [source, target] of [
-      ["/work/reports/upstream-dmg-decision.json", "reports/upstream-dmg-decision.json"],
-      ["/work/reports/patch-report.json", "reports/patch-report.json"],
-      ["/work/reports/rebuild-report.json", "reports/rebuild-report.json"],
-      ["/work/reports/install-exit-code", "reports/install-exit-code"],
-      ["/work/reports/install.log", "reports/install.log"],
-    ]) {
-      try {
-        await build.container.file(source).contents()
-        output = output.withFile(target, build.container.file(source))
-      } catch {}
-    }
-
-    if (!build.ok) {
-      return output
-    }
-
-    const sha256 = (
-      await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-    ).trim().split(/\s+/)[0]
-    const caskContents = this.renderCodexDesktopLocalCask(build.version, sha256)
-    const codexDmgFile = codexDmg ?? build.container.file("/inputs/Codex.dmg")
-    const dmgReport = JSON.parse(await this.codexDesktopDmgReport(codexDmgFile)) as Record<string, unknown>
-    const localMetadata: Record<string, unknown> = {
-      ...this.codexDesktopReleaseMetadata(build, sha256),
-      distribution: "local-only",
-      download_url: "file://${CODEX_DESKTOP_LOCAL_ARTIFACT}",
-      release_notes: "Local-only Homebrew install bundle built from the official upstream Codex.dmg on this machine.",
-      codex_dmg_sha256: dmgReport.codex_dmg_sha256,
-      codex_dmg_bytes: dmgReport.codex_dmg_bytes,
-    }
-
-    return output
-      .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-      .withFile("homebrew/codex-desktop.rb", dag.file("codex-desktop.rb", caskContents))
-      .withFile("release.json", dag.file("release.json", json(localMetadata)))
-      .withFile("renderer-report.json", dag.file("renderer-report.json", await this.codexDesktopRendererReport(codexDmgFile)))
   }
 
   @func()
