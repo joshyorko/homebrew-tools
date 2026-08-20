@@ -129,6 +129,7 @@ jobs:
           auto-update-status
           --slot-id="${{ steps.slot.outputs.slot_id }}"
           --github-token=env://GH_TOKEN
+          --codex-desktop-conversion-commit="patchraptor-main"
 
     - name: Build matrix from slot output
       id: packages
@@ -238,6 +239,7 @@ jobs:
           release-bundle
           --package-id="${{ matrix.package_id }}"
           --github-token=env://GH_TOKEN
+          --codex-desktop-conversion-commit="patchraptor-main"
           --codex-desktop-package-source="${{ matrix.package_id == 'codex-desktop-linux' && 'latest' || 'pinned' }}"
 
     - name: Export Buzz Linux release bundle

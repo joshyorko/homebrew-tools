@@ -167,6 +167,7 @@ test("Codex Desktop rebuilds daily from OpenAI version, PatchRaptor commit, and 
   assert.match(autoUpdateWorkflow, /EVENT_NAME" = "push"[\s\S]*slot_id="codex-desktop-daily"/)
   assert.match(autoUpdateWorkflow, /"15 10 \* \* \*"\) slot_id="codex-desktop-daily"/)
   assert.match(autoUpdateWorkflow, /--codex-desktop-package-source=.*latest/)
+  assert.match(autoUpdateWorkflow, /--codex-desktop-conversion-commit="patchraptor-main"/)
   assert.match(slots, /"id": "codex-desktop-daily"[\s\S]*"packageIds": \["codex-desktop-linux"\]/)
   assert.equal(
     codexDesktopBuildVersion("26.818.21641", "1234567890abcdef", ["ui-tweaks", "agent-workspace"]),
