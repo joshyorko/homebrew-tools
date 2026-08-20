@@ -465,6 +465,7 @@ test("Codex Desktop consumes the scheduled PatchRaptor official-package build", 
   assert.doesNotMatch(officialBuild, /UPSTREAM_DEB=\/work\/chatgpt\.deb[^\n]*make build-app/)
   assert.match(pipeline, /PACKAGE_WITH_UPDATER=0/)
   assert.match(pipeline, /nix\/upstream-linux-packages\.json/)
+  assert.equal((pipeline.match(/CODEX_DESKTOP_SMOKE_TRACE=1/g) ?? []).length, 2)
   assert.doesNotMatch(pipeline, /codex-desktop-linux is local-only and must not be published/)
 })
 
