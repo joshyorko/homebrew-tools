@@ -2,10 +2,10 @@ cask "codex-desktop" do
   arch intel: "amd64"
   os linux: "linux"
 
-  version "26.803.81509.patchraptor.380fb5654dac"
-  sha256 x86_64_linux: "970196218026fff1427f511a3974609253b4667b118377c4b92e9e525f0edeb5"
+  version "26.818.21641.patchraptor.e73b46db37ea.features.f89a4a7cf00f"
+  sha256 x86_64_linux: "be67cf874cda46bce6bfee2cba608b294d55d3b0bd577e151e0a23de197d418d"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac/codex-desktop-linux-26.803.81509.patchraptor.380fb5654dac-amd64.deb"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-desktop-linux-26.818.21641.patchraptor.e73b46db37ea.features.f89a4a7cf00f/codex-desktop-linux-26.818.21641.patchraptor.e73b46db37ea.features.f89a4a7cf00f-amd64.deb"
   name "ChatGPT Community"
   desc "Unofficial ChatGPT Community Linux desktop app built from ilysenko/codex-desktop-linux"
   homepage "https://github.com/ilysenko/codex-desktop-linux"
