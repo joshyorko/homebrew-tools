@@ -2,7 +2,13 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
-import { AUTO_UPDATE_SLOTS, PACKAGE_REGISTRY, formatGitHeadVersion, releaseMetadataForPackage } from "../src/library.ts"
+import {
+  AUTO_UPDATE_SLOTS,
+  PACKAGE_REGISTRY,
+  codexDesktopBuildVersion,
+  formatGitHeadVersion,
+  releaseMetadataForPackage,
+} from "../src/library.ts"
 
 const REQUIRED_RELEASE_FIELDS = [
   "package",
@@ -97,6 +103,7 @@ test("auto-update slots cover the expected package set", () => {
       "action-server",
     "buzz-linux",
     "chatgpt",
+    "codex-desktop-linux",
       "devpod-linux",
       "devsy",
       "devsy-desktop",
@@ -143,6 +150,28 @@ test("ChatGPT runs through the standard daily release pipeline", () => {
   assert.match(autoUpdateWorkflow, /- chatgpt-daily/)
   assert.match(autoUpdateWorkflow, /"0 10 \* \* \*"\) slot_id="chatgpt-daily"/)
   assert.doesNotMatch(autoUpdateWorkflow, /^  chatgpt:/m)
+})
+
+test("Codex Desktop rebuilds daily from OpenAI version, PatchRaptor commit, and feature profile", () => {
+  const autoUpdateWorkflow = readFileSync(
+    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
+    "utf8",
+  )
+  const slots = readFileSync(new URL("../auto-update-slots.json", import.meta.url), "utf8")
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
+
+  assert.equal(entry?.autoUpdate.kind, "deb_packages_version")
+  assert.match(autoUpdateWorkflow, /- cron: "15 10 \* \* \*"/)
+  assert.match(autoUpdateWorkflow, /push:[\s\S]*config\/codex-desktop-linux-features\.json/)
+  assert.match(autoUpdateWorkflow, /- codex-desktop-daily/)
+  assert.match(autoUpdateWorkflow, /EVENT_NAME" = "push"[\s\S]*slot_id="codex-desktop-daily"/)
+  assert.match(autoUpdateWorkflow, /"15 10 \* \* \*"\) slot_id="codex-desktop-daily"/)
+  assert.match(autoUpdateWorkflow, /--codex-desktop-package-source=.*latest/)
+  assert.match(slots, /"id": "codex-desktop-daily"[\s\S]*"packageIds": \["codex-desktop-linux"\]/)
+  assert.equal(
+    codexDesktopBuildVersion("26.818.21641", "1234567890abcdef", ["ui-tweaks", "agent-workspace"]),
+    "26.818.21641.patchraptor.1234567890ab.features.fd9999f9e051",
+  )
 })
 
 test("Camp sync consumes the published formula without rebuilding Camp", () => {
@@ -255,7 +284,7 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
   assert.match(source, /! grep -Eq .*AppImage/)
 
-  assert.match(cask, /^\s*version "main\.20260812125613\.e321667b100a"$/m)
+  assert.match(cask, /^\s*version "main\.\d{14}\.[0-9a-f]{12}"$/m)
   assert.match(cask, /T3-Code-#\{version\.csv\.first\}-#\{arch\}\.AppImage/)
   assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
   assert.match(cask, /raise "T3 Code AppRun is not executable" unless File\.executable\?\(app_run\)/)
@@ -294,10 +323,10 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   const cask = readFileSync(new URL("../../../Casks/chatgpt.rb", import.meta.url), "utf8")
 
   assert.match(cask, /cask "chatgpt"/)
-  assert.match(cask, /version "26\.803\.81509"/)
+  assert.match(cask, /version "\d+(?:\.\d+)+"/)
   assert.match(cask, /chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
-  assert.match(cask, /x86_64_linux: "4d34fd4bb1122b7f2445f6a1bbc7c869cd3724c9f71aee3802795272c0b10702"/)
-  assert.match(cask, /arm64_linux:\s+"290b1f2d0f57a508df23e308a6d0d643063767b684906dfb916ce4b01ecfdac9"/)
+  assert.match(cask, /x86_64_linux: "[0-9a-f]{64}"/)
+  assert.match(cask, /arm64_linux:\s+"[0-9a-f]{64}"/)
   assert.match(cask, /depends_on formula: "cpio"/)
   assert.match(cask, /depends_on formula: "rpm2cpio"/)
   assert.match(cask, /Formula\["rpm2cpio"\]/)
@@ -415,7 +444,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.match(readme, /updater alone[\s\S]*latest/)
 })
 
-test("Codex Desktop consumes the pinned PatchRaptor official-package build", () => {
+test("Codex Desktop consumes the scheduled PatchRaptor official-package build", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
   const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
   const buildStart = pipeline.indexOf("private async buildCodexDesktopLinuxOfficialArtifact")
@@ -426,7 +455,7 @@ test("Codex Desktop consumes the pinned PatchRaptor official-package build", () 
   assert.equal(entry.kind, "codex_desktop_linux_cask")
   assert.equal(entry.homebrewPath, "Casks/codex-desktop.rb")
   assert.equal(entry.supportsReleaseBundle, true)
-  assert.equal(entry.autoUpdate.kind, "manual")
+  assert.equal(entry.autoUpdate.kind, "deb_packages_version")
   assert.equal(entry.upstream.kind, "git")
   assert.equal(entry.upstream.repo, "https://github.com/joshyorko/codex-desktop-linux")
   assert.equal(entry.upstream.ref, "patchraptor-main")

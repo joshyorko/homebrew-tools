@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import {
   changedCiPackagesFromPaths,
+  codexDesktopBuildVersion,
   listAutoUpdateSlots as slotSummaries,
   packageSummaries,
   packagedVersionForUpstreamComparison,
@@ -1511,7 +1512,7 @@ end
         [
           "set -euo pipefail",
           "mkdir -p /work/upstream-download",
-          "node scripts/lib/upstream-linux-package.js --output-dir /work/upstream-download --metadata /work/upstream-linux-package.json --key-base64 scripts/assets/openai-codex-linux-repository-key.gpg.base64 --arch amd64 --repository https://persistent.oaistatic.com/codex-app-prod/linux/deb",
+          "node scripts/lib/upstream-linux-package.js --output-dir /work/upstream-download --metadata /work/upstream-linux-package.json --key-base64 assets/openai-codex-linux-repository-key.gpg.base64 --arch amd64 --repository https://persistent.oaistatic.com/codex-app-prod/linux/deb",
         ].join("\n"),
       ])
       const latest = JSON.parse(await container.file("/work/upstream-linux-package.json").contents()) as {
@@ -1528,8 +1529,7 @@ end
       packagePath = latest.path
     }
 
-    const baseVersion = `${packageVersion}.patchraptor.${commit.slice(0, 12)}`
-    const version = enabled.length === 0 ? baseVersion : `${baseVersion}.features.${featureProfileSha256.slice(0, 12)}`
+    const version = codexDesktopBuildVersion(packageVersion, commit, enabled)
     const assetName = `codex-desktop-linux-${version}-amd64.deb`
     const artifactPath = `/tmp/${assetName}`
     container = container.withExec([
@@ -1801,6 +1801,24 @@ end
     return match[1]
   }
 
+  private async resolveCodexDesktopVersion(requestedConversionCommit?: string): Promise<string> {
+    const commit = await dag.git(CODEX_DESKTOP_CONVERSION_REPO)
+      .ref(codexDesktopConversionCommit(requestedConversionCommit))
+      .commit()
+    const featureConfig = JSON.parse(
+      await this.source.file("config/codex-desktop-linux-features.json").contents(),
+    ) as { enabled?: unknown }
+    if (!Array.isArray(featureConfig.enabled) || featureConfig.enabled.some((feature) => typeof feature !== "string")) {
+      throw new Error("config/codex-desktop-linux-features.json must contain an enabled string array")
+    }
+
+    return codexDesktopBuildVersion(
+      await this.resolveChatgptVersion(),
+      commit,
+      featureConfig.enabled as string[],
+    )
+  }
+
   private async buildChatgptArtifacts(): Promise<ChatgptBuild> {
     const version = await this.resolveChatgptVersion()
     const amd64Name = `chatgpt-${version}-1.x86_64.rpm`
@@ -1941,7 +1959,9 @@ end
         return (await this.resolveVscodeMetadata(sourceUrl)).caskVersion
       }
       case "deb_packages_version":
-        return this.resolveChatgptVersion()
+        return packageId === "codex-desktop-linux"
+          ? this.resolveCodexDesktopVersion(codexDesktopConversionCommit)
+          : this.resolveChatgptVersion()
       case "manual":
         throw new Error(`${packageId} is manually updated: ${entry.autoUpdate.reason}`)
     }

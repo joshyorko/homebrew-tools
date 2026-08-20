@@ -336,6 +336,7 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--lean-profile", default="")
     parser.add_argument("--result", type=Path)
     parser.add_argument("--conversion-commit", default="unknown")
+    parser.add_argument("--terminal", action="store_true")
     parser.add_argument("--print-enabled", action="store_true")
     return parser.parse_args(argv)
 
@@ -891,7 +892,7 @@ def run_wizard(args: argparse.Namespace) -> int:
     full_profile = parse_feature_words(args.full_profile)
     lean_profile = parse_feature_words(args.lean_profile)
     selected = load_selection(args.config, features, full_profile)
-    if graphical_session_available():
+    if not args.terminal and graphical_session_available():
         if gtk_available():
             return run_gtk_wizard(args, features, selected, full_profile, lean_profile)
         print(

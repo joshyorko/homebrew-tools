@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 
 import type { AutoUpdateSlot, AutoUpdateSlotId, PackageRegistryEntry, ReleaseMetadata } from "./types.js"
 
@@ -47,6 +48,22 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 
 export function packagedVersionForUpstreamComparison(packageId: string, version: string): string {
   return ["buzz-linux", "devsy-desktop", "t3-code-linux"].includes(packageId) ? version.split(",", 1)[0] : version
+}
+
+export function codexDesktopBuildVersion(
+  packageVersion: string,
+  conversionCommit: string,
+  enabledFeatures: string[],
+): string {
+  const enabled = [...new Set(enabledFeatures)].sort()
+  const baseVersion = `${packageVersion}.patchraptor.${conversionCommit.slice(0, 12)}`
+  if (enabled.length === 0) {
+    return baseVersion
+  }
+
+  const canonicalConfig = `${JSON.stringify({ enabled }, null, 2)}\n`
+  const profile = createHash("sha256").update(canonicalConfig).digest("hex").slice(0, 12)
+  return `${baseVersion}.features.${profile}`
 }
 
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
@@ -106,8 +123,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     supportsPrCi: true,
     supportsReleaseBundle: true,
     autoUpdate: {
-      kind: "manual",
-      reason: "Pinned to the verified PatchRaptor official Linux package migration.",
+      kind: "deb_packages_version",
+      url: "https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages",
     },
     upstream: {
       kind: "git",

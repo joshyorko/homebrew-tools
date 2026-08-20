@@ -16,6 +16,10 @@ SPEC.loader.exec_module(WIZARD)
 
 
 class FeatureWizardTests(unittest.TestCase):
+    def test_terminal_flag_disables_graphical_wizard(self):
+        args = WIZARD.parse_arguments(["--terminal"])
+        self.assertTrue(args.terminal)
+
     def test_result_records_latest_signed_linux_package(self):
         with tempfile.TemporaryDirectory() as directory:
             result = Path(directory) / "result.json"

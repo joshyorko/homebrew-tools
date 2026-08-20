@@ -55,6 +55,36 @@ test("asset downloads retry a transient response and write the verified response
   }
 })
 
+test("asset downloads retry a temporarily forbidden release artifact", async () => {
+  let requests = 0
+  const server = createServer((_request, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(403).end("artifact is still propagating")
+      return
+    }
+
+    response.writeHead(200).end("release artifact")
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+
+  const address = server.address()
+  assert.ok(address && typeof address === "object")
+  const directory = await mkdtemp(join(tmpdir(), "tap-pipeline-download-"))
+  const destination = join(directory, "asset")
+
+  try {
+    const result = await runDownloadScript(`http://127.0.0.1:${address.port}/asset`, destination)
+
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(requests, 2)
+    assert.equal(await readFile(destination, "utf8"), "release artifact")
+  } finally {
+    server.close()
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
 test("asset downloads fail immediately for permanent HTTP errors", async () => {
   let requests = 0
   const server = createServer((_request, response) => {

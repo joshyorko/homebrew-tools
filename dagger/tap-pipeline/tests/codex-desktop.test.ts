@@ -27,6 +27,7 @@ test("Codex Desktop official builder validates features before compiling", () =>
   assert.match(pipeline, /featureConfig\.enabled\.some\(\(feature\) => typeof feature !== "string"\)/)
   assert.match(pipeline, /Enabled Linux feature id not found in this checkout/)
   assert.match(pipeline, /scripts\/lib\/upstream-linux-package\.js/)
+  assert.match(pipeline, /--key-base64 assets\/openai-codex-linux-repository-key\.gpg\.base64/)
   assert.match(pipeline, /packageSource === "pinned"/)
   assert.match(pipeline, /package_source: build\.packageSource/)
 })

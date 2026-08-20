@@ -14,6 +14,7 @@ remote tap.
 
 Environment:
   CODEX_DESKTOP_SETUP_PYTHON  Python used for the non-uv fallback wizard.
+  CODEX_DESKTOP_SETUP_UI      Picker mode: auto (default) or terminal.
 EOF
 }
 
@@ -23,6 +24,12 @@ features_config="$repo_dir/config/codex-desktop-linux-features.json"
 conversion_ref="$(sed -e 's/[[:space:]]*#.*//' -e '/^[[:space:]]*$/d' "$repo_dir/codex-desktop-conversion.ref" | head -n 1)"
 full_profile="${CODEX_DESKTOP_LINUX_FEATURES_FULL:-agent-workspace api-key-model-visibility api-key-service-tier appshots authenticated-proxy automation-extensions chronicle-skysight computer-use-linux copilot-reasoning-effort directory-only-working-tree-watch frameless-titlebar global-dictation mcp-helper-reaper node-repl-reaper omarchy-theme persistent-status-panel pet-overlay project-group-last-updated-sort project-task-sort read-aloud read-aloud-mcp record-and-replay remote-control-ui remote-mobile-control shared-app-server-socket ui-tweaks}"
 lean_profile="${CODEX_DESKTOP_LINUX_FEATURES_LEAN:-computer-use-linux node-repl-reaper read-aloud read-aloud-mcp chronicle-skysight record-and-replay}"
+setup_ui="${CODEX_DESKTOP_SETUP_UI:-auto}"
+
+case "$setup_ui" in
+    auto|terminal) ;;
+    *) echo "CODEX_DESKTOP_SETUP_UI must be auto or terminal." >&2; exit 64 ;;
+esac
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -61,15 +68,21 @@ wizard_args=(
     --full-profile "$full_profile" \
     --lean-profile "$lean_profile"
 )
-if command -v uv >/dev/null 2>&1 && uv run --script "${wizard_args[@]}"; then
+if [ "$setup_ui" = "terminal" ]; then
+    wizard_args+=(--terminal)
+fi
+fallback_python="${CODEX_DESKTOP_SETUP_PYTHON:-}"
+if [ -z "$fallback_python" ] && [ -x /usr/bin/python3 ]; then
+    fallback_python=/usr/bin/python3
+fi
+fallback_python="${fallback_python:-python3}"
+if [ "$setup_ui" = "terminal" ]; then
+    "$fallback_python" "${wizard_args[@]}"
+elif command -v uv >/dev/null 2>&1 && uv run --script "${wizard_args[@]}"; then
     :
 else
-    fallback_python="${CODEX_DESKTOP_SETUP_PYTHON:-}"
-    if [ -z "$fallback_python" ] && [ -x /usr/bin/python3 ]; then
-        fallback_python=/usr/bin/python3
-    fi
-    fallback_python="${fallback_python:-python3}"
     echo "uv could not prepare the GTK environment; using the terminal wizard with $fallback_python." >&2
+    wizard_args+=(--terminal)
     "$fallback_python" "${wizard_args[@]}"
 fi
 python3 - "$wizard_result" <<'PY'

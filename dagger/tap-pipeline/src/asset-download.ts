@@ -9,7 +9,7 @@ export function renderAssetDownloadScript(retryDelaysMs = DEFAULT_RETRY_DELAYS_M
     "  headers.Authorization = `Bearer ${process.env.GH_TOKEN}`",
     "}",
     `const retryDelaysMs = ${JSON.stringify(retryDelaysMs)}`,
-    "const retryableStatuses = new Set([429, 500, 502, 503, 504])",
+    "const retryableStatuses = new Set([403, 429, 500, 502, 503, 504])",
     "const wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs))",
     "const totalAttempts = retryDelaysMs.length + 1",
     "for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {",
