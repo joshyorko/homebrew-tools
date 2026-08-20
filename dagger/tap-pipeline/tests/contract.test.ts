@@ -466,6 +466,11 @@ test("Codex Desktop consumes the scheduled PatchRaptor official-package build", 
   assert.match(pipeline, /PACKAGE_WITH_UPDATER=0/)
   assert.match(pipeline, /nix\/upstream-linux-packages\.json/)
   assert.equal((pipeline.match(/CODEX_DESKTOP_SMOKE_TRACE=1/g) ?? []).length, 2)
+  assert.equal((pipeline.match(/-type d ! -name '\.metadata' -print -quit/g) ?? []).length, 2)
+  assert.doesNotMatch(
+    pipeline,
+    /codex-desktop\" -mindepth 1 -maxdepth 1 -type d -print -quit/,
+  )
   assert.doesNotMatch(pipeline, /codex-desktop-linux is local-only and must not be published/)
 })
 
