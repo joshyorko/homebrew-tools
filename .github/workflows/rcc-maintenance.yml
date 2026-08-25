@@ -41,7 +41,7 @@ jobs:
 
     - name: Set maintenance defaults
       run: |
-        echo "RCC_VERSION=18.18.1" >> "$GITHUB_ENV"
+        echo "RCC_VERSION=18.19.2" >> "$GITHUB_ENV"
         echo "MAINTENANCE_PUSH=true" >> "$GITHUB_ENV"
         echo "MAINTENANCE_TARGET_BRANCH=main" >> "$GITHUB_ENV"
     - name: Cache ROBOCORP_HOME
