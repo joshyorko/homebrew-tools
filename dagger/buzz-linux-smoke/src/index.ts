@@ -147,7 +147,7 @@ export class BuzzLinuxSmoke {
           "cat > desktop/src-tauri/tauri.canary.conf.json <<'JSON'",
           '{"bundle":{"createUpdaterArtifacts":false}}',
           "JSON",
-          "cargo build --release -p buzz-acp -p buzz-agent -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli",
+          "cargo build --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli",
           "./scripts/bundle-sidecars.sh",
           "cd desktop",
           "CMAKE_POLICY_VERSION_MINIMUM=3.5 pnpm tauri build --ci --bundles appimage --config src-tauri/tauri.canary.conf.json",

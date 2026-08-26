@@ -28,6 +28,14 @@ test("builds from the release lockfile", () => {
   assert.doesNotMatch(source, /cargo update --workspace/)
 })
 
+test("builds every sidecar required by the upstream bundler", () => {
+  assert.match(
+    source,
+    /cargo build --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli/,
+  )
+  assert.match(source, /\.\/scripts\/bundle-sidecars\.sh/)
+})
+
 test("persists expensive source-build caches across authenticated Dagger runs", () => {
   assert.match(source, /buzz-linux-hermit-cache/)
   assert.match(source, /buzz-linux-pnpm-store-cache/)
