@@ -1,6 +1,8 @@
 name: Buzz Linux
 
 on:
+  schedule:
+  - cron: "0 10 * * *"
   workflow_call:
     inputs:
       auto_update:
@@ -53,7 +55,7 @@ jobs:
     - name: Resolve Buzz release
       id: release
       env:
-        AUTO_UPDATE: ${{ inputs.auto_update }}
+        AUTO_UPDATE: ${{ inputs.auto_update || github.event_name == 'schedule' }}
         GH_TOKEN: ${{ github.token }}
         INPUT_PACKAGE_REVISION: ${{ inputs.package_revision }}
         INPUT_PUBLISH: ${{ inputs.publish }}
