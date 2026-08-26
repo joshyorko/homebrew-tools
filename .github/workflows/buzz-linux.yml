@@ -68,7 +68,7 @@ jobs:
         if [ "$AUTO_UPDATE" = "true" ]; then
           latest_release="$(gh api repos/block/buzz/releases/latest)"
           source_tag="$(jq -er '.tag_name' <<<"$latest_release")"
-          upstream_version="${source_tag#v}"
+          upstream_version="${source_tag#desktop-v}"
           source_repository="https://github.com/block/buzz.git"
           source_ref="$(gh api "repos/block/buzz/commits/$source_tag" --jq '.sha')"
           package_revision="1"
