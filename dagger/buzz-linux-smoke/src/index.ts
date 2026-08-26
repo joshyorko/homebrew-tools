@@ -177,6 +177,7 @@ export class BuzzLinuxSmoke {
           "cd /src",
           "mkdir -p /out",
           `cp "$appimage" "${artifactPath}"`,
+          `sha256sum "$appimage" | awk '{print $1}' > "${artifactPath}.sha256"`,
         ].join("\n"),
       ])
 
@@ -257,9 +258,7 @@ export class BuzzLinuxSmoke {
     revision: string,
   ): Promise<{ output: string; sha256: string }> {
     const artifact = build.container.file(build.artifactPath)
-    const sha256 = (
-      await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-    ).trim().split(/\s+/)[0]
+    const sha256 = (await build.container.file(`${build.artifactPath}.sha256`).contents()).trim()
     await Promise.all([
       this.artifactCheck("ubuntu:24.04", artifact).sync(),
       this.artifactCheck("fedora:latest", artifact).sync(),

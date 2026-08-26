@@ -36,6 +36,12 @@ test("builds every sidecar required by the upstream bundler", () => {
   assert.match(source, /\.\/scripts\/bundle-sidecars\.sh/)
 })
 
+test("records the artifact checksum inside the packaging container", () => {
+  assert.match(source, /sha256sum "\$appimage" \| awk '\{print \$1\}' > ".*\.sha256"/)
+  assert.match(source, /build\.container\.file\(`\$\{build\.artifactPath\}\.sha256`\)\.contents\(\)/)
+  assert.doesNotMatch(source, /build\.container\.withExec\(\["sha256sum", build\.artifactPath\]\)\.stdout\(\)/)
+})
+
 test("persists expensive source-build caches across authenticated Dagger runs", () => {
   assert.match(source, /buzz-linux-hermit-cache/)
   assert.match(source, /buzz-linux-pnpm-store-cache/)
