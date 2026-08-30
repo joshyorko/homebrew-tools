@@ -834,7 +834,7 @@ export class TapPipeline {
         [
           "set -euo pipefail",
           "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates clang curl git libasound2t64 libxkbcommon0",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates clang curl git libasound2t64 libvulkan1 libxkbcommon0",
           "rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
@@ -4019,6 +4019,10 @@ end
     const eitypeRepository = "Adam-D-Lewis/eitype"
     const voxtypeRelease = await this.resolveLatestStableRelease(voxtypeRepository)
     const eitypeRelease = await this.resolveLatestStableRelease(eitypeRepository)
+    const voxtypeUpstreamTree = dag
+      .git(`https://github.com/${voxtypeRepository}`)
+      .ref(`refs/tags/${voxtypeRelease.tagName}`)
+      .tree({ discardGitDir: true })
 
     const voxtypeBuild = await this.buildVoxtypePrebuiltArtifact(
       tap,
@@ -4121,7 +4125,7 @@ end
       .withNewFile("homebrew/voxtype.rb", voxtypeFormula)
       .withNewFile("homebrew/eitype.rb", eitypeFormula)
       .withNewFile("manifest.json", json(manifest))
-      .withFile("acceptance/speech_long.wav", upstreamTree.file("tests/fixtures/vad/speech_long.wav"))
+      .withFile("acceptance/speech_long.wav", voxtypeUpstreamTree.file("tests/fixtures/vad/speech_long.wav"))
       .withNewFile("ci.log", ciLog)
   }
 
