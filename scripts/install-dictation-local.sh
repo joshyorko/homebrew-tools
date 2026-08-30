@@ -128,6 +128,9 @@ done
 [[ -n $voxtype_version && -n $voxtype_artifact && -n $voxtype_sha256 ]] || die "Voxtype provenance is incomplete"
 [[ -n $eitype_version && -n $eitype_artifact && -n $eitype_sha256 ]] || die "Eitype provenance is incomplete"
 
+artifact_dir="$state_dir/artifacts"
+mkdir -p "$artifact_dir"
+
 verify_artifact() {
   local artifact=$1
   local expected_sha256=$2
@@ -140,8 +143,162 @@ verify_artifact() {
 verify_artifact "$voxtype_artifact" "$voxtype_sha256"
 verify_artifact "$eitype_artifact" "$eitype_sha256"
 
-artifact_dir="$state_dir/artifacts"
-mkdir -p "$artifact_dir"
+# The Dagger bundle's Voxtype payload is the upstream linux-x86_64-vulkan
+# release executable, staged here before Homebrew or the live service changes.
+require_command ffprobe
+require_command awk
+require_command tar
+require_command nvidia-smi
+
+backup_dir="$state_dir/backups"
+mkdir -p "$backup_dir"
+
+models_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/voxtype/models
+whisper_model_name=large-v3-turbo
+whisper_model_filename=ggml-large-v3-turbo.bin
+whisper_model_path="$models_dir/$whisper_model_filename"
+whisper_model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$whisper_model_filename"
+whisper_model_api="https://huggingface.co/api/models/ggerganov/whisper.cpp/tree/main?recursive=false"
+whisper_model_manifest="$state_dir/whisper-$whisper_model_name.json"
+
+resolve_whisper_model_metadata() {
+  local metadata_path="$bundle_dir/whisper-model-api.json"
+  curl --fail --location --retry 4 --retry-all-errors \
+    -A "voxtype/${voxtype_version}" "$whisper_model_api" -o "$metadata_path"
+  whisper_model_sha256=$(jq -er --arg filename "$whisper_model_filename" \
+    '.[] | select(.path == $filename) | .lfs.oid' "$metadata_path") \
+    || die "Hugging Face metadata has no LFS SHA-256 for ${whisper_model_filename}"
+  whisper_model_size=$(jq -er --arg filename "$whisper_model_filename" \
+    '.[] | select(.path == $filename) | .size' "$metadata_path") \
+    || die "Hugging Face metadata has no size for ${whisper_model_filename}"
+  [[ $whisper_model_sha256 =~ ^[a-f0-9]{64}$ ]] || die "invalid Whisper model SHA-256 metadata"
+  [[ $whisper_model_size =~ ^[0-9]+$ ]] || die "invalid Whisper model size metadata"
+}
+
+download_whisper_model() {
+  resolve_whisper_model_metadata
+  if [[ -f $whisper_model_path && -f $whisper_model_manifest ]] \
+    && jq -e --arg sha "$whisper_model_sha256" --argjson size "$whisper_model_size" \
+      '.sha256 == $sha and .size == $size' "$whisper_model_manifest" >/dev/null \
+    && [[ $(stat -c %s "$whisper_model_path") == "$whisper_model_size" ]]; then
+    printf '%s\n' "Verified Whisper ${whisper_model_name} model already present."
+    return
+  fi
+
+  mkdir -p "$models_dir"
+  local partial="$whisper_model_path.part"
+  printf '%s\n' "Downloading verified Whisper ${whisper_model_name} model (~1.6 GB)..."
+  curl --fail --location --retry 4 --retry-all-errors \
+    -A "voxtype/${voxtype_version}" "$whisper_model_url" -o "$partial"
+  [[ $(stat -c %s "$partial") == "$whisper_model_size" ]] \
+    || die "Whisper model size mismatch"
+  printf '%s  %s\n' "$whisper_model_sha256" "$partial" | sha256sum -c - \
+    || die "Whisper model checksum failed"
+  [[ $(dd if="$partial" bs=1 count=4 status=none) == "lmgg" ]] \
+    || die "Whisper model does not have a GGML header"
+  mv -- "$partial" "$whisper_model_path"
+  jq -n --arg model "$whisper_model_name" --arg url "$whisper_model_url" \
+    --arg sha "$whisper_model_sha256" --argjson size "$whisper_model_size" \
+    '{schema_version: 1, engine: "whisper", model: $model, url: $url, sha256: $sha, size: $size}' \
+    > "$whisper_model_manifest"
+}
+
+patch_whisper_config() {
+  local target_config=$1
+  python3 - "$target_config" "$whisper_model_path" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+config_path, model_path = map(Path, sys.argv[1:])
+lines = config_path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+def section_bounds(name):
+    start = next((i for i, line in enumerate(lines) if re.match(rf"^\[{re.escape(name)}\]\s*$", line)), None)
+    if start is None:
+        raise SystemExit(f"Voxtype config has no [{name}] section")
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"^\s*\[[^]]+\]\s*$", lines[i])), len(lines))
+    return start, end
+
+def set_value(section, key, value):
+    start, end = section_bounds(section)
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+    replacement = f"{key} = {value}\n"
+    for i in range(start + 1, end):
+        if pattern.match(lines[i]):
+            lines[i] = replacement
+            return
+    lines.insert(end, replacement)
+
+engine_line = next((i for i, line in enumerate(lines) if re.match(r"^engine\s*=", line)), None)
+if engine_line is None:
+    lines.insert(0, 'engine = "whisper"\n')
+else:
+    lines[engine_line] = 'engine = "whisper"\n'
+set_value("whisper", "model", repr(str(model_path)))
+set_value("whisper", "mode", '"local"')
+set_value("whisper", "language", '"en"')
+set_value("whisper", "flash_attention", "true")
+set_value("whisper", "gpu_device", "0")
+set_value("whisper", "context_window_optimization", "true")
+set_value("whisper", "initial_prompt", '"Voxtype, Herdr, Dakota, Bluefin, Codex, Dagger, GNOME, Homebrew, NVIDIA."')
+config_path.write_text("".join(lines), encoding="utf-8")
+PY
+}
+
+stage_vulkan_candidate() {
+  local stage_dir=$1
+  local candidate_config="$stage_dir/config.toml"
+  tar -xzf "$bundle_dir/artifacts/$voxtype_artifact" -C "$stage_dir"
+  local candidate_bin="$stage_dir/libexec/voxtype"
+  [[ -x $candidate_bin ]] || die "Vulkan candidate binary is missing"
+  local gpu_total_mib
+  gpu_total_mib=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1 | tr -d ' ')
+  [[ $gpu_total_mib =~ ^[0-9]+$ && $gpu_total_mib -ge 3500 ]] \
+    || die "NVIDIA GPU does not expose the required 4 GB memory envelope"
+
+  if [[ -f $config_path ]]; then
+    cp -- "$config_path" "$candidate_config"
+  else
+    cp -- "$stage_dir/share/voxtype/default.toml" "$candidate_config"
+  fi
+  patch_whisper_config "$candidate_config"
+
+  local fixture="$bundle_dir/acceptance/speech_long.wav"
+  [[ -f $fixture ]] || die "Dagger acceptance fixture is missing"
+  local metrics="$stage_dir/metrics"
+  local transcript="$stage_dir/transcript"
+  local trace="$stage_dir/transcribe.log"
+  local start_ns end_ns elapsed_ms audio_duration
+  start_ns=$(date +%s%N)
+  VOXTYPE_VULKAN_DEVICE=nvidia /usr/bin/time -f '%M' -o "$metrics" \
+    "$candidate_bin" -vv -c "$candidate_config" transcribe "$fixture" \
+    > "$transcript" 2> "$trace" || die "Vulkan candidate transcription failed; see $trace"
+  end_ns=$(date +%s%N)
+  elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
+  audio_duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$fixture")
+  [[ -s $transcript ]] || die "Vulkan candidate returned an empty transcript"
+  grep -Eiq 'ggml_vulkan: Found [1-9]|whisper_backend_init_gpu:.*Vulkan' "$trace" \
+    || die "Vulkan candidate did not prove NVIDIA GPU execution"
+  awk -v elapsed="$elapsed_ms" -v duration="$audio_duration" 'BEGIN { exit !(elapsed < duration * 1000) }' \
+    || die "Vulkan candidate is not faster than real time"
+  [[ $(cat "$metrics") -lt 4194304 ]] || die "Vulkan candidate exceeded 4 GB resident memory"
+  printf '%s\n' "Staged Vulkan candidate passed: ${elapsed_ms}ms for ${audio_duration}s audio."
+}
+
+rollback_vulkan_candidate() {
+  cp -- "$backup_path" "$config_path"
+  systemctl --user daemon-reload
+  systemctl --user restart voxtype.service || true
+}
+
+config_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/voxtype
+config_path="$config_dir/config.toml"
+mkdir -p "$config_dir"
+download_whisper_model
+stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/homebrew-tools-vulkan.XXXXXX")
+stage_vulkan_candidate "$stage_dir"
+
 cp -- "$manifest_path" "$state_dir/manifest.json"
 cp -- "$bundle_dir/artifacts/$voxtype_artifact" "$artifact_dir/$voxtype_artifact"
 cp -- "$bundle_dir/artifacts/$eitype_artifact" "$artifact_dir/$eitype_artifact"
@@ -203,9 +360,6 @@ install_formula() {
 
   current_version=$("$brew_bin" list --versions "$formula_path" 2>/dev/null | awk '{print $NF}' || true)
   if [[ -n $current_version ]] && version_is_newer "$current_version" "$target_version"; then
-    if [[ $package_id == voxtype ]] && ! voxtype info engines 2>/dev/null | grep -Eiq '(^|[[:space:]])cohere([[:space:]]|$)'; then
-      die "installed Voxtype ${current_version} is newer but lacks Cohere support; refusing to downgrade it"
-    fi
     printf '%s\n' "Keeping newer installed ${package_id} ${current_version}."
     return
   fi
@@ -227,9 +381,6 @@ eitype_bin=$("$brew_bin" --prefix "$tap_name/eitype")/bin/eitype
 [[ -x $voxtype_bin ]] || die "Voxtype binary was not linked"
 [[ -x $eitype_bin ]] || die "Eitype binary was not linked"
 
-config_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/voxtype
-config_path="$config_dir/config.toml"
-mkdir -p "$config_dir"
 if [[ ! -f $config_path ]]; then
   default_config=$("$brew_bin" --prefix "$tap_name/voxtype")/share/voxtype/default.toml
   [[ -f $default_config ]] || die "Voxtype default config is missing"
@@ -244,9 +395,12 @@ cp -- "$config_path" "$backup_path"
 # config set preserves comments and validates every supported scalar. The
 # driver_order key is newer than the v1.0.0 config schema, so it is patched in
 # the same atomic transaction below and then validated by the daemon startup.
-"$voxtype_bin" config set engine cohere
-"$voxtype_bin" config set cohere.model cohere-transcribe-q4f16
-"$voxtype_bin" config set cohere.language en
+"$voxtype_bin" config set engine whisper
+"$voxtype_bin" config set whisper.model "$whisper_model_path"
+"$voxtype_bin" config set whisper.mode local
+"$voxtype_bin" config set whisper.language en
+"$voxtype_bin" config set whisper.flash_attention true
+"$voxtype_bin" config set whisper.gpu_device 0
 "$voxtype_bin" config set hotkey.enabled false
 "$voxtype_bin" config set hotkey.mode toggle
 "$voxtype_bin" config set output.mode type
@@ -298,34 +452,7 @@ destination_path.write_text("".join(lines), encoding="utf-8")
 PY
 mv -- "$config_tmp" "$config_path"
 
-models_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/voxtype/models
-cohere_model_dir="$models_dir/cohere-transcribe-q4f16"
-if [[ ! -d $cohere_model_dir ]] || ! find "$cohere_model_dir" -type f -print -quit | grep -q .; then
-  cohere_base_url=https://models.voxtype.io/cohere/cohere-transcribe-q4f16
-  cohere_manifest="$bundle_dir/cohere-manifest.json"
-  voxtype_user_agent="voxtype/${voxtype_version}"
-  printf '%s\n' "Downloading the verified Cohere q4f16 model..."
-  curl --fail --location --retry 4 --retry-all-errors -A "$voxtype_user_agent" \
-    "$cohere_base_url/manifest.json" -o "$cohere_manifest"
-  jq -e '.version == 1 and .engine == "cohere" and .model == "cohere-transcribe-q4f16"' \
-    "$cohere_manifest" >/dev/null
-  mkdir -p "$cohere_model_dir"
-  jq -r '.files[] | [.path,.sha256] | @tsv' "$cohere_manifest" |
-    while IFS=$'\t' read -r model_file expected_sha256; do
-      destination="$cohere_model_dir/$model_file"
-      partial="$destination.part"
-      curl --fail --location --retry 4 --retry-all-errors -A "$voxtype_user_agent" \
-        "$cohere_base_url/$model_file" -o "$partial"
-      printf '%s  %s\n' "$expected_sha256" "$partial" | sha256sum -c -
-      mv -- "$partial" "$destination"
-    done
-  cp -- "$cohere_manifest" "$cohere_model_dir/.voxtype-manifest.json"
-fi
-
-"$voxtype_bin" config set engine cohere
-"$voxtype_bin" config set cohere.model cohere-transcribe-q4f16
-"$voxtype_bin" config set cohere.language en
-"$voxtype_bin" info models --engine cohere --verify
+patch_whisper_config "$config_path"
 
 "$voxtype_bin" setup systemd
 voxtype_dropin_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/systemd/user/voxtype.service.d
@@ -335,11 +462,15 @@ mkdir -p "$voxtype_dropin_dir"
 printf '%s\n' \
   '[Service]' \
   "Environment=\"PATH=${brew_bin_dir}:/usr/local/bin:/usr/bin:/snap/bin\"" \
+  'Environment=VOXTYPE_VULKAN_DEVICE=nvidia' \
   > "$voxtype_dropin_path"
 systemctl --user daemon-reload
 systemctl --user enable voxtype.service
-systemctl --user restart voxtype.service
-systemctl --user is-active --quiet voxtype.service || die "Voxtype user service is not active"
+if ! systemctl --user restart voxtype.service || ! systemctl --user is-active --quiet voxtype.service; then
+  printf '%s\n' "Vulkan service health check failed; restoring the previous Voxtype configuration." >&2
+  rollback_vulkan_candidate
+  die "Voxtype Vulkan candidate failed post-install health check"
+fi
 
 herdr_config=${HERDR_CONFIG_PATH:-${user_home}/.config/herdr/config.toml}
 herdr_config_dir=$(dirname -- "$herdr_config")
@@ -434,7 +565,7 @@ else
   printf '%s\n' "Herdr server is not running; the binding will load when Herdr starts."
 fi
 
-printf '%s\n' "Installed Voxtype ${voxtype_version} (Cohere) and Eitype ${eitype_version}."
+printf '%s\n' "Installed Voxtype ${voxtype_version} (Whisper Vulkan) and Eitype ${eitype_version}."
 printf '%s\n' "Hold focus in Herdr and press Ctrl+B, then Alt+V to toggle recording."
 printf '%s\n' "Press Super+Alt+V to toggle dictation in any desktop application."
 printf '%s\n' "Provenance saved to ${state_dir}/manifest.json."

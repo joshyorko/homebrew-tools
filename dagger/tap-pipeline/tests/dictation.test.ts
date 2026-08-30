@@ -119,6 +119,7 @@ test("Dagger exposes a local dictation bundle and both latest releases", async (
   assert.match(source, /withUser\("ubuntu"\)/)
   assert.match(source, /build-essential ca-certificates clang curl git libasound2t64/)
   assert.match(source, /dictationManifest\(/)
+  assert.match(source, /acceptance\/speech_long\.wav/)
 })
 
 test("Dagger dictation bundle uses the verified upstream Vulkan artifact", async () => {
@@ -149,8 +150,22 @@ test("local installer target configures Herdr toggle and GNOME-safe output drive
   assert.match(script, /Environment=.*PATH=/)
   assert.match(script, /eitype.*ydotool.*clipboard/)
   assert.match(script, /auto_submit.*false|output\.auto_submit.*false/)
-  assert.match(script, /voxtype_user_agent="voxtype\/\$\{voxtype_version\}"/)
-  assert.match(script, /\.voxtype-manifest\.json/)
+  assert.match(script, /voxtype\/\$\{voxtype_version\}/)
+  assert.match(script, /whisper-\$whisper_model_name\.json/)
+})
+
+test("local installer stages Whisper Vulkan safely before switching service", async () => {
+  const script = await readFile(new URL("../../../scripts/install-dictation-local.sh", import.meta.url), "utf8")
+
+  assert.match(script, /linux-x86_64-vulkan/)
+  assert.match(script, /large-v3-turbo/)
+  assert.match(script, /huggingface\.co\/api\/models/)
+  assert.match(script, /ggml-large-v3-turbo\.bin/)
+  assert.match(script, /\.part/)
+  assert.match(script, /VOXTYPE_VULKAN_DEVICE=nvidia/)
+  assert.match(script, /whisper\.flash_attention/)
+  assert.match(script, /rollback/i)
+  assert.match(script, /nvidia-smi/)
 })
 
 test("local dictation package ships the native GTK4 HUD toolchain", async () => {
