@@ -170,6 +170,7 @@ test("local installer stages Whisper Vulkan safely before switching service", as
   assert.match(script, /ggml_vulkan.*NVIDIA/)
   assert.match(script, /using Vulkan0 backend/)
   assert.match(script, /whisper\.flash_attention/)
+  assert.match(script, /context_window_optimization.*false/)
   assert.match(script, /rollback/i)
   assert.match(script, /nvidia-smi/)
 })

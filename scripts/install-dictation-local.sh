@@ -245,7 +245,7 @@ set_value("whisper", "mode", '"local"')
 set_value("whisper", "language", '"en"')
 set_value("whisper", "flash_attention", "true")
 set_value("whisper", "gpu_device", "0")
-set_value("whisper", "context_window_optimization", "true")
+set_value("whisper", "context_window_optimization", "false")
 set_value("whisper", "initial_prompt", '"Voxtype, Herdr, Dakota, Bluefin, Codex, Dagger, GNOME, Homebrew, NVIDIA."')
 config_path.write_text("".join(lines), encoding="utf-8")
 PY
