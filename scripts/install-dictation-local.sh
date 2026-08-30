@@ -257,6 +257,8 @@ stage_vulkan_candidate() {
   gpu_total_mib=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1 | tr -d ' ')
   [[ $gpu_total_mib =~ ^[0-9]+$ && $gpu_total_mib -ge 3500 ]] \
     || die "NVIDIA GPU does not expose the required 4 GB memory envelope"
+  local vulkan_icd=/usr/share/vulkan/icd.d/nvidia_icd.json
+  [[ -r $vulkan_icd ]] || die "NVIDIA Vulkan ICD is unavailable at ${vulkan_icd}"
 
   if [[ -f $config_path ]]; then
     cp -- "$config_path" "$candidate_config"
@@ -270,20 +272,44 @@ stage_vulkan_candidate() {
   local metrics="$stage_dir/metrics"
   local transcript="$stage_dir/transcript"
   local trace="$stage_dir/transcribe.log"
-  local start_ns end_ns elapsed_ms audio_duration
-  start_ns=$(date +%s%N)
-  VOXTYPE_VULKAN_DEVICE=nvidia /usr/bin/time -f '%M' -o "$metrics" \
-    "$candidate_bin" -vv -c "$candidate_config" transcribe "$fixture" \
-    > "$transcript" 2> "$trace" || die "Vulkan candidate transcription failed; see $trace"
-  end_ns=$(date +%s%N)
-  elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
+  local elapsed_ms rss_kib candidate_status audio_duration
+  read -r elapsed_ms rss_kib candidate_status < <(python3 - "$candidate_bin" "$candidate_config" "$fixture" "$transcript" "$trace" <<'PY'
+import os
+import resource
+import subprocess
+import sys
+import time
+
+candidate, config, fixture, transcript, trace = sys.argv[1:]
+started = time.monotonic()
+with open(transcript, "w", encoding="utf-8") as output, open(trace, "w", encoding="utf-8") as errors:
+    status = subprocess.run(
+        [candidate, "-vv", "-c", config, "transcribe", fixture],
+        env={
+            **os.environ,
+            "VOXTYPE_VULKAN_DEVICE": "nvidia",
+            "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/nvidia_icd.json",
+        },
+        stdout=output,
+        stderr=errors,
+        check=False,
+    ).returncode
+elapsed_ms = int((time.monotonic() - started) * 1000)
+rss_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+print(elapsed_ms, rss_kib, status)
+PY
+  )
+  [[ $candidate_status == 0 ]] || die "Vulkan candidate transcription failed; see $trace"
   audio_duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$fixture")
   [[ -s $transcript ]] || die "Vulkan candidate returned an empty transcript"
-  grep -Eiq 'ggml_vulkan: Found [1-9]|whisper_backend_init_gpu:.*Vulkan' "$trace" \
+  grep -Eiq 'ggml_vulkan: Found [1-9].*|ggml_vulkan: 0 = .*NVIDIA' "$trace" \
     || die "Vulkan candidate did not prove NVIDIA GPU execution"
+  grep -Eiq 'whisper_backend_init_gpu:.*using Vulkan0 backend' "$trace" \
+    || die "Vulkan candidate did not select the NVIDIA Vulkan device"
   awk -v elapsed="$elapsed_ms" -v duration="$audio_duration" 'BEGIN { exit !(elapsed < duration * 1000) }' \
     || die "Vulkan candidate is not faster than real time"
-  [[ $(cat "$metrics") -lt 4194304 ]] || die "Vulkan candidate exceeded 4 GB resident memory"
+  printf '%s\n' "$rss_kib" > "$metrics"
+  [[ $rss_kib -lt 4194304 ]] || die "Vulkan candidate exceeded 4 GB resident memory"
   printf '%s\n' "Staged Vulkan candidate passed: ${elapsed_ms}ms for ${audio_duration}s audio."
 }
 
@@ -477,6 +503,7 @@ printf '%s\n' \
   '[Service]' \
   "Environment=\"PATH=${brew_bin_dir}:/usr/local/bin:/usr/bin:/snap/bin\"" \
   'Environment=VOXTYPE_VULKAN_DEVICE=nvidia' \
+  'Environment=VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json' \
   > "$voxtype_dropin_path"
 systemctl --user daemon-reload
 systemctl --user enable voxtype.service
