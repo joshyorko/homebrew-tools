@@ -135,3 +135,15 @@ test("local installer target configures Herdr toggle and GNOME-safe output drive
   assert.match(script, /voxtype_user_agent="voxtype\/\$\{voxtype_version\}"/)
   assert.match(script, /\.voxtype-manifest\.json/)
 })
+
+test("local dictation package ships the native GTK4 HUD toolchain", async () => {
+  const daggerSource = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
+  const packager = await readFile(new URL("../../../scripts/package-voxtype.mjs", import.meta.url), "utf8")
+  const formula = await readFile(new URL("../../../Formula/voxtype.rb", import.meta.url), "utf8")
+
+  for (const executable of ["voxtype-osd", "voxtype-osd-gtk4", "voxtype-audio-bridge"]) {
+    assert.match(daggerSource, new RegExp(executable))
+    assert.match(packager, new RegExp(executable))
+    assert.match(formula, new RegExp(executable))
+  }
+})

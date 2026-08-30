@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmdirSync } from "node:fs"
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
@@ -69,6 +69,21 @@ function main() {
   mkdirSync(zshCompletionDir, { recursive: true })
 
   copyFileSync(binaryPath, join(libexecDir, "voxtype"))
+  for (const [argumentName, installedName] of [
+    ["osd-binary", "voxtype-osd"],
+    ["osd-gtk4-binary", "voxtype-osd-gtk4"],
+    ["audio-bridge-binary", "voxtype-audio-bridge"],
+  ]) {
+    const companionArg = args[argumentName]
+    if (!companionArg) continue
+    const companionPath = resolve(companionArg)
+    if (!existsSync(companionPath)) {
+      throw new Error(`Missing Voxtype companion binary at ${companionPath}`)
+    }
+    const installedPath = join(libexecDir, installedName)
+    copyFileSync(companionPath, installedPath)
+    chmodSync(installedPath, 0o755)
+  }
   copyFileSync(join(upstreamDir, "config", "default.toml"), join(shareDir, "default.toml"))
   copyFileSync(join(upstreamDir, "README.md"), join(packageDir, "README.md"))
   copyFileSync(join(upstreamDir, "LICENSE"), join(packageDir, "LICENSE"))

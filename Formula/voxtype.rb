@@ -14,7 +14,7 @@ class Voxtype < Formula
   depends_on :linux
 
   def install
-    libexec.install "libexec/voxtype"
+    libexec.install Dir["libexec/*"]
     pkgshare.install "share/voxtype/default.toml"
 
     bash_completion.install "completions/bash/voxtype" if File.exist?("completions/bash/voxtype")
@@ -24,10 +24,14 @@ class Voxtype < Formula
     man1.install Dir["man/man1/*.1"] if Dir.exist?("man/man1")
     doc.install "README.md", "LICENSE"
 
-    (bin/"voxtype").write <<~SH
-      #!/bin/bash
-      exec "#{libexec}/voxtype" "$@"
-    SH
+    %w[voxtype voxtype-osd voxtype-osd-gtk4 voxtype-audio-bridge].each do |executable|
+      next unless (libexec/executable).exist?
+
+      (bin/executable).write <<~SH
+        #!/bin/bash
+        exec "#{libexec}/#{executable}" "$@"
+      SH
+    end
   end
 
   test do

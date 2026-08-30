@@ -13,6 +13,13 @@ brew_bin=${DICTATION_BREW_BIN:-$(command -v brew || true)}
 dagger_bin=${DICTATION_DAGGER_BIN:-$(command -v dagger || true)}
 herdr_bin=${DICTATION_HERDR_BIN:-$(command -v herdr || true)}
 state_dir=${DICTATION_STATE_DIR:-${XDG_STATE_HOME:-${user_home}/.local/state}/homebrew-tools/dictation}
+user_id=$(id -u)
+if [[ -z ${XDG_RUNTIME_DIR:-} && -d /run/user/$user_id ]]; then
+  export XDG_RUNTIME_DIR=/run/user/$user_id
+fi
+if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} && -S /run/user/$user_id/bus ]]; then
+  export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$user_id/bus
+fi
 
 die() {
   printf 'dictation-install: %s\n' "$*" >&2

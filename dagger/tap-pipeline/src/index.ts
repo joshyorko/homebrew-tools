@@ -1860,6 +1860,53 @@ end
     )
   }
 
+  private async downloadVoxtypeCompanions(version: string, tagName: string): Promise<{
+    audioBridgePath: string
+    container: Container
+    osdGtk4Path: string
+    osdPath: string
+  }> {
+    const releaseBase = `https://github.com/peteonrails/voxtype/releases/download/${tagName}`
+    const checksums = await this.fetchText(`${releaseBase}/SHA256SUMS.txt`)
+    const assets = [
+      { name: `voxtype-${version}-linux-x86_64-osd`, path: "/tmp/voxtype-osd" },
+      { name: `voxtype-${version}-linux-x86_64-osd-gtk4`, path: "/tmp/voxtype-osd-gtk4" },
+      { name: `voxtype-${version}-linux-x86_64-audio-bridge`, path: "/tmp/voxtype-audio-bridge" },
+    ]
+    let container = this.githubApiContainer()
+
+    for (const asset of assets) {
+      const checksumLine = checksums
+        .split("\n")
+        .find((line) => line.endsWith(`  ${asset.name}`))
+      const checksum = checksumLine?.split(/\s+/, 1)[0]
+      if (!checksum || !/^[a-f0-9]{64}$/.test(checksum)) {
+        throw new Error(`Missing checksum for Voxtype release asset ${asset.name}`)
+      }
+      container = container
+        .withExec([
+          "node",
+          "--input-type=module",
+          "-e",
+          renderAssetDownloadScript(),
+          `${releaseBase}/${asset.name}`,
+          asset.path,
+        ])
+        .withExec([
+          "bash",
+          "-lc",
+          `printf '%s  %s\\n' ${JSON.stringify(checksum)} ${JSON.stringify(asset.path)} | sha256sum -c - && chmod 0755 ${JSON.stringify(asset.path)}`,
+        ])
+    }
+
+    return {
+      audioBridgePath: assets[2].path,
+      container,
+      osdGtk4Path: assets[1].path,
+      osdPath: assets[0].path,
+    }
+  }
+
   private async smokeDictationArtifacts(
     tap: Directory,
     voxtype: VoxtypeBuild,
@@ -1898,6 +1945,9 @@ end
           "brew test test/tap/voxtype",
           "brew test test/tap/eitype",
           "test -x \"$(brew --prefix)/bin/voxtype\"",
+          "test -x \"$(brew --prefix)/bin/voxtype-osd\"",
+          "test -x \"$(brew --prefix)/bin/voxtype-osd-gtk4\"",
+          "test -x \"$(brew --prefix)/bin/voxtype-audio-bridge\"",
           "test -x \"$(brew --prefix)/bin/eitype\"",
           "voxtype --version",
           "eitype --version",
@@ -3911,12 +3961,39 @@ end
     const voxtypeRelease = await this.resolveLatestStableRelease(voxtypeRepository)
     const eitypeRelease = await this.resolveLatestStableRelease(eitypeRepository)
 
-    const voxtype = await this.buildVoxtypeArtifact(
+    const voxtypeBuild = await this.buildVoxtypeArtifact(
       tap,
       `refs/tags/${voxtypeRelease.tagName}`,
       undefined,
       ["cohere"],
     )
+    const voxtypeCompanions = await this.downloadVoxtypeCompanions(
+      voxtypeBuild.version,
+      voxtypeRelease.tagName,
+    )
+    const voxtypeContainer = voxtypeBuild.container
+      .withFile(voxtypeCompanions.osdPath, voxtypeCompanions.container.file(voxtypeCompanions.osdPath))
+      .withFile(voxtypeCompanions.osdGtk4Path, voxtypeCompanions.container.file(voxtypeCompanions.osdGtk4Path))
+      .withFile(voxtypeCompanions.audioBridgePath, voxtypeCompanions.container.file(voxtypeCompanions.audioBridgePath))
+      .withExec([
+        "node",
+        "/tap/scripts/package-voxtype.mjs",
+        "--upstream-dir",
+        "/upstream",
+        "--binary",
+        "/tmp/voxtype-avx2",
+        "--osd-binary",
+        voxtypeCompanions.osdPath,
+        "--osd-gtk4-binary",
+        voxtypeCompanions.osdGtk4Path,
+        "--audio-bridge-binary",
+        voxtypeCompanions.audioBridgePath,
+        "--version",
+        voxtypeBuild.version,
+        "--output",
+        voxtypeBuild.artifactPath,
+      ])
+    const voxtype = { ...voxtypeBuild, container: voxtypeContainer }
     const eitype = await this.buildEitypeArtifact(
       tap,
       `refs/tags/${eitypeRelease.tagName}`,
