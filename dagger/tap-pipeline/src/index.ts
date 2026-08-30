@@ -40,6 +40,7 @@ const NODE_25_IMAGE = "node:25-bookworm"
 const PYTHON_IMAGE = "python:3.13-bookworm"
 const GO_IMAGE = "golang:1.26-bookworm"
 const RUST_IMAGE = "rust:1-bookworm"
+const ONNX_BUILD_IMAGE = "ubuntu:24.04"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
@@ -790,6 +791,56 @@ export class TapPipeline {
         ].join("\n"),
       ])
       .withEnvVariable("PATH", "/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+  }
+
+  private onnxRustBaseContainer(): Container {
+    return dag
+      .container()
+      .from(ONNX_BUILD_IMAGE)
+      .withMountedCache(
+        "/root/.cargo/registry",
+        dag.cacheVolume("tap-pipeline-cargo-registry-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withMountedCache(
+        "/root/.cargo/git",
+        dag.cacheVolume("tap-pipeline-cargo-git-cache"),
+        { sharing: CacheSharingMode.Locked },
+      )
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl nodejs build-essential clang cmake pkg-config git binutils libasound2-dev",
+          "rm -rf /var/lib/apt/lists/*",
+          "curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal",
+        ].join("\n"),
+      ])
+      .withEnvVariable("PATH", "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+  }
+
+  private dictationBrewContainer(): Container {
+    const brewPrefix = dag.container().from(BREW_IMAGE).directory("/home/linuxbrew/.linuxbrew")
+
+    return dag
+      .container()
+      .from(ONNX_BUILD_IMAGE)
+      .withUser("root")
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates clang curl git libasound2t64 libxkbcommon0",
+          "rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
+      ])
+      .withDirectory("/home/linuxbrew/.linuxbrew", brewPrefix)
+      .withEnvVariable("HOME", "/home/ubuntu")
+      .withEnvVariable("PATH", "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
   private withGithubAuth(container: Container): Container {
@@ -1642,14 +1693,34 @@ end
     const artifactPath = `/tmp/${assetName}`
 
     const cargoBuild = ["cargo", "build", "--locked", "--release"]
-    if (features.length > 0) {
-      cargoBuild.push("--features", features.join(","))
+    const cargoFeatures = [...features]
+    if (cargoFeatures.includes("cohere")) {
+      cargoFeatures.push("ort/download-binaries", "ort/tls-rustls")
+    }
+    if (cargoFeatures.length > 0) {
+      cargoBuild.push("--features", cargoFeatures.join(","))
     }
     const targetCache = features.length > 0
-      ? `tap-pipeline-cargo-target-voxtype-${features.join("-")}`
+      ? `tap-pipeline-cargo-target-voxtype-${features.join("-")}-ubuntu-24-04`
       : "tap-pipeline-cargo-target-voxtype"
+    const instructionGate = [
+      "set -euo pipefail",
+      "cp target/release/voxtype /tmp/voxtype-avx2",
+      "zmm_count=$(objdump -d /tmp/voxtype-avx2 | grep -c zmm || true)",
+      "avx512_count=$(objdump -d /tmp/voxtype-avx2 | grep -cE 'vpternlog|vpermt2|vpblendm|\\{1to[0-9]+\\}' || true)",
+      "gfni_count=$(objdump -d /tmp/voxtype-avx2 | grep -cE 'vgf2p8|gf2p8' || true)",
+      "printf 'zmm_count=%s\\navx512_count=%s\\ngfni_count=%s\\n' \"$zmm_count\" \"$avx512_count\" \"$gfni_count\"",
+      ...(features.length === 0
+        ? [
+            "test \"$zmm_count\" = 0",
+            "test \"$avx512_count\" = 0",
+            "test \"$gfni_count\" = 0",
+          ]
+        : ["printf '%s\\n' 'ONNX Runtime kernels are runtime-dispatched; counts are informational.'"]),
+    ]
 
-    const container = this.rustBaseContainer()
+    const buildContainer = features.length > 0 ? this.onnxRustBaseContainer() : this.rustBaseContainer()
+    const container = buildContainer
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
       .withMountedCache(
@@ -1679,16 +1750,7 @@ end
       .withExec([
         "bash",
         "-lc",
-        [
-          "set -euo pipefail",
-          "cp target/release/voxtype /tmp/voxtype-avx2",
-          "zmm_count=$(objdump -d /tmp/voxtype-avx2 | grep -c zmm || true)",
-          "avx512_count=$(objdump -d /tmp/voxtype-avx2 | grep -cE 'vpternlog|vpermt2|vpblendm|\\{1to[0-9]+\\}' || true)",
-          "gfni_count=$(objdump -d /tmp/voxtype-avx2 | grep -cE 'vgf2p8|gf2p8' || true)",
-          "test \"$zmm_count\" = 0",
-          "test \"$avx512_count\" = 0",
-          "test \"$gfni_count\" = 0",
-        ].join("\n"),
+        instructionGate.join("\n"),
       ])
       .withExec([
         "node",
@@ -1811,19 +1873,11 @@ end
       .withFile("Formula/voxtype.rb", dag.file("voxtype.rb", voxtypeFormula))
       .withFile("Formula/eitype.rb", dag.file("eitype.rb", eitypeFormula))
 
-    return dag
-      .container()
-      .from(BREW_IMAGE)
-      .withUser("root")
+    return this.dictationBrewContainer()
       .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
       .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
       .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-      .withExec([
-        "bash",
-        "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libasound2 libxkbcommon0 && rm -rf /var/lib/apt/lists/*",
-      ])
-      .withUser("linuxbrew")
+      .withUser("ubuntu")
       .withDirectory("/tap", smokeTap)
       .withFile(`/artifacts/${voxtype.assetName}`, voxtype.container.file(voxtype.artifactPath))
       .withFile(`/artifacts/${eitype.assetName}`, eitype.container.file(eitype.artifactPath))
