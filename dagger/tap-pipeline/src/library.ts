@@ -3,6 +3,91 @@ import { createHash } from "node:crypto"
 
 import type { AutoUpdateSlot, AutoUpdateSlotId, PackageRegistryEntry, ReleaseMetadata } from "./types.js"
 
+export type StableReleaseSelection = {
+  tagName: string
+  publishedAt?: string
+}
+
+export type DictationManifestPackage = {
+  id: string
+  version: string
+  upstreamTag: string
+  upstreamCommit: string
+  artifact: string
+  sha256: string
+}
+
+/**
+ * Validate the shape returned by GitHub's /releases/latest endpoint.
+ *
+ * GitHub normally omits prereleases from this endpoint, but keeping the
+ * explicit checks here makes the local installer fail closed if the endpoint
+ * behavior or a proxy changes.
+ */
+export function selectLatestStableRelease(payload: unknown, repository: string): StableReleaseSelection {
+  if (!payload || typeof payload !== "object") {
+    throw new Error(`Latest release for ${repository} is not an object`)
+  }
+
+  const release = payload as Record<string, unknown>
+  if (typeof release.tag_name !== "string" || release.tag_name.length === 0) {
+    throw new Error(`Latest release for ${repository} is missing tag_name`)
+  }
+
+  if (release.draft === true || release.prerelease === true) {
+    throw new Error(`Latest release for ${repository} is not a stable release`)
+  }
+
+  if (release.published_at !== undefined && typeof release.published_at !== "string") {
+    throw new Error(`Latest release for ${repository} has invalid published_at`)
+  }
+
+  return {
+    tagName: release.tag_name,
+    publishedAt: release.published_at as string | undefined,
+  }
+}
+
+/** Render a tap formula against an artifact available from a local file URL. */
+export function renderLocalFormula(
+  formula: string,
+  artifact: string,
+  version: string,
+  sha256: string,
+): string {
+  const countMatches = (pattern: RegExp): number => formula.match(pattern)?.length ?? 0
+
+  if (countMatches(/^\s*url\s+"[^"]+"\s*$/gm) !== 1) {
+    throw new Error("Formula must contain exactly one url stanza")
+  }
+  if (countMatches(/^\s*version\s+"[^"]+"\s*$/gm) !== 1) {
+    throw new Error("Formula must contain exactly one version stanza")
+  }
+  if (countMatches(/^\s*sha256\s+"[^"]+"\s*$/gm) !== 1) {
+    throw new Error("Formula must contain exactly one sha256 stanza")
+  }
+
+  return formula
+    .replace(/^(\s*url\s+)"[^"]+"\s*$/m, `$1"file:///artifacts/${artifact}"`)
+    .replace(/^(\s*version\s+)"[^"]+"\s*$/m, `$1"${version}"`)
+    .replace(/^(\s*sha256\s+)"[^"]+"\s*$/m, `$1"${sha256}"`)
+}
+
+export function dictationManifest(packages: DictationManifestPackage[]) {
+  return {
+    schema_version: 1,
+    workflow: "dakota-local-dictation",
+    packages: packages.map((pkg) => ({
+      id: pkg.id,
+      version: pkg.version,
+      upstream_tag: pkg.upstreamTag,
+      upstream_commit: pkg.upstreamCommit,
+      artifact: pkg.artifact,
+      sha256: pkg.sha256,
+    })),
+  }
+}
+
 type GitHeadVersionInput = {
   committedAt?: string
   includeCommitDate?: boolean

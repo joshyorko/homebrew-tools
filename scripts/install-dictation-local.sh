@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Build the latest stable Voxtype/Eitype pair through Dagger and install it
+# without relying on a published tap release. This script intentionally keeps
+# all generated artifacts in a temporary directory; only the installed
+# packages, Voxtype config, Herdr binding, and provenance manifest persist.
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+repo_root=$(cd -- "${script_dir}/.." && pwd -P)
+user_home=${HOME:?HOME must be set}
+brew_bin=${DICTATION_BREW_BIN:-$(command -v brew || true)}
+dagger_bin=${DICTATION_DAGGER_BIN:-$(command -v dagger || true)}
+herdr_bin=${DICTATION_HERDR_BIN:-$(command -v herdr || true)}
+state_dir=${DICTATION_STATE_DIR:-${XDG_STATE_HOME:-${user_home}/.local/state}/homebrew-tools/dictation}
+
+die() {
+  printf 'dictation-install: %s\n' "$*" >&2
+  exit 1
+}
+
+require_command() {
+  local command_name=$1
+  command -v "$command_name" >/dev/null 2>&1 || die "required command is missing: ${command_name}"
+}
+
+if [[ $(uname -m) != x86_64 ]]; then
+  die "this local artifact is currently built for x86_64 Linux"
+fi
+
+if [[ ! -r /etc/os-release ]] || ! grep -Eq '^ID="?bluefin-dakota"?$' /etc/os-release; then
+  die "refusing to configure a non-Dakota image; expected ID=bluefin-dakota"
+fi
+
+[[ -n $brew_bin && -x $brew_bin ]] || die "Homebrew executable was not found"
+[[ -n $dagger_bin && -x $dagger_bin ]] || die "Dagger executable was not found"
+[[ -n $herdr_bin && -x $herdr_bin ]] || die "Herdr executable was not found"
+require_command python3
+require_command sha256sum
+require_command systemctl
+require_command git
+require_command ydotool
+require_command wl-copy
+
+if ! ldconfig -p 2>/dev/null | grep -q 'libxkbcommon\.so\.0' && ! test -e /usr/lib64/libxkbcommon.so.0 && ! test -e /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0; then
+  die "Dakota's libxkbcommon runtime is unavailable"
+fi
+
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_ENV_HINTS=1
+export HOMEBREW_NO_INSTALL_FROM_API=1
+
+bundle_dir=$(mktemp -d "${TMPDIR:-/tmp}/homebrew-tools-dictation.XXXXXX")
+cleanup() {
+  rm -rf -- "$bundle_dir"
+}
+trap cleanup EXIT
+
+printf '%s\n' "Building latest stable Voxtype and Eitype with Dagger..."
+git_common_dir=$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)
+(
+  cd "$repo_root"
+  "$dagger_bin" -m ./dagger/tap-pipeline call --git-dir="$git_common_dir" -o "$bundle_dir" dictation-bundle
+)
+
+manifest_path="$bundle_dir/manifest.json"
+[[ -s $manifest_path ]] || die "Dagger did not export manifest.json"
+[[ -f $bundle_dir/homebrew/voxtype.rb ]] || die "Dagger did not export the Voxtype formula"
+[[ -f $bundle_dir/homebrew/eitype.rb ]] || die "Dagger did not export the Eitype formula"
+
+voxtype_version=
+voxtype_artifact=
+voxtype_sha256=
+eitype_version=
+eitype_artifact=
+eitype_sha256=
+
+mapfile -t manifest_rows < <(python3 - "$manifest_path" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+if manifest.get("schema_version") != 1 or manifest.get("workflow") != "dakota-local-dictation":
+    raise SystemExit("unexpected dictation manifest schema")
+
+packages = manifest.get("packages")
+if not isinstance(packages, list):
+    raise SystemExit("dictation manifest has no package list")
+
+for package in packages:
+    required = ("id", "version", "artifact", "sha256")
+    if any(not isinstance(package.get(key), str) or not package[key] for key in required):
+        raise SystemExit("dictation manifest contains an incomplete package")
+    print("|".join(package[key] for key in required))
+PY
+)
+
+for row in "${manifest_rows[@]}"; do
+  IFS='|' read -r package_id package_version package_artifact package_sha256 <<< "$row"
+  case $package_id in
+    voxtype)
+      voxtype_version=$package_version
+      voxtype_artifact=$package_artifact
+      voxtype_sha256=$package_sha256
+      ;;
+    eitype)
+      eitype_version=$package_version
+      eitype_artifact=$package_artifact
+      eitype_sha256=$package_sha256
+      ;;
+    *)
+      die "unexpected package in Dagger manifest: ${package_id}"
+      ;;
+  esac
+done
+
+[[ -n $voxtype_version && -n $voxtype_artifact && -n $voxtype_sha256 ]] || die "Voxtype provenance is incomplete"
+[[ -n $eitype_version && -n $eitype_artifact && -n $eitype_sha256 ]] || die "Eitype provenance is incomplete"
+
+verify_artifact() {
+  local artifact=$1
+  local expected_sha256=$2
+  local artifact_path="$bundle_dir/artifacts/$artifact"
+  [[ -f $artifact_path ]] || die "missing Dagger artifact: ${artifact}"
+  printf '%s  %s\n' "$expected_sha256" "$artifact_path" | sha256sum -c - >/dev/null \
+    || die "artifact checksum failed: ${artifact}"
+}
+
+verify_artifact "$voxtype_artifact" "$voxtype_sha256"
+verify_artifact "$eitype_artifact" "$eitype_sha256"
+
+render_formula() {
+  local source_formula=$1
+  local destination_formula=$2
+  local artifact_path=$3
+
+  python3 - "$source_formula" "$destination_formula" "$artifact_path" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source_path, destination_path, artifact_path = map(Path, sys.argv[1:])
+text = source_path.read_text(encoding="utf-8")
+
+for label in ("url", "version", "sha256"):
+    matches = re.findall(rf"^\\s*{label}\\s+\"[^\"]+\"\\s*$", text, re.MULTILINE)
+    if len(matches) != 1:
+        raise SystemExit(f"formula must contain exactly one {label} stanza")
+
+text = re.sub(
+    r"^(\\s*url\\s+)\"[^\"]+\"\\s*$",
+    lambda match: f'{match.group(1)}"{artifact_path.resolve().as_uri()}"',
+    text,
+    count=1,
+    flags=re.MULTILINE,
+)
+destination_path.write_text(text, encoding="utf-8")
+PY
+}
+
+local_formula_dir="$bundle_dir/local"
+mkdir -p "$local_formula_dir"
+render_formula "$bundle_dir/homebrew/voxtype.rb" "$local_formula_dir/voxtype.rb" "$bundle_dir/artifacts/$voxtype_artifact"
+render_formula "$bundle_dir/homebrew/eitype.rb" "$local_formula_dir/eitype.rb" "$bundle_dir/artifacts/$eitype_artifact"
+
+version_is_newer() {
+  local left=$1
+  local right=$2
+  [[ $left != "$right" && $(printf '%s\n%s\n' "$left" "$right" | sort -V | tail -n 1) == "$left" ]]
+}
+
+install_formula() {
+  local package_id=$1
+  local target_version=$2
+  local formula_path=$3
+  local current_version
+
+  current_version=$("$brew_bin" list --versions "$package_id" 2>/dev/null | awk '{print $NF}' || true)
+  if [[ -n $current_version ]] && version_is_newer "$current_version" "$target_version"; then
+    if [[ $package_id == voxtype ]] && ! voxtype info engines 2>/dev/null | grep -Eiq '(^|[[:space:]])cohere([[:space:]]|$)'; then
+      die "installed Voxtype ${current_version} is newer but lacks Cohere support; refusing to downgrade it"
+    fi
+    printf '%s\n' "Keeping newer installed ${package_id} ${current_version}."
+    return
+  fi
+
+  if [[ -n $current_version ]]; then
+    "$brew_bin" reinstall --formula "$formula_path"
+  else
+    "$brew_bin" install --formula "$formula_path"
+  fi
+}
+
+install_formula voxtype "$voxtype_version" "$local_formula_dir/voxtype.rb"
+install_formula eitype "$eitype_version" "$local_formula_dir/eitype.rb"
+"$brew_bin" test voxtype
+"$brew_bin" test eitype
+
+mkdir -p "$state_dir"
+cp -- "$manifest_path" "$state_dir/manifest.json"
+
+voxtype_bin=$("$brew_bin" --prefix voxtype)/bin/voxtype
+eitype_bin=$("$brew_bin" --prefix eitype)/bin/eitype
+[[ -x $voxtype_bin ]] || die "Voxtype binary was not linked"
+[[ -x $eitype_bin ]] || die "Eitype binary was not linked"
+
+config_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/voxtype
+config_path="$config_dir/config.toml"
+mkdir -p "$config_dir"
+if [[ ! -f $config_path ]]; then
+  default_config=$("$brew_bin" --prefix voxtype)/share/voxtype/default.toml
+  [[ -f $default_config ]] || die "Voxtype default config is missing"
+  cp -- "$default_config" "$config_path"
+fi
+
+backup_dir="$state_dir/backups"
+mkdir -p "$backup_dir"
+backup_path="$backup_dir/voxtype-config.$(date -u +%Y%m%dT%H%M%SZ).toml"
+cp -- "$config_path" "$backup_path"
+
+# config set preserves comments and validates every supported scalar. The
+# driver_order key is newer than the v1.0.0 config schema, so it is patched in
+# the same atomic transaction below and then validated by the daemon startup.
+"$voxtype_bin" config set engine cohere
+"$voxtype_bin" config set cohere.model cohere-transcribe-q4f16
+"$voxtype_bin" config set cohere.language en
+"$voxtype_bin" config set hotkey.enabled false
+"$voxtype_bin" config set hotkey.mode toggle
+"$voxtype_bin" config set state_file auto
+"$voxtype_bin" config set output.mode type
+"$voxtype_bin" config set output.fallback_to_clipboard true
+"$voxtype_bin" config set output.auto_submit false
+
+config_tmp=$(mktemp "$config_path.tmp.XXXXXX")
+python3 - "$config_path" "$config_tmp" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source_path, destination_path = map(Path, sys.argv[1:])
+text = source_path.read_text(encoding="utf-8")
+lines = text.splitlines(keepends=True)
+output_start = None
+output_end = None
+for index, line in enumerate(lines):
+    match = re.match(r"^\s*\[([^]]+)\]\s*$", line)
+    if match:
+        if output_start is not None and output_end is None:
+            output_end = index
+        if match.group(1) == "output":
+            output_start = index
+if output_start is None:
+    raise SystemExit("Voxtype config has no [output] section")
+if output_end is None:
+    output_end = len(lines)
+
+driver_line = 'driver_order = ["eitype", "ydotool", "clipboard"]\n'
+driver_indexes = [
+    index for index in range(output_start + 1, output_end)
+    if re.match(r"^\s*driver_order\s*=", lines[index])
+]
+if len(driver_indexes) > 1:
+    raise SystemExit("Voxtype config has multiple output.driver_order entries")
+if driver_indexes:
+    lines[driver_indexes[0]] = driver_line
+else:
+    mode_indexes = [
+        index for index in range(output_start + 1, output_end)
+        if re.match(r"^\s*mode\s*=", lines[index])
+    ]
+    if len(mode_indexes) != 1:
+        raise SystemExit("Voxtype config has no unique output.mode entry")
+    lines.insert(mode_indexes[0] + 1, driver_line)
+
+destination_path.write_text("".join(lines), encoding="utf-8")
+PY
+mv -- "$config_tmp" "$config_path"
+
+models_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/voxtype/models
+cohere_model_dir="$models_dir/cohere-transcribe-q4f16"
+if [[ ! -d $cohere_model_dir ]] || ! find "$cohere_model_dir" -type f -print -quit | grep -q .; then
+  printf '%s\n' "Voxtype needs the Cohere q4f16 model. Select cohere-transcribe-q4f16 in the interactive model selector."
+  "$voxtype_bin" setup model
+fi
+
+"$voxtype_bin" config set engine cohere
+"$voxtype_bin" config set cohere.model cohere-transcribe-q4f16
+"$voxtype_bin" config set cohere.language en
+"$voxtype_bin" info models --engine cohere --verify
+
+"$voxtype_bin" setup systemd
+systemctl --user daemon-reload
+systemctl --user enable --now voxtype.service
+systemctl --user is-active --quiet voxtype.service || die "Voxtype user service is not active"
+
+herdr_config=${HERDR_CONFIG_PATH:-${user_home}/.config/herdr/config.toml}
+herdr_config_dir=$(dirname -- "$herdr_config")
+mkdir -p "$herdr_config_dir"
+herdr_backup="$backup_dir/herdr-config.$(date -u +%Y%m%dT%H%M%SZ).toml"
+if [[ -f $herdr_config ]]; then
+  cp -- "$herdr_config" "$herdr_backup"
+else
+  : > "$herdr_backup"
+fi
+
+herdr_tmp=$(mktemp "$herdr_config.tmp.XXXXXX")
+python3 - "$herdr_config" "$herdr_tmp" "$voxtype_bin" <<'PY'
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+source_path, destination_path = map(Path, sys.argv[1:3])
+voxtype_bin = sys.argv[3]
+source = source_path.read_text(encoding="utf-8") if source_path.exists() else ""
+if source:
+    try:
+        parsed = tomllib.loads(source)
+    except tomllib.TOMLDecodeError as error:
+        raise SystemExit(f"Herdr config is invalid TOML: {error}")
+else:
+    parsed = {}
+
+expected_key = "prefix+alt+v"
+expected_command = f"{voxtype_bin} record toggle"
+commands = parsed.get("keys", {}).get("command", [])
+if isinstance(commands, dict):
+    commands = [commands]
+for command in commands:
+    if isinstance(command, dict) and command.get("key") == expected_key and command.get("command") != expected_command:
+        raise SystemExit(f"Herdr binding {expected_key} is already used by another command")
+
+marker = re.compile(r"(?ms)^# BEGIN homebrew-tools dictation binding\\n.*?^# END homebrew-tools dictation binding\\n?")
+source = marker.sub("", source)
+if not any(
+    isinstance(command, dict)
+    and command.get("key") == expected_key
+    and command.get("command") == expected_command
+    for command in commands
+):
+    if source and not source.endswith("\\n"):
+        source += "\\n"
+    source += (
+        "\\n# BEGIN homebrew-tools dictation binding\\n"
+        "[[keys.command]]\\n"
+        f'key = "{expected_key}"\\n'
+        'type = "shell"\\n'
+        f'command = "{expected_command}"\\n'
+        "# END homebrew-tools dictation binding\\n"
+    )
+
+destination_path.write_text(source, encoding="utf-8")
+PY
+mv -- "$herdr_tmp" "$herdr_config"
+
+if "$herdr_bin" status server >/dev/null 2>&1; then
+  "$herdr_bin" server reload-config
+else
+  printf '%s\n' "Herdr server is not running; the binding will load when Herdr starts."
+fi
+
+printf '%s\n' "Installed Voxtype ${voxtype_version} (Cohere) and Eitype ${eitype_version}."
+printf '%s\n' "Hold focus in Herdr and press Ctrl+B, then Alt+V to toggle recording."
+printf '%s\n' "Provenance saved to ${state_dir}/manifest.json."

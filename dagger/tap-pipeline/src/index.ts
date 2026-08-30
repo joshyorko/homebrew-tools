@@ -15,7 +15,10 @@ import {
   recoveryPackageSummaries,
   formatGitHeadVersion,
   isTransientUpstreamProbeError,
+  dictationManifest,
   releaseMetadataForPackage,
+  renderLocalFormula,
+  selectLatestStableRelease,
   TransientUpstreamProbeError,
 } from "./library.js"
 import { rewriteCaskUrl } from "./cask-render.js"
@@ -1615,7 +1618,12 @@ end
     }
   }
 
-  private async buildVoxtypeArtifact(tap: Directory, ref?: string, version?: string): Promise<VoxtypeBuild> {
+  private async buildVoxtypeArtifact(
+    tap: Directory,
+    ref?: string,
+    version?: string,
+    features: string[] = [],
+  ): Promise<VoxtypeBuild> {
     const upstreamTag = ref && ref.length > 0
       ? ref.replace(/^refs\/tags\//, "")
       : (await this.fetchJson("https://api.github.com/repos/peteonrails/voxtype/releases/latest") as { tag_name: string }).tag_name
@@ -1633,12 +1641,20 @@ end
     const assetName = `voxtype-${resolvedVersion}-homebrew-x86_64-linux.tar.gz`
     const artifactPath = `/tmp/${assetName}`
 
+    const cargoBuild = ["cargo", "build", "--locked", "--release"]
+    if (features.length > 0) {
+      cargoBuild.push("--features", features.join(","))
+    }
+    const targetCache = features.length > 0
+      ? `tap-pipeline-cargo-target-voxtype-${features.join("-")}`
+      : "tap-pipeline-cargo-target-voxtype"
+
     const container = this.rustBaseContainer()
       .withDirectory("/tap", tap)
       .withDirectory("/upstream", upstreamTree)
       .withMountedCache(
         "/upstream/target",
-        dag.cacheVolume("tap-pipeline-cargo-target-voxtype"),
+        dag.cacheVolume(targetCache),
         { sharing: CacheSharingMode.Locked },
       )
       .withWorkdir("/upstream")
@@ -1650,6 +1666,7 @@ end
       .withEnvVariable("GGML_AVX512", "OFF")
       .withEnvVariable("GGML_AVX_VNNI", "OFF")
       .withEnvVariable("GGML_AVX512_VNNI", "OFF")
+      .withEnvVariable("ORT_STRATEGY", features.length > 0 ? "download" : "system")
       .withEnvVariable(
         "CMAKE_C_FLAGS",
         "-mno-avx512f -mno-avx512vl -mno-avx512bw -mno-avx512dq -mno-avx512cd -mno-gfni -mno-avxvnni",
@@ -1658,7 +1675,7 @@ end
         "CMAKE_CXX_FLAGS",
         "-mno-avx512f -mno-avx512vl -mno-avx512bw -mno-avx512dq -mno-avx512cd -mno-gfni -mno-avxvnni",
       )
-      .withExec(["cargo", "build", "--locked", "--release"])
+      .withExec(cargoBuild)
       .withExec([
         "bash",
         "-lc",
@@ -1769,6 +1786,72 @@ end
       .stdout()
 
     return JSON.parse(output)
+  }
+
+  private async resolveLatestStableRelease(repository: string): Promise<{
+    tagName: string
+    publishedAt?: string
+  }> {
+    return selectLatestStableRelease(
+      await this.fetchJson(`https://api.github.com/repos/${repository}/releases/latest`),
+      repository,
+    )
+  }
+
+  private async smokeDictationArtifacts(
+    tap: Directory,
+    voxtype: VoxtypeBuild,
+    eitype: EitypeBuild,
+    voxtypeFormula: string,
+    eitypeFormula: string,
+    voxtypeSha256: string,
+    eitypeSha256: string,
+  ): Promise<string> {
+    const smokeTap = tap
+      .withFile("Formula/voxtype.rb", dag.file("voxtype.rb", voxtypeFormula))
+      .withFile("Formula/eitype.rb", dag.file("eitype.rb", eitypeFormula))
+
+    return dag
+      .container()
+      .from(BREW_IMAGE)
+      .withUser("root")
+      .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+      .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+      .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+      .withExec([
+        "bash",
+        "-lc",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libasound2 libxkbcommon0 && rm -rf /var/lib/apt/lists/*",
+      ])
+      .withUser("linuxbrew")
+      .withDirectory("/tap", smokeTap)
+      .withFile(`/artifacts/${voxtype.assetName}`, voxtype.container.file(voxtype.artifactPath))
+      .withFile(`/artifacts/${eitype.assetName}`, eitype.container.file(eitype.artifactPath))
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "repo=$(brew --repository)",
+          "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+          "mkdir -p \"$tap_dir/Formula\"",
+          "cp /tap/Formula/voxtype.rb \"$tap_dir/Formula/\"",
+          "cp /tap/Formula/eitype.rb \"$tap_dir/Formula/\"",
+          `printf '%s  /artifacts/${voxtype.assetName}\\n' ${JSON.stringify(voxtypeSha256)} | sha256sum -c -`,
+          `printf '%s  /artifacts/${eitype.assetName}\\n' ${JSON.stringify(eitypeSha256)} | sha256sum -c -`,
+          "brew install test/tap/voxtype",
+          "brew install test/tap/eitype",
+          "brew test test/tap/voxtype",
+          "brew test test/tap/eitype",
+          "test -x \"$(brew --prefix)/bin/voxtype\"",
+          "test -x \"$(brew --prefix)/bin/eitype\"",
+          "voxtype --version",
+          "eitype --version",
+          "voxtype info engines | grep -Eiq '(^|[[:space:]])cohere([[:space:]]|$)'",
+          "printf '%s\\n' 'Dagger dictation artifact smoke passed.'",
+        ].join("\n"),
+      ])
+      .stdout()
   }
 
   private async fetchText(url: string): Promise<string> {
@@ -3755,6 +3838,102 @@ end
       default:
         throw new Error(`releaseBundle is not implemented for package: ${packageId}`)
     }
+  }
+
+  /**
+   * Build the latest stable Voxtype/Eitype pair for local Dakota installation.
+   *
+   * The generated formulae deliberately point at the bundle's container-local
+   * artifact paths. The host installer rewrites those URLs to local file URLs
+   * after exporting the directory; no GitHub release is required.
+   */
+  @func()
+  async dictationBundle(githubToken?: Secret): Promise<Directory> {
+    this.setGithubToken(githubToken)
+
+    const tap = this.source
+    const voxtypeRepository = "peteonrails/voxtype"
+    const eitypeRepository = "Adam-D-Lewis/eitype"
+    const voxtypeRelease = await this.resolveLatestStableRelease(voxtypeRepository)
+    const eitypeRelease = await this.resolveLatestStableRelease(eitypeRepository)
+
+    const voxtype = await this.buildVoxtypeArtifact(
+      tap,
+      `refs/tags/${voxtypeRelease.tagName}`,
+      undefined,
+      ["cohere"],
+    )
+    const eitype = await this.buildEitypeArtifact(
+      tap,
+      `refs/tags/${eitypeRelease.tagName}`,
+    )
+    const voxtypeSha256 = (
+      await voxtype.container.withExec(["sha256sum", voxtype.artifactPath]).stdout()
+    ).trim().split(/\s+/)[0]
+    const eitypeSha256 = (
+      await eitype.container.withExec(["sha256sum", eitype.artifactPath]).stdout()
+    ).trim().split(/\s+/)[0]
+
+    const voxtypeVersionFromTag = voxtypeRelease.tagName.replace(/^v/, "")
+    const eitypeVersionFromTag = eitypeRelease.tagName.replace(/^v/, "")
+    if (voxtype.version !== voxtypeVersionFromTag) {
+      throw new Error(
+        `Voxtype release tag ${voxtypeRelease.tagName} does not match Cargo version ${voxtype.version}`,
+      )
+    }
+    if (eitype.version !== eitypeVersionFromTag) {
+      throw new Error(
+        `Eitype release tag ${eitypeRelease.tagName} does not match Cargo version ${eitype.version}`,
+      )
+    }
+
+    const voxtypeFormula = renderLocalFormula(
+      await tap.file("Formula/voxtype.rb").contents(),
+      voxtype.assetName,
+      voxtype.version,
+      voxtypeSha256,
+    )
+    const eitypeFormula = renderLocalFormula(
+      await tap.file("Formula/eitype.rb").contents(),
+      eitype.assetName,
+      eitype.version,
+      eitypeSha256,
+    )
+    const ciLog = await this.smokeDictationArtifacts(
+      tap,
+      voxtype,
+      eitype,
+      voxtypeFormula,
+      eitypeFormula,
+      voxtypeSha256,
+      eitypeSha256,
+    )
+    const manifest = dictationManifest([
+      {
+        id: "voxtype",
+        version: voxtype.version,
+        upstreamTag: voxtypeRelease.tagName,
+        upstreamCommit: voxtype.commit,
+        artifact: voxtype.assetName,
+        sha256: voxtypeSha256,
+      },
+      {
+        id: "eitype",
+        version: eitype.version,
+        upstreamTag: eitypeRelease.tagName,
+        upstreamCommit: eitype.commit,
+        artifact: eitype.assetName,
+        sha256: eitypeSha256,
+      },
+    ])
+
+    return dag.directory()
+      .withFile(`artifacts/${voxtype.assetName}`, voxtype.container.file(voxtype.artifactPath))
+      .withFile(`artifacts/${eitype.assetName}`, eitype.container.file(eitype.artifactPath))
+      .withNewFile("homebrew/voxtype.rb", voxtypeFormula)
+      .withNewFile("homebrew/eitype.rb", eitypeFormula)
+      .withNewFile("manifest.json", json(manifest))
+      .withNewFile("ci.log", ciLog)
   }
 
   @func()
