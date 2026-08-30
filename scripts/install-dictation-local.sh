@@ -327,10 +327,10 @@ install_arc_reactor_hud() {
   local extension_id=voxtype-arc-hud@homebrew-tools.local
   local source_dir="$repo_root/gnome-extension/$extension_id"
   local extension_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/gnome-shell/extensions/$extension_id
-  [[ -f $source_dir/metadata.json && -f $source_dir/extension.js && -f $source_dir/stylesheet.css ]] \
+  [[ -f $source_dir/metadata.json && -f $source_dir/extension.js && -f $source_dir/stylesheet.css && -f $source_dir/arc-reactor.png ]] \
     || die "Arc Reactor GNOME extension sources are missing"
   mkdir -p "$extension_dir"
-  cp -- "$source_dir/metadata.json" "$source_dir/extension.js" "$source_dir/stylesheet.css" "$extension_dir/"
+  cp -- "$source_dir/metadata.json" "$source_dir/extension.js" "$source_dir/stylesheet.css" "$source_dir/arc-reactor.png" "$extension_dir/"
   if ! gnome-extensions enable "$extension_id"; then
     enabled_extensions=$(gsettings get org.gnome.shell enabled-extensions \
       | python3 -c 'import ast, sys; print(repr(ast.literal_eval(sys.stdin.read())))')

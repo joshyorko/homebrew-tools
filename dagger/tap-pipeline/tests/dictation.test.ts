@@ -220,5 +220,6 @@ test("GNOME Arc Reactor HUD is a state-driven optional extension", async () => {
   assert.match(stylesheet, /reduced|prefers-reduced-motion/)
   assert.match(installer, /gnome-extensions/)
   assert.match(installer, /voxtype-arc-hud@homebrew-tools\.local/)
+  assert.match(installer, /arc-reactor\.png/)
   assert.match(installer, /enabled-extensions/)
 })

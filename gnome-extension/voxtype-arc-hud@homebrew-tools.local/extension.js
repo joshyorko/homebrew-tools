@@ -14,7 +14,7 @@ const ERROR = "error"
 
 const ArcReactor = GObject.registerClass(
   class ArcReactor extends St.BoxLayout {
-    _init() {
+    _init(extensionPath) {
       super._init({
         style_class: "voxtype-arc-reactor",
         vertical: false,
@@ -36,18 +36,10 @@ const ArcReactor = GObject.registerClass(
         style_class: "voxtype-arc-halo",
         layout_manager: new Clutter.BinLayout(),
       })
-      this._outerRing = new St.Widget({
-        style_class: "voxtype-arc-ring voxtype-arc-ring-outer",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._innerRing = new St.Widget({
-        style_class: "voxtype-arc-ring voxtype-arc-ring-inner",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._core = new St.Widget({
-        style_class: "voxtype-arc-core",
+      this._reactor = new St.Icon({
+        style_class: "voxtype-arc-image",
+        gicon: Gio.icon_new_for_string(`${extensionPath}/arc-reactor.png`),
+        icon_size: 156,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
       })
@@ -56,14 +48,14 @@ const ArcReactor = GObject.registerClass(
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.START,
       })
+      this._eyebrow = new St.Label({ style_class: "voxtype-arc-eyebrow", text: "VOICE LINK // ACTIVE" })
       this._label = new St.Label({ style_class: "voxtype-arc-label", text: "READY" })
       this._timer = new St.Label({ style_class: "voxtype-arc-timer", text: "" })
       this._info = new St.BoxLayout({ style_class: "voxtype-arc-info", vertical: true })
 
-      this._halo.add_child(this._outerRing)
-      this._halo.add_child(this._innerRing)
-      this._halo.add_child(this._core)
+      this._halo.add_child(this._reactor)
       this._halo.add_child(this._pip)
+      this._info.add_child(this._eyebrow)
       this._info.add_child(this._label)
       this._info.add_child(this._timer)
       this.add_child(this._halo)
@@ -87,10 +79,10 @@ const ArcReactor = GObject.registerClass(
     _position() {
       const monitor = Main.layoutManager.primaryMonitor
       if (!monitor) return
-      this.set_size(260, 104)
+      this.set_size(420, 190)
       this.set_position(
-        Math.floor(monitor.x + (monitor.width - 260) / 2),
-        Math.floor(monitor.y + monitor.height - 144),
+        Math.floor(monitor.x + (monitor.width - 420) / 2),
+        Math.floor(monitor.y + 78),
       )
     }
 
@@ -121,15 +113,18 @@ const ArcReactor = GObject.registerClass(
       this.add_style_class_name(state)
       if (state === RECORDING) {
         if (!this._recordingStartedAt) this._recordingStartedAt = Date.now()
+        this._eyebrow.text = "VOICE LINK // ACTIVE"
         this._label.text = "LISTENING"
         this._startTicker()
       } else if (state === TRANSCRIBING) {
         this._recordingStartedAt = 0
+        this._eyebrow.text = "NEURAL PARSE // GPU"
         this._label.text = "PROCESSING"
         this._timer.text = ""
         this._stopTicker()
       } else {
         this._recordingStartedAt = 0
+        this._eyebrow.text = "VOICE LINK // FAULT"
         this._label.text = "SIGNAL LOST"
         this._timer.text = ""
         this._stopTicker()
@@ -150,8 +145,7 @@ const ArcReactor = GObject.registerClass(
           return GLib.SOURCE_REMOVE
         }
         this._rotation = (this._rotation + 2.5) % 360
-        this._outerRing.rotation_angle_z = this._rotation
-        this._innerRing.rotation_angle_z = -this._rotation * 1.7
+        this._reactor.rotation_angle_z = this._rotation * 0.09
         const elapsed = Math.max(0, Math.floor((Date.now() - this._recordingStartedAt) / 1000))
         this._timer.text = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`
         return GLib.SOURCE_CONTINUE
@@ -177,7 +171,7 @@ const ArcReactor = GObject.registerClass(
 
 export default class VoxtypeArcHudExtension extends Extension {
   enable() {
-    this._hud = new ArcReactor()
+    this._hud = new ArcReactor(this.path)
   }
 
   disable() {
