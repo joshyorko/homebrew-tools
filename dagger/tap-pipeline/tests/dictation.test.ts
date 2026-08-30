@@ -146,6 +146,7 @@ test("local installer target configures Herdr toggle and GNOME-safe output drive
   assert.match(script, /prefix\+alt\+v/)
   assert.match(script, /org\.gnome\.settings-daemon\.plugins\.media-keys/)
   assert.match(script, /<Super><Alt>v/)
+  assert.match(script, /enabled-extensions/)
   assert.match(script, /voxtype\.service\.d/)
   assert.match(script, /Environment=.*PATH=/)
   assert.match(script, /eitype.*ydotool.*clipboard/)
@@ -212,4 +213,5 @@ test("GNOME Arc Reactor HUD is a state-driven optional extension", async () => {
   assert.match(stylesheet, /reduced|prefers-reduced-motion/)
   assert.match(installer, /gnome-extensions/)
   assert.match(installer, /voxtype-arc-hud@homebrew-tools\.local/)
+  assert.match(installer, /enabled-extensions/)
 })

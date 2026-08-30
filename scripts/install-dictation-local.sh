@@ -189,8 +189,12 @@ download_whisper_model() {
   mkdir -p "$models_dir"
   local partial="$whisper_model_path.part"
   printf '%s\n' "Downloading verified Whisper ${whisper_model_name} model (~1.6 GB)..."
-  curl --fail --location --http1.1 --continue-at - --retry 4 --retry-all-errors \
-    -A "voxtype/${voxtype_version}" "$whisper_model_url" -o "$partial"
+  if [[ ! -f $partial || $(stat -c %s "$partial") != "$whisper_model_size" ]]; then
+    curl --fail --location --http1.1 --continue-at - --retry 4 --retry-all-errors \
+      -A "voxtype/${voxtype_version}" "$whisper_model_url" -o "$partial"
+  else
+    printf '%s\n' "Found a complete interrupted download; verifying it without re-fetching."
+  fi
   [[ $(stat -c %s "$partial") == "$whisper_model_size" ]] \
     || die "Whisper model size mismatch"
   printf '%s  %s\n' "$whisper_model_sha256" "$partial" | sha256sum -c - \
@@ -328,7 +332,12 @@ install_arc_reactor_hud() {
   mkdir -p "$extension_dir"
   cp -- "$source_dir/metadata.json" "$source_dir/extension.js" "$source_dir/stylesheet.css" "$extension_dir/"
   if ! gnome-extensions enable "$extension_id"; then
-    printf '%s\n' "Arc Reactor HUD could not be enabled; dictation remains available." >&2
+    enabled_extensions=$(gsettings get org.gnome.shell enabled-extensions \
+      | python3 -c 'import ast, sys; print(repr(ast.literal_eval(sys.stdin.read())))')
+    enabled_extensions=$(printf '%s\n' "$enabled_extensions" \
+      | python3 -c 'import ast, sys; values=ast.literal_eval(sys.stdin.read()); item="voxtype-arc-hud@homebrew-tools.local"; values.append(item) if item not in values else None; print(repr(values))')
+    gsettings set org.gnome.shell enabled-extensions "$enabled_extensions"
+    printf '%s\n' "Arc Reactor HUD installed and queued for the next GNOME session; dictation remains available." >&2
   fi
 }
 
@@ -548,7 +557,12 @@ commands = parsed.get("keys", {}).get("command", [])
 if isinstance(commands, dict):
     commands = [commands]
 for command in commands:
-    if isinstance(command, dict) and command.get("key") == expected_key and command.get("command") != expected_command:
+    if (
+        isinstance(command, dict)
+        and command.get("key") == expected_key
+        and command.get("command") != expected_command
+        and not str(command.get("command", "")).endswith("/voxtype record toggle")
+    ):
         raise SystemExit(f"Herdr binding {expected_key} is already used by another command")
 
 marker = re.compile(r"(?ms)^# BEGIN homebrew-tools dictation binding\n.*?^# END homebrew-tools dictation binding\n?")
