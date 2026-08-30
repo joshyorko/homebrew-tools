@@ -328,8 +328,17 @@ fi
 "$voxtype_bin" info models --engine cohere --verify
 
 "$voxtype_bin" setup systemd
+voxtype_dropin_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/systemd/user/voxtype.service.d
+voxtype_dropin_path=$voxtype_dropin_dir/homebrew-path.conf
+brew_bin_dir=$(dirname -- "$brew_bin")
+mkdir -p "$voxtype_dropin_dir"
+printf '%s\n' \
+  '[Service]' \
+  "Environment=\"PATH=${brew_bin_dir}:/usr/local/bin:/usr/bin:/snap/bin\"" \
+  > "$voxtype_dropin_path"
 systemctl --user daemon-reload
-systemctl --user enable --now voxtype.service
+systemctl --user enable voxtype.service
+systemctl --user restart voxtype.service
 systemctl --user is-active --quiet voxtype.service || die "Voxtype user service is not active"
 
 herdr_config=${HERDR_CONFIG_PATH:-${user_home}/.config/herdr/config.toml}

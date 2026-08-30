@@ -132,6 +132,8 @@ test("local installer target configures Herdr toggle and GNOME-safe output drive
   assert.match(script, /prefix\+alt\+v/)
   assert.match(script, /org\.gnome\.settings-daemon\.plugins\.media-keys/)
   assert.match(script, /<Super><Alt>v/)
+  assert.match(script, /voxtype\.service\.d/)
+  assert.match(script, /Environment=.*PATH=/)
   assert.match(script, /eitype.*ydotool.*clipboard/)
   assert.match(script, /auto_submit.*false|output\.auto_submit.*false/)
   assert.match(script, /voxtype_user_agent="voxtype\/\$\{voxtype_version\}"/)
