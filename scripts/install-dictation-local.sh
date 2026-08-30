@@ -50,6 +50,7 @@ require_command curl
 require_command jq
 require_command ydotool
 require_command wl-copy
+require_command gsettings
 
 if ! ldconfig -p 2>/dev/null | grep -q 'libxkbcommon\.so\.0' && ! test -e /usr/lib64/libxkbcommon.so.0 && ! test -e /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0; then
   die "Dakota's libxkbcommon runtime is unavailable"
@@ -391,6 +392,33 @@ destination_path.write_text(source, encoding="utf-8")
 PY
 mv -- "$herdr_tmp" "$herdr_config"
 
+# Herdr's binding is convenient in its terminal, but dictation also needs a
+# desktop-global trigger for browsers and other GUI applications.
+media_keys_schema=org.gnome.settings-daemon.plugins.media-keys
+custom_binding_schema=org.gnome.settings-daemon.plugins.media-keys.custom-keybinding
+dictation_binding_path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/dictation/
+dictation_binding='<Super><Alt>v'
+mapfile -t custom_binding_paths < <(
+  gsettings get "$media_keys_schema" custom-keybindings \
+    | python3 -c 'import ast, sys; print(*ast.literal_eval(sys.stdin.read()), sep="\n")'
+)
+for binding_path in "${custom_binding_paths[@]}"; do
+  [[ $binding_path == "$dictation_binding_path" ]] && continue
+  existing_binding=$(gsettings get "$custom_binding_schema:$binding_path" binding)
+  if [[ $existing_binding == "'$dictation_binding'" ]]; then
+    die "GNOME shortcut ${dictation_binding} is already used by ${binding_path}"
+  fi
+done
+if [[ ! " ${custom_binding_paths[*]} " =~ " ${dictation_binding_path} " ]]; then
+  custom_binding_paths+=("$dictation_binding_path")
+fi
+custom_binding_list=$(printf '%s\n' "${custom_binding_paths[@]}" \
+  | python3 -c 'import sys; print(repr([line.rstrip("\n") for line in sys.stdin if line.strip()]))')
+gsettings set "$custom_binding_schema:$dictation_binding_path" name 'Dictation HUD'
+gsettings set "$custom_binding_schema:$dictation_binding_path" command "$voxtype_bin record toggle"
+gsettings set "$custom_binding_schema:$dictation_binding_path" binding "$dictation_binding"
+gsettings set "$media_keys_schema" custom-keybindings "$custom_binding_list"
+
 if "$herdr_bin" status server >/dev/null 2>&1; then
   "$herdr_bin" server reload-config
 else
@@ -399,4 +427,5 @@ fi
 
 printf '%s\n' "Installed Voxtype ${voxtype_version} (Cohere) and Eitype ${eitype_version}."
 printf '%s\n' "Hold focus in Herdr and press Ctrl+B, then Alt+V to toggle recording."
+printf '%s\n' "Press Super+Alt+V to toggle dictation in any desktop application."
 printf '%s\n' "Provenance saved to ${state_dir}/manifest.json."
