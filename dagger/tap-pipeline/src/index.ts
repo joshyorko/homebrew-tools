@@ -1775,6 +1775,65 @@ end
     }
   }
 
+  private async buildVoxtypePrebuiltArtifact(
+    tap: Directory,
+    ref: string,
+    version?: string,
+  ): Promise<VoxtypeBuild> {
+    const upstreamTag = ref.replace(/^refs\/tags\//, "")
+    const upstreamRef = dag.git("https://github.com/peteonrails/voxtype").ref(`refs/tags/${upstreamTag}`)
+    const upstreamTree = upstreamRef.tree({ discardGitDir: true })
+    const commit = await upstreamRef.commit()
+    const cargoToml = await upstreamTree.file("Cargo.toml").contents()
+    const versionMatch = cargoToml.match(/^version = "([^"]+)"/m)
+
+    if (!versionMatch) {
+      throw new Error("Failed to resolve Voxtype version from Cargo.toml")
+    }
+
+    const resolvedVersion = version && version.length > 0 ? version : versionMatch[1]
+    const assetName = `voxtype-${resolvedVersion}-homebrew-x86_64-linux.tar.gz`
+    const artifactPath = `/tmp/${assetName}`
+    const releaseBase = `https://github.com/peteonrails/voxtype/releases/download/${upstreamTag}`
+    const upstreamAsset = `voxtype-${resolvedVersion}-linux-x86_64-vulkan`
+    const checksums = await this.fetchText(`${releaseBase}/SHA256SUMS.txt`)
+    const checksumLine = checksums
+      .split("\n")
+      .find((line) => line.endsWith(`  ${upstreamAsset}`))
+    const checksum = checksumLine?.split(/\s+/, 1)[0]
+
+    if (!checksum || !/^[a-f0-9]{64}$/.test(checksum)) {
+      throw new Error(`Missing checksum for Voxtype release asset ${upstreamAsset}`)
+    }
+
+    const binaryPath = "/tmp/voxtype-prebuilt"
+    const container = this.githubApiContainer()
+      .withDirectory("/tap", tap)
+      .withDirectory("/upstream", upstreamTree)
+      .withExec([
+        "node",
+        "--input-type=module",
+        "-e",
+        renderAssetDownloadScript(),
+        `${releaseBase}/${upstreamAsset}`,
+        binaryPath,
+      ])
+      .withExec([
+        "bash",
+        "-lc",
+        `printf '%s  %s\\n' ${JSON.stringify(checksum)} ${JSON.stringify(binaryPath)} | sha256sum -c - && chmod 0755 ${JSON.stringify(binaryPath)}`,
+      ])
+
+    return {
+      artifactPath,
+      assetName,
+      commit,
+      container,
+      upstreamTag,
+      version: resolvedVersion,
+    }
+  }
+
   private async buildEitypeArtifact(tap: Directory, ref?: string, version?: string): Promise<EitypeBuild> {
     const upstreamTag = ref && ref.length > 0
       ? ref.replace(/^refs\/tags\//, "")
@@ -1951,7 +2010,7 @@ end
           "test -x \"$(brew --prefix)/bin/eitype\"",
           "voxtype --version",
           "eitype --version",
-          "voxtype info engines | grep -Eiq '(^|[[:space:]])cohere([[:space:]]|$)'",
+          "voxtype info engines | grep -Eiq '(^|[[:space:]])whisper([[:space:]]|$)'",
           "printf '%s\\n' 'Dagger dictation artifact smoke passed.'",
         ].join("\n"),
       ])
@@ -3961,11 +4020,9 @@ end
     const voxtypeRelease = await this.resolveLatestStableRelease(voxtypeRepository)
     const eitypeRelease = await this.resolveLatestStableRelease(eitypeRepository)
 
-    const voxtypeBuild = await this.buildVoxtypeArtifact(
+    const voxtypeBuild = await this.buildVoxtypePrebuiltArtifact(
       tap,
       `refs/tags/${voxtypeRelease.tagName}`,
-      undefined,
-      ["cohere"],
     )
     const voxtypeCompanions = await this.downloadVoxtypeCompanions(
       voxtypeBuild.version,
@@ -3981,7 +4038,7 @@ end
         "--upstream-dir",
         "/upstream",
         "--binary",
-        "/tmp/voxtype-avx2",
+        "/tmp/voxtype-prebuilt",
         "--osd-binary",
         voxtypeCompanions.osdPath,
         "--osd-gtk4-binary",

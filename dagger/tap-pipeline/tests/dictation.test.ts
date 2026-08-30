@@ -103,12 +103,12 @@ test("dictationManifest records immutable upstream and artifact provenance", () 
   )
 })
 
-test("Dagger exposes a local dictation bundle that builds Cohere and both latest releases", async () => {
+test("Dagger exposes a local dictation bundle and both latest releases", async () => {
   const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
 
   assert.match(source, /async dictationBundle\(/)
   assert.match(source, /selectLatestStableRelease\(/)
-  assert.match(source, /\["cohere"\]/)
+  assert.match(source, /cargoFeatures\.includes\("cohere"\)/)
   assert.match(source, /ORT_STRATEGY.*download/)
   assert.match(source, /ort\/download-binaries/)
   assert.match(source, /ort\/tls-rustls/)
@@ -119,6 +119,19 @@ test("Dagger exposes a local dictation bundle that builds Cohere and both latest
   assert.match(source, /withUser\("ubuntu"\)/)
   assert.match(source, /build-essential ca-certificates clang curl git libasound2t64/)
   assert.match(source, /dictationManifest\(/)
+})
+
+test("Dagger dictation bundle uses the verified upstream Vulkan artifact", async () => {
+  const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
+  const bundleSource = source.slice(
+    source.indexOf("async dictationBundle("),
+    source.indexOf("async recoveryExport("),
+  )
+
+  assert.match(bundleSource, /buildVoxtypePrebuiltArtifact\(/)
+  assert.match(source, /linux-x86_64-vulkan/)
+  assert.match(source, /SHA256SUMS\.txt/)
+  assert.doesNotMatch(bundleSource, /\["cohere"\]/)
 })
 
 test("local installer target configures Herdr toggle and GNOME-safe output drivers", async () => {
