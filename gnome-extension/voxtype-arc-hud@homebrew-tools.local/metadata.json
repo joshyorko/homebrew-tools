@@ -2,7 +2,7 @@
   "uuid": "voxtype-arc-hud@homebrew-tools.local",
   "name": "Voxtype Arc Reactor HUD",
   "description": "A compact, click-through recording status HUD for Voxtype.",
-  "version": 2,
+  "version": 3,
   "shell-version": ["50"],
   "session-modes": ["user"]
 }

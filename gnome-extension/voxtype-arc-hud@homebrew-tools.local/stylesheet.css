@@ -1,61 +1,86 @@
 .voxtype-arc-reactor {
-  spacing: 18px;
-  border-radius: 22px;
-  background-color: rgba(1, 10, 18, 0.91);
-  border: 1px solid rgba(92, 230, 255, 0.82);
-  box-shadow: 0 0 32px rgba(22, 202, 255, 0.42), inset 0 0 36px rgba(20, 155, 206, 0.18);
-  padding: 13px 22px;
+  spacing: 8px;
+  background-color: transparent;
 }
 
 .voxtype-arc-halo {
-  width: 164px;
-  height: 164px;
-  margin-left: 2px;
+  width: 160px;
+  height: 160px;
 }
 
-.voxtype-arc-image {
-  icon-size: 156px;
+.voxtype-arc-orbit {
+  width: 142px;
+  height: 142px;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 220, 255, 0.25);
+  border-left-color: #71ebff;
+  border-right-color: #71ebff;
+  box-shadow: 0 0 12px rgba(49, 211, 255, 0.2);
+}
+
+.voxtype-arc-ring {
+  width: 106px;
+  height: 106px;
+  border-radius: 999px;
+  border: 2px solid #48dfff;
+  box-shadow: 0 0 16px #1ccfff, inset 0 0 25px rgba(20, 210, 255, 0.35);
+}
+
+.voxtype-arc-inner {
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  border: 1px dashed #40d8ff;
+}
+
+.voxtype-arc-core-outer {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid #baf7ff;
+  background-color: rgba(20, 205, 255, 0.13);
+  box-shadow: 0 0 18px rgba(43, 221, 255, 0.78), inset 0 0 18px rgba(40, 213, 255, 0.36);
+}
+
+.voxtype-arc-core-inner {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background-color: #25cfff;
+  box-shadow: 0 0 13px #25cfff;
+}
+
+.voxtype-arc-core-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background-color: #d9fbff;
+  box-shadow: 0 0 11px #d9fbff;
 }
 
 .voxtype-arc-pip {
-  width: 9px;
-  height: 9px;
-  margin-top: 9px;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
   background-color: #ff4b6e;
   border-radius: 999px;
-  box-shadow: 0 0 13px #ff315b;
+  box-shadow: 0 0 9px #ff315b;
 }
 
-.voxtype-arc-info {
-  width: 188px;
-  spacing: 8px;
-  margin-top: 38px;
+.voxtype-arc-status {
+  spacing: 0;
 }
 
-.voxtype-arc-eyebrow {
-  color: rgba(89, 224, 255, 0.78);
+.voxtype-arc-label {
+  color: #8cecff;
   font-family: monospace;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: bold;
   letter-spacing: 2px;
 }
 
-.voxtype-arc-label {
-  color: #e1fbff;
-  font-size: 15px;
-  font-weight: bold;
-  letter-spacing: 4px;
-}
-
-.voxtype-arc-timer {
-  color: rgba(113, 232, 255, 0.9);
-  font-family: monospace;
-  font-size: 15px;
-}
-
 .voxtype-arc-reactor.transcribing {
-  border-color: rgba(255, 219, 112, 0.84);
-  box-shadow: 0 0 34px rgba(255, 205, 88, 0.34), inset 0 0 34px rgba(255, 208, 85, 0.12);
+  color: #ffd166;
 }
 
 .voxtype-arc-reactor.transcribing .voxtype-arc-pip {
@@ -64,7 +89,7 @@
 }
 
 .voxtype-arc-reactor.error {
-  border-color: rgba(255, 91, 111, 0.8);
+  color: #ff5b6f;
 }
 
 /* reduced motion is honored by stopping the active ticker on every non-recording state. */
