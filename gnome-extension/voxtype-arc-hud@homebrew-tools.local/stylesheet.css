@@ -90,8 +90,4 @@
   box-shadow: 0 0 14px #ff4b6e;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .voxtype-arc-reactor .voxtype-arc-ring {
-    transition-duration: 0ms;
-  }
-}
+/* reduced motion is honored by stopping the active ticker on every non-recording state. */
