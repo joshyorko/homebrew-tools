@@ -4121,6 +4121,7 @@ end
       .withNewFile("homebrew/voxtype.rb", voxtypeFormula)
       .withNewFile("homebrew/eitype.rb", eitypeFormula)
       .withNewFile("manifest.json", json(manifest))
+      .withFile("acceptance/speech_long.wav", upstreamTree.file("tests/fixtures/vad/speech_long.wav"))
       .withNewFile("ci.log", ciLog)
   }
 
