@@ -39,6 +39,8 @@ require_command python3
 require_command sha256sum
 require_command systemctl
 require_command git
+require_command curl
+require_command jq
 require_command ydotool
 require_command wl-copy
 
@@ -48,7 +50,6 @@ fi
 
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_ENV_HINTS=1
-export HOMEBREW_NO_INSTALL_FROM_API=1
 
 bundle_dir=$(mktemp -d "${TMPDIR:-/tmp}/homebrew-tools-dictation.XXXXXX")
 cleanup() {
@@ -131,6 +132,12 @@ verify_artifact() {
 verify_artifact "$voxtype_artifact" "$voxtype_sha256"
 verify_artifact "$eitype_artifact" "$eitype_sha256"
 
+artifact_dir="$state_dir/artifacts"
+mkdir -p "$artifact_dir"
+cp -- "$manifest_path" "$state_dir/manifest.json"
+cp -- "$bundle_dir/artifacts/$voxtype_artifact" "$artifact_dir/$voxtype_artifact"
+cp -- "$bundle_dir/artifacts/$eitype_artifact" "$artifact_dir/$eitype_artifact"
+
 render_formula() {
   local source_formula=$1
   local destination_formula=$2
@@ -145,12 +152,12 @@ source_path, destination_path, artifact_path = map(Path, sys.argv[1:])
 text = source_path.read_text(encoding="utf-8")
 
 for label in ("url", "version", "sha256"):
-    matches = re.findall(rf"^\\s*{label}\\s+\"[^\"]+\"\\s*$", text, re.MULTILINE)
+    matches = re.findall(rf"^\s*{label}\s+\"[^\"]+\"\s*$", text, re.MULTILINE)
     if len(matches) != 1:
         raise SystemExit(f"formula must contain exactly one {label} stanza")
 
 text = re.sub(
-    r"^(\\s*url\\s+)\"[^\"]+\"\\s*$",
+    r"^(\s*url\s+)\"[^\"]+\"\s*$",
     lambda match: f'{match.group(1)}"{artifact_path.resolve().as_uri()}"',
     text,
     count=1,
@@ -162,8 +169,17 @@ PY
 
 local_formula_dir="$bundle_dir/local"
 mkdir -p "$local_formula_dir"
-render_formula "$bundle_dir/homebrew/voxtype.rb" "$local_formula_dir/voxtype.rb" "$bundle_dir/artifacts/$voxtype_artifact"
-render_formula "$bundle_dir/homebrew/eitype.rb" "$local_formula_dir/eitype.rb" "$bundle_dir/artifacts/$eitype_artifact"
+render_formula "$bundle_dir/homebrew/voxtype.rb" "$local_formula_dir/voxtype.rb" "$artifact_dir/$voxtype_artifact"
+render_formula "$bundle_dir/homebrew/eitype.rb" "$local_formula_dir/eitype.rb" "$artifact_dir/$eitype_artifact"
+
+tap_name=local/dictation
+if ! "$brew_bin" tap | grep -Fxq "$tap_name"; then
+  "$brew_bin" tap-new "$tap_name"
+fi
+local_tap_dir=$("$brew_bin" --repository "$tap_name")
+mkdir -p "$local_tap_dir/Formula"
+cp -- "$local_formula_dir/voxtype.rb" "$local_tap_dir/Formula/voxtype.rb"
+cp -- "$local_formula_dir/eitype.rb" "$local_tap_dir/Formula/eitype.rb"
 
 version_is_newer() {
   local left=$1
@@ -177,7 +193,7 @@ install_formula() {
   local formula_path=$3
   local current_version
 
-  current_version=$("$brew_bin" list --versions "$package_id" 2>/dev/null | awk '{print $NF}' || true)
+  current_version=$("$brew_bin" list --versions "$formula_path" 2>/dev/null | awk '{print $NF}' || true)
   if [[ -n $current_version ]] && version_is_newer "$current_version" "$target_version"; then
     if [[ $package_id == voxtype ]] && ! voxtype info engines 2>/dev/null | grep -Eiq '(^|[[:space:]])cohere([[:space:]]|$)'; then
       die "installed Voxtype ${current_version} is newer but lacks Cohere support; refusing to downgrade it"
@@ -193,16 +209,13 @@ install_formula() {
   fi
 }
 
-install_formula voxtype "$voxtype_version" "$local_formula_dir/voxtype.rb"
-install_formula eitype "$eitype_version" "$local_formula_dir/eitype.rb"
-"$brew_bin" test voxtype
-"$brew_bin" test eitype
+install_formula voxtype "$voxtype_version" "$tap_name/voxtype"
+install_formula eitype "$eitype_version" "$tap_name/eitype"
+"$brew_bin" test "$tap_name/voxtype"
+"$brew_bin" test "$tap_name/eitype"
 
-mkdir -p "$state_dir"
-cp -- "$manifest_path" "$state_dir/manifest.json"
-
-voxtype_bin=$("$brew_bin" --prefix voxtype)/bin/voxtype
-eitype_bin=$("$brew_bin" --prefix eitype)/bin/eitype
+voxtype_bin=$("$brew_bin" --prefix "$tap_name/voxtype")/bin/voxtype
+eitype_bin=$("$brew_bin" --prefix "$tap_name/eitype")/bin/eitype
 [[ -x $voxtype_bin ]] || die "Voxtype binary was not linked"
 [[ -x $eitype_bin ]] || die "Eitype binary was not linked"
 
@@ -210,7 +223,7 @@ config_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/voxtype
 config_path="$config_dir/config.toml"
 mkdir -p "$config_dir"
 if [[ ! -f $config_path ]]; then
-  default_config=$("$brew_bin" --prefix voxtype)/share/voxtype/default.toml
+  default_config=$("$brew_bin" --prefix "$tap_name/voxtype")/share/voxtype/default.toml
   [[ -f $default_config ]] || die "Voxtype default config is missing"
   cp -- "$default_config" "$config_path"
 fi
@@ -228,7 +241,6 @@ cp -- "$config_path" "$backup_path"
 "$voxtype_bin" config set cohere.language en
 "$voxtype_bin" config set hotkey.enabled false
 "$voxtype_bin" config set hotkey.mode toggle
-"$voxtype_bin" config set state_file auto
 "$voxtype_bin" config set output.mode type
 "$voxtype_bin" config set output.fallback_to_clipboard true
 "$voxtype_bin" config set output.auto_submit false
@@ -281,8 +293,25 @@ mv -- "$config_tmp" "$config_path"
 models_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/voxtype/models
 cohere_model_dir="$models_dir/cohere-transcribe-q4f16"
 if [[ ! -d $cohere_model_dir ]] || ! find "$cohere_model_dir" -type f -print -quit | grep -q .; then
-  printf '%s\n' "Voxtype needs the Cohere q4f16 model. Select cohere-transcribe-q4f16 in the interactive model selector."
-  "$voxtype_bin" setup model
+  cohere_base_url=https://models.voxtype.io/cohere/cohere-transcribe-q4f16
+  cohere_manifest="$bundle_dir/cohere-manifest.json"
+  voxtype_user_agent="voxtype/${voxtype_version}"
+  printf '%s\n' "Downloading the verified Cohere q4f16 model..."
+  curl --fail --location --retry 4 --retry-all-errors -A "$voxtype_user_agent" \
+    "$cohere_base_url/manifest.json" -o "$cohere_manifest"
+  jq -e '.version == 1 and .engine == "cohere" and .model == "cohere-transcribe-q4f16"' \
+    "$cohere_manifest" >/dev/null
+  mkdir -p "$cohere_model_dir"
+  jq -r '.files[] | [.path,.sha256] | @tsv' "$cohere_manifest" |
+    while IFS=$'\t' read -r model_file expected_sha256; do
+      destination="$cohere_model_dir/$model_file"
+      partial="$destination.part"
+      curl --fail --location --retry 4 --retry-all-errors -A "$voxtype_user_agent" \
+        "$cohere_base_url/$model_file" -o "$partial"
+      printf '%s  %s\n' "$expected_sha256" "$partial" | sha256sum -c -
+      mv -- "$partial" "$destination"
+    done
+  cp -- "$cohere_manifest" "$cohere_model_dir/.voxtype-manifest.json"
 fi
 
 "$voxtype_bin" config set engine cohere
@@ -332,7 +361,7 @@ for command in commands:
     if isinstance(command, dict) and command.get("key") == expected_key and command.get("command") != expected_command:
         raise SystemExit(f"Herdr binding {expected_key} is already used by another command")
 
-marker = re.compile(r"(?ms)^# BEGIN homebrew-tools dictation binding\\n.*?^# END homebrew-tools dictation binding\\n?")
+marker = re.compile(r"(?ms)^# BEGIN homebrew-tools dictation binding\n.*?^# END homebrew-tools dictation binding\n?")
 source = marker.sub("", source)
 if not any(
     isinstance(command, dict)
@@ -340,15 +369,15 @@ if not any(
     and command.get("command") == expected_command
     for command in commands
 ):
-    if source and not source.endswith("\\n"):
-        source += "\\n"
+    if source and not source.endswith("\n"):
+        source += "\n"
     source += (
-        "\\n# BEGIN homebrew-tools dictation binding\\n"
-        "[[keys.command]]\\n"
-        f'key = "{expected_key}"\\n'
-        'type = "shell"\\n'
-        f'command = "{expected_command}"\\n'
-        "# END homebrew-tools dictation binding\\n"
+        "\n# BEGIN homebrew-tools dictation binding\n"
+        "[[keys.command]]\n"
+        f'key = "{expected_key}"\n'
+        'type = "shell"\n'
+        f'command = "{expected_command}"\n'
+        "# END homebrew-tools dictation binding\n"
     )
 
 destination_path.write_text(source, encoding="utf-8")

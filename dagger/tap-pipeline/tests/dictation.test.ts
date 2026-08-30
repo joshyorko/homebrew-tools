@@ -127,7 +127,11 @@ test("local installer target configures Herdr toggle and GNOME-safe output drive
 
   assert.match(makefile, /dictation-install/)
   assert.match(script, /--git-dir/)
+  assert.match(script, /tap_name=local\/dictation/)
+  assert.match(script, /tap-new/)
   assert.match(script, /prefix\+alt\+v/)
   assert.match(script, /eitype.*ydotool.*clipboard/)
   assert.match(script, /auto_submit.*false|output\.auto_submit.*false/)
+  assert.match(script, /voxtype_user_agent="voxtype\/\$\{voxtype_version\}"/)
+  assert.match(script, /\.voxtype-manifest\.json/)
 })
