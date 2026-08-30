@@ -588,10 +588,10 @@ That smoke test exercises the real delivery path:
 
 ### Voxtype (Formula)
 
-Voxtype packaged for Linux Homebrew as a pinned release artifact built from upstream source.
-The tap's generic Dagger platform compiles Voxtype from the latest upstream GitHub release tag,
-packages a Homebrew-friendly tarball, smoke-tests installation through Linuxbrew, uploads
-that tarball to this repository's releases, and updates the formula to point at the new asset.
+Voxtype packaged for Linux Homebrew from the latest stable upstream release. The normal tap
+pipeline keeps the release artifact contract; the Dakota local installer selects the verified
+upstream Vulkan executable, downloads Whisper `large-v3-turbo`, and configures the NVIDIA GPU
+without layering CUDA packages onto the immutable host.
 
 > [!NOTE]
 > Use the full tap path to make it explicit that this package is delivered from this tap's

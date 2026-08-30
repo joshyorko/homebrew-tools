@@ -46,11 +46,9 @@ class Voxtype < Formula
         voxtype setup --download
         voxtype setup systemd
 
-      Runtime backends such as `wtype`, `wl-clipboard`, `dotool`, or `ydotool` still
-      come from your host OS package manager. `eitype` for GNOME/KDE Wayland can be
-      installed from this tap with `brew install eitype`. On Bluefin and other
-      immutable Linux systems, install the host-managed tools with `rpm-ostree`,
-      `dnf`, or your preferred host package flow.
+      The local Dakota installer uses the upstream Vulkan build and Whisper
+      large-v3-turbo when an NVIDIA Vulkan device is available. `eitype` for
+      GNOME/KDE Wayland can be installed from this tap with `brew install eitype`.
     EOS
   end
 end

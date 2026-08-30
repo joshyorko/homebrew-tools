@@ -18,7 +18,7 @@ No CUDA toolkit, host package layering, cloud transcription, GitHub publication,
 
 The Dagger dictation bundle resolves the latest stable upstream Voxtype release, downloads the Vulkan executable and required companion assets, and verifies every asset against that release's `SHA256SUMS.txt`. The Homebrew formula packages the verified executable without rebuilding it.
 
-The installer resolves the `large-v3-turbo` model from its canonical Hugging Face repository, obtains the immutable LFS SHA-256 metadata, downloads atomically to a `.part` file, verifies the digest, checks the GGML header, and only then moves it into the Voxtype model directory. The resolved release, model revision, asset names, and digests are recorded in the local provenance manifest.
+The installer resolves the `large-v3-turbo` model from its canonical Hugging Face repository, obtains the immutable LFS SHA-256 metadata, downloads atomically to a `.part` file, verifies the digest, checks the GGML header, and only then moves it into Voxtype's model directory. The resolved release, model revision, asset names, and digests are recorded in the local provenance manifest.
 
 ## Staged Runtime Acceptance
 
