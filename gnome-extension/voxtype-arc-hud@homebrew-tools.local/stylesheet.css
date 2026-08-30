@@ -1,0 +1,97 @@
+.voxtype-arc-reactor {
+  spacing: 8px;
+  border-radius: 16px;
+  background-color: rgba(2, 12, 20, 0.88);
+  border: 1px solid rgba(91, 229, 255, 0.7);
+  box-shadow: 0 0 18px rgba(24, 197, 255, 0.3), inset 0 0 22px rgba(20, 155, 206, 0.13);
+  padding: 12px 18px;
+}
+
+.voxtype-arc-halo {
+  width: 72px;
+  height: 72px;
+  margin-left: 10px;
+  margin-right: 4px;
+}
+
+.voxtype-arc-ring,
+.voxtype-arc-core,
+.voxtype-arc-pip {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+}
+
+.voxtype-arc-ring-outer {
+  border: 2px solid rgba(68, 225, 255, 0.9);
+  border-left-color: rgba(68, 225, 255, 0.15);
+  border-right-color: rgba(68, 225, 255, 0.4);
+  box-shadow: 0 0 14px rgba(57, 221, 255, 0.6);
+}
+
+.voxtype-arc-ring-inner {
+  width: 56px;
+  height: 56px;
+  margin: 8px;
+  border: 1px dashed rgba(127, 239, 255, 0.85);
+}
+
+.voxtype-arc-core {
+  width: 30px;
+  height: 30px;
+  margin: 21px;
+  background-color: rgba(97, 232, 255, 0.22);
+  border: 2px solid #b9f7ff;
+  box-shadow: 0 0 14px #2bd7ff, inset 0 0 12px #36dfff;
+}
+
+.voxtype-arc-pip {
+  width: 7px;
+  height: 7px;
+  margin: 2px 0 0 32px;
+  background-color: #ff4b6e;
+  box-shadow: 0 0 9px #ff315b;
+}
+
+.voxtype-arc-label {
+  color: #b9f6ff;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-top: 27px;
+}
+
+.voxtype-arc-timer {
+  color: rgba(130, 231, 255, 0.82);
+  font-family: monospace;
+  font-size: 12px;
+  margin-top: 47px;
+}
+
+.voxtype-arc-reactor.transcribing .voxtype-arc-core {
+  background-color: rgba(255, 220, 111, 0.3);
+  border-color: #fff1b3;
+  box-shadow: 0 0 17px #ffd56d, inset 0 0 12px #ffe8a2;
+}
+
+.voxtype-arc-reactor.transcribing .voxtype-arc-pip {
+  background-color: #ffd166;
+  box-shadow: 0 0 9px #ffd166;
+}
+
+.voxtype-arc-reactor.error {
+  border-color: rgba(255, 91, 111, 0.8);
+}
+
+.voxtype-arc-reactor.error .voxtype-arc-core {
+  background-color: rgba(255, 75, 100, 0.3);
+  border-color: #ff8b9d;
+  box-shadow: 0 0 14px #ff4b6e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voxtype-arc-reactor .voxtype-arc-ring {
+    transition-duration: 0ms;
+  }
+}

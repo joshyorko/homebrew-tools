@@ -179,3 +179,33 @@ test("local dictation package ships the native GTK4 HUD toolchain", async () => 
     assert.match(formula, new RegExp(executable))
   }
 })
+
+test("GNOME Arc Reactor HUD is a state-driven optional extension", async () => {
+  const installer = await readFile(new URL("../../../scripts/install-dictation-local.sh", import.meta.url), "utf8")
+  const metadata = await readFile(
+    new URL("../../../gnome-extension/voxtype-arc-hud@homebrew-tools.local/metadata.json", import.meta.url),
+    "utf8",
+  )
+  const extension = await readFile(
+    new URL("../../../gnome-extension/voxtype-arc-hud@homebrew-tools.local/extension.js", import.meta.url),
+    "utf8",
+  )
+  const stylesheet = await readFile(
+    new URL("../../../gnome-extension/voxtype-arc-hud@homebrew-tools.local/stylesheet.css", import.meta.url),
+    "utf8",
+  )
+
+  assert.match(metadata, /"shell-version"\s*:\s*\[\s*"50"\s*\]/)
+  assert.match(metadata, /voxtype-arc-hud@homebrew-tools\.local/)
+  assert.match(extension, /export default class/)
+  assert.match(extension, /enable\(\)/)
+  assert.match(extension, /disable\(\)/)
+  assert.match(extension, /get_user_runtime_dir\(\)/)
+  assert.match(extension, /FileMonitor/)
+  assert.match(extension, /recording|transcribing|idle|error/)
+  assert.match(extension, /reactive:\s*false/)
+  assert.match(stylesheet, /arc-reactor/)
+  assert.match(stylesheet, /reduced|prefers-reduced-motion/)
+  assert.match(installer, /gnome-extensions/)
+  assert.match(installer, /voxtype-arc-hud@homebrew-tools\.local/)
+})

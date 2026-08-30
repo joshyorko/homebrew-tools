@@ -51,6 +51,7 @@ require_command jq
 require_command ydotool
 require_command wl-copy
 require_command gsettings
+require_command gnome-extensions
 
 if ! ldconfig -p 2>/dev/null | grep -q 'libxkbcommon\.so\.0' && ! test -e /usr/lib64/libxkbcommon.so.0 && ! test -e /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0; then
   die "Dakota's libxkbcommon runtime is unavailable"
@@ -292,6 +293,19 @@ rollback_vulkan_candidate() {
   systemctl --user restart voxtype.service || true
 }
 
+install_arc_reactor_hud() {
+  local extension_id=voxtype-arc-hud@homebrew-tools.local
+  local source_dir="$repo_root/gnome-extension/$extension_id"
+  local extension_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/gnome-shell/extensions/$extension_id
+  [[ -f $source_dir/metadata.json && -f $source_dir/extension.js && -f $source_dir/stylesheet.css ]] \
+    || die "Arc Reactor GNOME extension sources are missing"
+  mkdir -p "$extension_dir"
+  cp -- "$source_dir/metadata.json" "$source_dir/extension.js" "$source_dir/stylesheet.css" "$extension_dir/"
+  if ! gnome-extensions enable "$extension_id"; then
+    printf '%s\n' "Arc Reactor HUD could not be enabled; dictation remains available." >&2
+  fi
+}
+
 config_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/voxtype
 config_path="$config_dir/config.toml"
 mkdir -p "$config_dir"
@@ -471,6 +485,7 @@ if ! systemctl --user restart voxtype.service || ! systemctl --user is-active --
   rollback_vulkan_candidate
   die "Voxtype Vulkan candidate failed post-install health check"
 fi
+install_arc_reactor_hud
 
 herdr_config=${HERDR_CONFIG_PATH:-${user_home}/.config/herdr/config.toml}
 herdr_config_dir=$(dirname -- "$herdr_config")
@@ -568,4 +583,5 @@ fi
 printf '%s\n' "Installed Voxtype ${voxtype_version} (Whisper Vulkan) and Eitype ${eitype_version}."
 printf '%s\n' "Hold focus in Herdr and press Ctrl+B, then Alt+V to toggle recording."
 printf '%s\n' "Press Super+Alt+V to toggle dictation in any desktop application."
+printf '%s\n' "Arc Reactor HUD installed for GNOME Shell."
 printf '%s\n' "Provenance saved to ${state_dir}/manifest.json."
