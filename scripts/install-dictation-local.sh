@@ -189,7 +189,7 @@ download_whisper_model() {
   mkdir -p "$models_dir"
   local partial="$whisper_model_path.part"
   printf '%s\n' "Downloading verified Whisper ${whisper_model_name} model (~1.6 GB)..."
-  curl --fail --location --retry 4 --retry-all-errors \
+  curl --fail --location --http1.1 --continue-at - --retry 4 --retry-all-errors \
     -A "voxtype/${voxtype_version}" "$whisper_model_url" -o "$partial"
   [[ $(stat -c %s "$partial") == "$whisper_model_size" ]] \
     || die "Whisper model size mismatch"

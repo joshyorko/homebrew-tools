@@ -162,6 +162,7 @@ test("local installer stages Whisper Vulkan safely before switching service", as
   assert.match(script, /huggingface\.co\/api\/models/)
   assert.match(script, /ggml-large-v3-turbo\.bin/)
   assert.match(script, /\.part/)
+  assert.match(script, /--continue-at -/)
   assert.match(script, /VOXTYPE_VULKAN_DEVICE=nvidia/)
   assert.match(script, /whisper\.flash_attention/)
   assert.match(script, /rollback/i)
