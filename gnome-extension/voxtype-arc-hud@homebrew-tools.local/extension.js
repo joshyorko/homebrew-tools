@@ -3,8 +3,8 @@ import Gio from "gi://Gio"
 import GLib from "gi://GLib"
 import GObject from "gi://GObject"
 import St from "gi://St"
-import Main from "resource:///org/gnome/shell/ui/main.js"
-import * as Extension from "resource:///org/gnome/shell/extensions/extension.js"
+import * as Main from "resource:///org/gnome/shell/ui/main.js"
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js"
 
 const UUID = "voxtype-arc-hud@homebrew-tools.local"
 const IDLE = "idle"
@@ -13,11 +13,13 @@ const TRANSCRIBING = "transcribing"
 const ERROR = "error"
 
 const ArcReactor = GObject.registerClass(
-  class ArcReactor extends St.Widget {
+  class ArcReactor extends St.BoxLayout {
     _init() {
       super._init({
         style_class: "voxtype-arc-reactor",
-        layout_manager: new Clutter.BinLayout(),
+        vertical: false,
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
         reactive: false,
         can_focus: false,
         visible: false,
@@ -30,21 +32,42 @@ const ArcReactor = GObject.registerClass(
       this._errorTimer = 0
       this._monitor = null
 
-      this._halo = new St.Widget({ style_class: "voxtype-arc-halo" })
-      this._outerRing = new St.Widget({ style_class: "voxtype-arc-ring voxtype-arc-ring-outer" })
-      this._innerRing = new St.Widget({ style_class: "voxtype-arc-ring voxtype-arc-ring-inner" })
-      this._core = new St.Widget({ style_class: "voxtype-arc-core" })
-      this._pip = new St.Widget({ style_class: "voxtype-arc-pip" })
+      this._halo = new St.Widget({
+        style_class: "voxtype-arc-halo",
+        layout_manager: new Clutter.BinLayout(),
+      })
+      this._outerRing = new St.Widget({
+        style_class: "voxtype-arc-ring voxtype-arc-ring-outer",
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      this._innerRing = new St.Widget({
+        style_class: "voxtype-arc-ring voxtype-arc-ring-inner",
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      this._core = new St.Widget({
+        style_class: "voxtype-arc-core",
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      this._pip = new St.Widget({
+        style_class: "voxtype-arc-pip",
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.START,
+      })
       this._label = new St.Label({ style_class: "voxtype-arc-label", text: "READY" })
       this._timer = new St.Label({ style_class: "voxtype-arc-timer", text: "" })
+      this._info = new St.BoxLayout({ style_class: "voxtype-arc-info", vertical: true })
 
       this._halo.add_child(this._outerRing)
       this._halo.add_child(this._innerRing)
       this._halo.add_child(this._core)
       this._halo.add_child(this._pip)
+      this._info.add_child(this._label)
+      this._info.add_child(this._timer)
       this.add_child(this._halo)
-      this.add_child(this._label)
-      this.add_child(this._timer)
+      this.add_child(this._info)
 
       const statePath = GLib.build_filenamev([GLib.get_user_runtime_dir(), "voxtype", "state"])
       this._stateFile = Gio.File.new_for_path(statePath)
@@ -64,10 +87,10 @@ const ArcReactor = GObject.registerClass(
     _position() {
       const monitor = Main.layoutManager.primaryMonitor
       if (!monitor) return
-      this.set_size(260, 126)
+      this.set_size(260, 104)
       this.set_position(
         Math.floor(monitor.x + (monitor.width - 260) / 2),
-        Math.floor(monitor.y + monitor.height - 166),
+        Math.floor(monitor.y + monitor.height - 144),
       )
     }
 
@@ -152,7 +175,7 @@ const ArcReactor = GObject.registerClass(
   },
 )
 
-export default class VoxtypeArcHudExtension extends Extension.Extension {
+export default class VoxtypeArcHudExtension extends Extension {
   enable() {
     this._hud = new ArcReactor()
   }

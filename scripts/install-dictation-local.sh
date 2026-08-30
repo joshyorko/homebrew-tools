@@ -455,6 +455,7 @@ cp -- "$config_path" "$backup_path"
 "$voxtype_bin" config set output.mode type
 "$voxtype_bin" config set output.fallback_to_clipboard true
 "$voxtype_bin" config set output.auto_submit false
+"$voxtype_bin" config set osd.enabled false
 
 config_tmp=$(mktemp "$config_path.tmp.XXXXXX")
 python3 - "$config_path" "$config_tmp" <<'PY'
