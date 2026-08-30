@@ -1,4 +1,5 @@
 import Clutter from "gi://Clutter"
+import Cairo from "gi://cairo"
 import Gio from "gi://Gio"
 import GLib from "gi://GLib"
 import GObject from "gi://GObject"
@@ -11,6 +12,109 @@ const IDLE = "idle"
 const RECORDING = "recording"
 const TRANSCRIBING = "transcribing"
 const ERROR = "error"
+
+const ReactorCanvas = GObject.registerClass(
+  class ReactorCanvas extends St.DrawingArea {
+    _init() {
+      super._init({
+        width: 160,
+        height: 160,
+        reactive: false,
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      this._angle = 0
+      this._processing = false
+    }
+
+    setFrame(angle, processing) {
+      this._angle = angle
+      this._processing = processing
+      this.queue_repaint()
+    }
+
+    _strokeGlow(cr, cx, cy, radius, red, green, blue, alpha, width = 2) {
+      for (const [extra, glowAlpha] of [[10, 0.035], [6, 0.07], [3, 0.16]]) {
+        cr.setLineWidth(width + extra)
+        cr.setSourceRGBA(red, green, blue, glowAlpha)
+        cr.arc(cx, cy, radius, 0, Math.PI * 2)
+        cr.stroke()
+      }
+      cr.setLineWidth(width)
+      cr.setSourceRGBA(red, green, blue, alpha)
+      cr.arc(cx, cy, radius, 0, Math.PI * 2)
+      cr.stroke()
+    }
+
+    vfunc_repaint() {
+      const [width, height] = this.get_surface_size()
+      const cr = this.get_context()
+      const cx = width / 2
+      const cy = height / 2
+      const scale = Math.min(width, height) / 160
+      const angle = this._angle * Math.PI / 180
+      const cyan = this._processing ? [1.0, 0.82, 0.34] : [0.28, 0.87, 1.0]
+
+      cr.setOperator(Cairo.Operator.CLEAR)
+      cr.paint()
+      cr.setOperator(Cairo.Operator.OVER)
+      cr.setLineCap(Cairo.LineCap.ROUND)
+
+      cr.setLineWidth(1 * scale)
+      cr.setSourceRGBA(0.24, 0.86, 1.0, 0.24)
+      cr.arc(cx, cy, 71 * scale, 0, Math.PI * 2)
+      cr.stroke()
+
+      cr.setLineWidth(1.6 * scale)
+      cr.setSourceRGBA(...cyan, 0.92)
+      for (const start of [angle, angle + Math.PI]) {
+        cr.arc(cx, cy, 71 * scale, start, start + 0.72)
+        cr.stroke()
+      }
+
+      this._strokeGlow(cr, cx, cy, 53 * scale, ...cyan, 0.96, 2 * scale)
+
+      cr.save()
+      cr.setDash([4 * scale, 4 * scale], this._angle * 0.12)
+      cr.setLineWidth(1 * scale)
+      cr.setSourceRGBA(0.25, 0.85, 1.0, 0.86)
+      cr.arc(cx, cy, 42 * scale, 0, Math.PI * 2)
+      cr.stroke()
+      cr.restore()
+
+      cr.setLineWidth(1 * scale)
+      for (let index = 0; index < 24; index += 1) {
+        const tick = angle * 0.35 + index * Math.PI / 12
+        const inner = (index % 3 === 0 ? 57 : 60) * scale
+        const outer = 65 * scale
+        cr.setSourceRGBA(0.32, 0.89, 1.0, index % 3 === 0 ? 0.72 : 0.34)
+        cr.moveTo(cx + Math.cos(tick) * inner, cy + Math.sin(tick) * inner)
+        cr.lineTo(cx + Math.cos(tick) * outer, cy + Math.sin(tick) * outer)
+        cr.stroke()
+      }
+
+      const outerCore = new Cairo.RadialGradient(cx, cy, 2 * scale, cx, cy, 27 * scale)
+      outerCore.addColorStopRGBA(0, 0.85, 0.99, 1.0, 1.0)
+      outerCore.addColorStopRGBA(0.22, 0.15, 0.82, 1.0, 0.96)
+      outerCore.addColorStopRGBA(0.55, 0.05, 0.65, 0.88, 0.38)
+      outerCore.addColorStopRGBA(1, 0.04, 0.35, 0.5, 0.03)
+      cr.setSource(outerCore)
+      cr.arc(cx, cy, 27 * scale, 0, Math.PI * 2)
+      cr.fill()
+
+      this._strokeGlow(cr, cx, cy, 26 * scale, 0.73, 0.97, 1.0, 0.94, 1 * scale)
+
+      cr.setSourceRGBA(0.15, 0.81, 1.0, 0.95)
+      cr.arc(cx, cy, 12 * scale, 0, Math.PI * 2)
+      cr.fill()
+      cr.setSourceRGBA(0.86, 0.99, 1.0, 1.0)
+      cr.arc(cx, cy, 4.5 * scale, 0, Math.PI * 2)
+      cr.fill()
+
+      cr.$dispose()
+    }
+  },
+)
 
 const ArcReactor = GObject.registerClass(
   class ArcReactor extends St.BoxLayout {
@@ -32,40 +136,7 @@ const ArcReactor = GObject.registerClass(
       this._errorTimer = 0
       this._monitor = null
 
-      this._halo = new St.Widget({
-        style_class: "voxtype-arc-halo",
-        layout_manager: new Clutter.BinLayout(),
-      })
-      this._orbit = new St.Widget({
-        style_class: "voxtype-arc-orbit",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._arc = new St.Widget({
-        style_class: "voxtype-arc-ring",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._inner = new St.Widget({
-        style_class: "voxtype-arc-inner",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._coreOuter = new St.Widget({
-        style_class: "voxtype-arc-core-outer",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._coreInner = new St.Widget({
-        style_class: "voxtype-arc-core-inner",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      this._coreDot = new St.Widget({
-        style_class: "voxtype-arc-core-dot",
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-      })
+      this._canvas = new ReactorCanvas()
       this._pip = new St.Widget({
         style_class: "voxtype-arc-pip",
         y_align: Clutter.ActorAlign.CENTER,
@@ -77,15 +148,9 @@ const ArcReactor = GObject.registerClass(
         x_align: Clutter.ActorAlign.CENTER,
       })
 
-      this._halo.add_child(this._orbit)
-      this._halo.add_child(this._arc)
-      this._halo.add_child(this._inner)
-      this._halo.add_child(this._coreOuter)
-      this._halo.add_child(this._coreInner)
-      this._halo.add_child(this._coreDot)
       this._status.add_child(this._pip)
       this._status.add_child(this._label)
-      this.add_child(this._halo)
+      this.add_child(this._canvas)
       this.add_child(this._status)
 
       const statePath = GLib.build_filenamev([GLib.get_user_runtime_dir(), "voxtype", "state"])
@@ -168,11 +233,7 @@ const ArcReactor = GObject.registerClass(
         }
         const speed = this._state === TRANSCRIBING ? 4.5 : 2.5
         this._rotation = (this._rotation + speed) % 360
-        this._arc.rotation_angle_z = this._rotation
-        this._orbit.rotation_angle_z = -this._rotation * 0.7
-        this._coreOuter.opacity = this._state === TRANSCRIBING
-          ? 150 + Math.floor(105 * Math.abs(Math.sin(this._rotation * Math.PI / 45)))
-          : 255
+        this._canvas.setFrame(this._rotation, this._state === TRANSCRIBING)
         return GLib.SOURCE_CONTINUE
       })
     }
