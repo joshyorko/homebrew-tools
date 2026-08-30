@@ -10,3 +10,4 @@ dist/
 .venv-codex-desktop-setup/
 __pycache__/
 *.py[cod]
+.superpowers/
