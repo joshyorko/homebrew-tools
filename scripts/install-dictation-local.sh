@@ -51,7 +51,6 @@ require_command jq
 require_command ydotool
 require_command wl-copy
 require_command gsettings
-require_command gnome-extensions
 
 if ! ldconfig -p 2>/dev/null | grep -q 'libxkbcommon\.so\.0' && ! test -e /usr/lib64/libxkbcommon.so.0 && ! test -e /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0; then
   die "Dakota's libxkbcommon runtime is unavailable"
@@ -321,24 +320,6 @@ rollback_vulkan_candidate() {
   cp -- "$backup_path" "$config_path"
   systemctl --user daemon-reload
   systemctl --user restart voxtype.service || true
-}
-
-install_arc_reactor_hud() {
-  local extension_id=voxtype-arc-hud@homebrew-tools.local
-  local source_dir="$repo_root/gnome-extension/$extension_id"
-  local extension_dir=${XDG_DATA_HOME:-${user_home}/.local/share}/gnome-shell/extensions/$extension_id
-  [[ -f $source_dir/metadata.json && -f $source_dir/extension.js && -f $source_dir/stylesheet.css ]] \
-    || die "Arc Reactor GNOME extension sources are missing"
-  mkdir -p "$extension_dir"
-  cp -- "$source_dir/metadata.json" "$source_dir/extension.js" "$source_dir/stylesheet.css" "$extension_dir/"
-  if ! gnome-extensions enable "$extension_id"; then
-    enabled_extensions=$(gsettings get org.gnome.shell enabled-extensions \
-      | python3 -c 'import ast, sys; print(repr(ast.literal_eval(sys.stdin.read())))')
-    enabled_extensions=$(printf '%s\n' "$enabled_extensions" \
-      | python3 -c 'import ast, sys; values=ast.literal_eval(sys.stdin.read()); item="voxtype-arc-hud@homebrew-tools.local"; values.append(item) if item not in values else None; print(repr(values))')
-    gsettings set org.gnome.shell enabled-extensions "$enabled_extensions"
-    printf '%s\n' "Arc Reactor HUD installed and queued for the next GNOME session; dictation remains available." >&2
-  fi
 }
 
 config_dir=${XDG_CONFIG_HOME:-${user_home}/.config}/voxtype
@@ -611,7 +592,7 @@ if [[ ! " ${custom_binding_paths[*]} " =~ " ${dictation_binding_path} " ]]; then
 fi
 custom_binding_list=$(printf '%s\n' "${custom_binding_paths[@]}" \
   | python3 -c 'import sys; print(repr([line.rstrip("\n") for line in sys.stdin if line.strip()]))')
-gsettings set "$custom_binding_schema:$dictation_binding_path" name 'Dictation HUD'
+gsettings set "$custom_binding_schema:$dictation_binding_path" name 'Dictation toggle'
 gsettings set "$custom_binding_schema:$dictation_binding_path" command "$voxtype_bin record toggle"
 gsettings set "$custom_binding_schema:$dictation_binding_path" binding "$dictation_binding"
 gsettings set "$media_keys_schema" custom-keybindings "$custom_binding_list"
@@ -625,5 +606,4 @@ fi
 printf '%s\n' "Installed Voxtype ${voxtype_version} (Whisper Vulkan) and Eitype ${eitype_version}."
 printf '%s\n' "Hold focus in Herdr and press Ctrl+B, then Alt+V to toggle recording."
 printf '%s\n' "Press Super+Alt+V to toggle dictation in any desktop application."
-printf '%s\n' "Arc Reactor HUD installed for GNOME Shell."
 printf '%s\n' "Provenance saved to ${state_dir}/manifest.json."

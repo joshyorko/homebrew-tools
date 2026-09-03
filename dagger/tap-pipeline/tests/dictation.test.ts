@@ -122,17 +122,34 @@ test("Dagger exposes a local dictation bundle and both latest releases", async (
   assert.match(source, /acceptance\/speech_long\.wav/)
 })
 
-test("Dagger dictation bundle uses the verified upstream Vulkan artifact", async () => {
+test("Dagger uses one immutable Vulkan builder for public and local packages", async () => {
   const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
-  const bundleSource = source.slice(
-    source.indexOf("async dictationBundle("),
-    source.indexOf("async recoveryExport("),
-  )
 
-  assert.match(bundleSource, /buildVoxtypePrebuiltArtifact\(/)
+  assert.match(source, /buildVoxtypeVulkanArtifact\(tap: Directory, tagName: string\)/)
+  assert.match(source, /resolveApprovedPublicDictationRelease\("voxtype"\)/)
+  assert.match(source, /resolveApprovedPublicDictationRelease\("eitype"\)/)
+  assert.match(source, /tagName: "v1\.0\.0"/)
+  assert.match(source, /tagName: "0\.2\.2"/)
+  assert.match(source, /voxtypeVulkanReleaseMetadata\(/)
+  assert.match(source, /voxtype-\$\{build\.version\}-vulkan\.1/)
+  assert.match(source, /revision \$\{revision\}/)
+  assert.match(source, /Checksum-verified upstream Vulkan artifact/)
+  assert.match(source, /formula revision 1/)
   assert.match(source, /linux-x86_64-vulkan/)
   assert.match(source, /SHA256SUMS\.txt/)
-  assert.doesNotMatch(bundleSource, /\["cohere"\]/)
+  assert.match(source, /voxtype-\$\{version\}-linux-x86_64-osd/)
+  assert.match(source, /voxtype-\$\{version\}-linux-x86_64-audio-bridge/)
+})
+
+test("public dictation versions and Homebrew ownership are immutable", async () => {
+  const daggerSource = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
+  const eitypeFormula = await readFile(new URL("../../../Formula/eitype.rb", import.meta.url), "utf8")
+  const installer = await readFile(new URL("../../../scripts/install-dictation-local.sh", import.meta.url), "utf8")
+
+  assert.match(daggerSource, /buildEitypeArtifact\(tap, `refs\/tags\/\$\{release\.tagName\}`\)/)
+  assert.match(daggerSource, /eitype-\$\{build\.version\}/)
+  assert.match(eitypeFormula, /version "0\.2\.1"/)
+  assert.doesNotMatch(installer, /gnome-extensions|voxtype-arc-hud|Arc Reactor|gnome-extension/)
 })
 
 test("local installer target configures Herdr toggle and GNOME-safe output drivers", async () => {
@@ -146,7 +163,7 @@ test("local installer target configures Herdr toggle and GNOME-safe output drive
   assert.match(script, /prefix\+alt\+v/)
   assert.match(script, /org\.gnome\.settings-daemon\.plugins\.media-keys/)
   assert.match(script, /<Super><Alt>v/)
-  assert.match(script, /enabled-extensions/)
+  assert.doesNotMatch(script, /enabled-extensions/)
   assert.match(script, /voxtype\.service\.d/)
   assert.match(script, /Environment=.*PATH=/)
   assert.match(script, /eitype.*ydotool.*clipboard/)
@@ -187,45 +204,10 @@ test("local dictation package ships the native GTK4 HUD toolchain", async () => 
   }
 })
 
-test("GNOME Arc Reactor HUD is a state-driven optional extension", async () => {
+test("Homebrew installer does not own the GNOME HUD", async () => {
   const installer = await readFile(new URL("../../../scripts/install-dictation-local.sh", import.meta.url), "utf8")
-  const metadata = await readFile(
-    new URL("../../../gnome-extension/voxtype-arc-hud@homebrew-tools.local/metadata.json", import.meta.url),
-    "utf8",
-  )
-  const extension = await readFile(
-    new URL("../../../gnome-extension/voxtype-arc-hud@homebrew-tools.local/extension.js", import.meta.url),
-    "utf8",
-  )
-  const stylesheet = await readFile(
-    new URL("../../../gnome-extension/voxtype-arc-hud@homebrew-tools.local/stylesheet.css", import.meta.url),
-    "utf8",
-  )
-
-  assert.match(metadata, /"shell-version"\s*:\s*\[\s*"50"\s*\]/)
-  assert.match(metadata, /voxtype-arc-hud@homebrew-tools\.local/)
-  assert.match(extension, /export default class/)
-  assert.match(extension, /import \* as Main from "resource:\/\/\/org\/gnome\/shell\/ui\/main\.js"/)
-  assert.match(extension, /import \{ Extension \} from "resource:\/\/\/org\/gnome\/shell\/extensions\/extension\.js"/)
-  assert.match(extension, /import Cairo from "gi:\/\/cairo"/)
-  assert.match(extension, /class ReactorCanvas extends St\.DrawingArea/)
-  assert.match(extension, /vfunc_repaint\(\)/)
-  assert.match(extension, /class ArcReactor extends St\.BoxLayout/)
-  assert.match(extension, /new Cairo\.RadialGradient/)
-  assert.match(extension, /setDash\(/)
-  assert.match(extension, /71 \* scale/)
-  assert.match(extension, /53 \* scale/)
-  assert.match(extension, /enable\(\)/)
-  assert.match(extension, /disable\(\)/)
-  assert.match(extension, /get_user_runtime_dir\(\)/)
-  assert.match(extension, /FileMonitor/)
-  assert.match(extension, /recording|transcribing|idle|error/)
-  assert.match(extension, /reactive:\s*false/)
-  assert.match(stylesheet, /arc-reactor/)
-  assert.doesNotMatch(stylesheet, /position:\s*absolute/)
-  assert.match(stylesheet, /reduced|prefers-reduced-motion/)
-  assert.match(installer, /gnome-extensions/)
-  assert.match(installer, /voxtype-arc-hud@homebrew-tools\.local/)
-  assert.doesNotMatch(installer, /arc-reactor\.png/)
-  assert.match(installer, /enabled-extensions/)
+  assert.doesNotMatch(installer, /gnome-extensions/)
+  assert.doesNotMatch(installer, /voxtype-arc-hud@homebrew-tools\.local/)
+  assert.doesNotMatch(installer, /gnome-extension/)
+  assert.match(installer, /config set osd\.enabled false/)
 })

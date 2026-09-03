@@ -43,6 +43,18 @@ const GO_IMAGE = "golang:1.26-bookworm"
 const RUST_IMAGE = "rust:1-bookworm"
 const ONNX_BUILD_IMAGE = "ubuntu:24.04"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
+const PUBLIC_DICTATION_RELEASES = {
+  voxtype: {
+    repository: "peteonrails/voxtype",
+    tagName: "v1.0.0",
+    version: "1.0.0",
+  },
+  eitype: {
+    repository: "Adam-D-Lewis/eitype",
+    tagName: "0.2.2",
+    version: "0.2.2",
+  },
+} as const
 const GITHUB_AUTH_TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
 const CODEX_DESKTOP_CONVERSION_REPO =
   process.env.CODEX_DESKTOP_CONVERSION_REPO || "https://github.com/joshyorko/codex-desktop-linux"
@@ -629,7 +641,7 @@ export class TapPipeline {
       case "vscode-insiders-linux":
         return `vscode-insiders-linux-${version.replace(/,/g, "-")}`
       case "voxtype":
-        return `voxtype-${version}`
+        return `voxtype-${version}-vulkan.1`
       case "eitype":
         return `eitype-${version}`
       default:
@@ -1237,16 +1249,16 @@ end
     })
   }
 
-  private voxtypeReleaseMetadata(build: VoxtypeBuild, sha256: string): Record<string, unknown> {
+  private voxtypeVulkanReleaseMetadata(build: VoxtypeBuild, sha256: string): Record<string, unknown> {
     return releaseMetadataForPackage("voxtype", {
       version: build.version,
-      releaseTag: `voxtype-${build.version}`,
+      releaseTag: `voxtype-${build.version}-vulkan.1`,
       assetName: build.assetName,
       artifactSha256: sha256,
-      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/voxtype-${build.version}/${build.assetName}`,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/voxtype-${build.version}-vulkan.1/${build.assetName}`,
       releaseTitle: `Voxtype ${build.version} Homebrew artifact`,
-      releaseNotes: `Homebrew artifact built from peteonrails/voxtype ${build.upstreamTag}`,
-      commitMessage: `Update voxtype formula to ${build.version}`,
+      releaseNotes: `Checksum-verified upstream Vulkan artifact from peteonrails/voxtype ${build.upstreamTag}; Homebrew formula revision 1.`,
+      commitMessage: `Publish checksum-verified Voxtype Vulkan artifact ${build.version} (formula revision 1)`,
       upstream: {
         kind: "git",
         repo: "https://github.com/peteonrails/voxtype",
@@ -1255,6 +1267,29 @@ end
         commit: build.commit,
       },
     })
+  }
+
+  private renderReleaseFormula(
+    formulaContents: string,
+    downloadUrl: string,
+    version: string,
+    sha256: string,
+    revision?: number,
+  ): string {
+    let rendered = formulaContents
+      .replace(/url ".*"/, `url "${downloadUrl}"`)
+      .replace(/version ".*"/, `version "${version}"`)
+      .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+
+    if (revision !== undefined) {
+      if (/^  revision \d+$/m.test(rendered)) {
+        rendered = rendered.replace(/^  revision \d+$/m, `  revision ${revision}`)
+      } else {
+        rendered = rendered.replace(/^(  version ".*"\n)/m, `$1  revision ${revision}\n`)
+      }
+    }
+
+    return rendered
   }
 
   private eitypeReleaseMetadata(build: EitypeBuild, sha256: string): Record<string, unknown> {
@@ -1835,6 +1870,35 @@ end
     }
   }
 
+  private async buildVoxtypeVulkanArtifact(tap: Directory, tagName: string): Promise<VoxtypeBuild> {
+    const binary = await this.buildVoxtypePrebuiltArtifact(tap, `refs/tags/${tagName}`)
+    const companions = await this.downloadVoxtypeCompanions(binary.version, tagName)
+    const container = binary.container
+      .withFile(companions.osdPath, companions.container.file(companions.osdPath))
+      .withFile(companions.osdGtk4Path, companions.container.file(companions.osdGtk4Path))
+      .withFile(companions.audioBridgePath, companions.container.file(companions.audioBridgePath))
+      .withExec([
+        "node",
+        "/tap/scripts/package-voxtype.mjs",
+        "--upstream-dir",
+        "/upstream",
+        "--binary",
+        "/tmp/voxtype-prebuilt",
+        "--osd-binary",
+        companions.osdPath,
+        "--osd-gtk4-binary",
+        companions.osdGtk4Path,
+        "--audio-bridge-binary",
+        companions.audioBridgePath,
+        "--version",
+        binary.version,
+        "--output",
+        binary.artifactPath,
+      ])
+
+    return { ...binary, container }
+  }
+
   private async buildEitypeArtifact(tap: Directory, ref?: string, version?: string): Promise<EitypeBuild> {
     const upstreamTag = ref && ref.length > 0
       ? ref.replace(/^refs\/tags\//, "")
@@ -1918,6 +1982,19 @@ end
       await this.fetchJson(`https://api.github.com/repos/${repository}/releases/latest`),
       repository,
     )
+  }
+
+  private async resolveApprovedPublicDictationRelease(
+    packageId: "voxtype" | "eitype",
+  ): Promise<{ tagName: string; version: string }> {
+    const expected = PUBLIC_DICTATION_RELEASES[packageId]
+    const release = selectLatestStableRelease(
+      await this.fetchJson(
+        `https://api.github.com/repos/${expected.repository}/releases/tags/${encodeURIComponent(expected.tagName)}`,
+      ),
+      expected.repository,
+    )
+    return { tagName: release.tagName, version: expected.version }
   }
 
   private async downloadVoxtypeCompanions(version: string, tagName: string): Promise<{
@@ -3475,35 +3552,26 @@ end
           .stdout()
       }
       case "voxtype": {
-        const build = await this.buildVoxtypeArtifact(tap)
+        const release = await this.resolveApprovedPublicDictationRelease("voxtype")
+        const build = await this.buildVoxtypeVulkanArtifact(tap, release.tagName)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
         const formulaContents = await tap.file("Formula/voxtype.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+        const updatedFormula = this.renderReleaseFormula(
+          formulaContents,
+          `file:///artifacts/${build.assetName}`,
+          build.version,
+          sha256,
+          1,
+        )
         const smokeTap = tap.withFile("Formula/voxtype.rb", dag.file("voxtype.rb", updatedFormula))
 
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withUser("root")
+        return this.dictationBrewContainer()
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "apt-get update",
-              "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libasound2",
-              "rm -rf /var/lib/apt/lists/*",
-            ].join("\n"),
-          ])
-          .withUser("linuxbrew")
+          .withUser("ubuntu")
           .withDirectory("/tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
@@ -3524,7 +3592,8 @@ end
           .stdout()
       }
       case "eitype": {
-        const build = await this.buildEitypeArtifact(tap)
+        const release = await this.resolveApprovedPublicDictationRelease("eitype")
+        const build = await this.buildEitypeArtifact(tap, `refs/tags/${release.tagName}`)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3655,14 +3724,16 @@ end
         return json(this.vscodeReleaseMetadata(build, sha256))
       }
       case "voxtype": {
-        const build = await this.buildVoxtypeArtifact(tap)
+        const release = await this.resolveApprovedPublicDictationRelease("voxtype")
+        const build = await this.buildVoxtypeVulkanArtifact(tap, release.tagName)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        return json(this.voxtypeReleaseMetadata(build, sha256))
+        return json(this.voxtypeVulkanReleaseMetadata(build, sha256))
       }
       case "eitype": {
-        const build = await this.buildEitypeArtifact(tap)
+        const release = await this.resolveApprovedPublicDictationRelease("eitype")
+        const build = await this.buildEitypeArtifact(tap, `refs/tags/${release.tagName}`)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3968,16 +4039,20 @@ end
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "voxtype": {
-        const build = await this.buildVoxtypeArtifact(tap)
+        const releaseVersion = await this.resolveApprovedPublicDictationRelease("voxtype")
+        const build = await this.buildVoxtypeVulkanArtifact(tap, releaseVersion.tagName)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
-        const release = this.voxtypeReleaseMetadata(build, sha256)
+        const release = this.voxtypeVulkanReleaseMetadata(build, sha256)
         const formulaContents = await tap.file("Formula/voxtype.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+        const updatedFormula = this.renderReleaseFormula(
+          formulaContents,
+          String(release.download_url),
+          build.version,
+          sha256,
+          1,
+        )
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
@@ -3986,7 +4061,8 @@ end
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "eitype": {
-        const build = await this.buildEitypeArtifact(tap)
+        const releaseVersion = await this.resolveApprovedPublicDictationRelease("eitype")
+        const build = await this.buildEitypeArtifact(tap, `refs/tags/${releaseVersion.tagName}`)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -4029,37 +4105,7 @@ end
       .ref(`refs/tags/${voxtypeRelease.tagName}`)
       .tree({ discardGitDir: true })
 
-    const voxtypeBuild = await this.buildVoxtypePrebuiltArtifact(
-      tap,
-      `refs/tags/${voxtypeRelease.tagName}`,
-    )
-    const voxtypeCompanions = await this.downloadVoxtypeCompanions(
-      voxtypeBuild.version,
-      voxtypeRelease.tagName,
-    )
-    const voxtypeContainer = voxtypeBuild.container
-      .withFile(voxtypeCompanions.osdPath, voxtypeCompanions.container.file(voxtypeCompanions.osdPath))
-      .withFile(voxtypeCompanions.osdGtk4Path, voxtypeCompanions.container.file(voxtypeCompanions.osdGtk4Path))
-      .withFile(voxtypeCompanions.audioBridgePath, voxtypeCompanions.container.file(voxtypeCompanions.audioBridgePath))
-      .withExec([
-        "node",
-        "/tap/scripts/package-voxtype.mjs",
-        "--upstream-dir",
-        "/upstream",
-        "--binary",
-        "/tmp/voxtype-prebuilt",
-        "--osd-binary",
-        voxtypeCompanions.osdPath,
-        "--osd-gtk4-binary",
-        voxtypeCompanions.osdGtk4Path,
-        "--audio-bridge-binary",
-        voxtypeCompanions.audioBridgePath,
-        "--version",
-        voxtypeBuild.version,
-        "--output",
-        voxtypeBuild.artifactPath,
-      ])
-    const voxtype = { ...voxtypeBuild, container: voxtypeContainer }
+    const voxtype = await this.buildVoxtypeVulkanArtifact(tap, voxtypeRelease.tagName)
     const eitype = await this.buildEitypeArtifact(
       tap,
       `refs/tags/${eitypeRelease.tagName}`,
