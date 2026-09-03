@@ -1994,7 +1994,30 @@ end
       ),
       expected.repository,
     )
+    if (release.tagName !== expected.tagName) {
+      throw new Error(
+        `Approved ${packageId} release tag mismatch: expected ${expected.tagName}, found ${release.tagName}`,
+      )
+    }
     return { tagName: release.tagName, version: expected.version }
+  }
+
+  private assertApprovedPublicDictationBuild(
+    packageId: "voxtype" | "eitype",
+    release: { tagName: string; version: string },
+    builtVersion: string,
+  ): void {
+    const expected = PUBLIC_DICTATION_RELEASES[packageId]
+    if (
+      release.tagName !== expected.tagName
+      || release.version !== expected.version
+      || builtVersion !== expected.version
+    ) {
+      throw new Error(
+        `Approved ${packageId} build mismatch: expected ${expected.tagName}/${expected.version}, `
+        + `found ${release.tagName}/${builtVersion}`,
+      )
+    }
   }
 
   private async downloadVoxtypeCompanions(version: string, tagName: string): Promise<{
@@ -3554,6 +3577,7 @@ end
       case "voxtype": {
         const release = await this.resolveApprovedPublicDictationRelease("voxtype")
         const build = await this.buildVoxtypeVulkanArtifact(tap, release.tagName)
+        this.assertApprovedPublicDictationBuild("voxtype", release, build.version)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3594,6 +3618,7 @@ end
       case "eitype": {
         const release = await this.resolveApprovedPublicDictationRelease("eitype")
         const build = await this.buildEitypeArtifact(tap, `refs/tags/${release.tagName}`)
+        this.assertApprovedPublicDictationBuild("eitype", release, build.version)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3726,6 +3751,7 @@ end
       case "voxtype": {
         const release = await this.resolveApprovedPublicDictationRelease("voxtype")
         const build = await this.buildVoxtypeVulkanArtifact(tap, release.tagName)
+        this.assertApprovedPublicDictationBuild("voxtype", release, build.version)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3734,6 +3760,7 @@ end
       case "eitype": {
         const release = await this.resolveApprovedPublicDictationRelease("eitype")
         const build = await this.buildEitypeArtifact(tap, `refs/tags/${release.tagName}`)
+        this.assertApprovedPublicDictationBuild("eitype", release, build.version)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -4041,6 +4068,7 @@ end
       case "voxtype": {
         const releaseVersion = await this.resolveApprovedPublicDictationRelease("voxtype")
         const build = await this.buildVoxtypeVulkanArtifact(tap, releaseVersion.tagName)
+        this.assertApprovedPublicDictationBuild("voxtype", releaseVersion, build.version)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -4063,6 +4091,7 @@ end
       case "eitype": {
         const releaseVersion = await this.resolveApprovedPublicDictationRelease("eitype")
         const build = await this.buildEitypeArtifact(tap, `refs/tags/${releaseVersion.tagName}`)
+        this.assertApprovedPublicDictationBuild("eitype", releaseVersion, build.version)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]

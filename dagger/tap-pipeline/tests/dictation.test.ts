@@ -152,6 +152,17 @@ test("public dictation versions and Homebrew ownership are immutable", async () 
   assert.doesNotMatch(installer, /gnome-extensions|voxtype-arc-hud|Arc Reactor|gnome-extension/)
 })
 
+test("public dictation resolution fails closed on tag and built-version drift", async () => {
+  const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
+
+  assert.match(source, /release\.tagName !== expected\.tagName/)
+  assert.match(source, /release\.version !== expected\.version/)
+  assert.match(source, /builtVersion !== expected\.version/)
+  assert.equal(source.match(/this\.assertApprovedPublicDictationBuild\(/g)?.length, 6)
+  assert.match(source, /assertApprovedPublicDictationBuild\("voxtype", release, build\.version\)/)
+  assert.match(source, /assertApprovedPublicDictationBuild\("eitype", release, build\.version\)/)
+})
+
 test("local installer target configures Herdr toggle and GNOME-safe output drivers", async () => {
   const makefile = await readFile(new URL("../../../Makefile", import.meta.url), "utf8")
   const script = await readFile(new URL("../../../scripts/install-dictation-local.sh", import.meta.url), "utf8")
