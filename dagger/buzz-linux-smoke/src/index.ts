@@ -1,8 +1,8 @@
 import { dag, Container, Directory, File, object, func } from "@dagger.io/dagger"
 
 const DEFAULT_SOURCE_REPOSITORY = "https://github.com/block/buzz.git"
-const DEFAULT_SOURCE_REF = "3a96acea09b4a9e3f02c3a26cfb0607d2ccacf42"
-const DEFAULT_VERSION = "0.5.3"
+const DEFAULT_SOURCE_REF = "95154bee4034ca7a40b33095c2ddbde8c9aa1614"
+const DEFAULT_VERSION = "0.5.20"
 const BUILD_IMAGE =
   "ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982"
 const BREW_IMAGE = "homebrew/brew:latest"
@@ -106,6 +106,15 @@ export class BuzzLinuxSmoke {
           "test -f desktop/src-tauri/src/linux_media.rs",
           "grep -q set_enable_media_stream desktop/src-tauri/src/linux_media.rs",
           "grep -q linux_media::enable_media_capture desktop/src-tauri/src/lib.rs",
+          "for package in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-credential-nostr buzz-cli; do",
+          "  printf 'BUZZ_SOURCE_PACKAGE_CHECK name=%s status=start\\n' \"$package\"",
+          "  if test -f \"crates/$package/Cargo.toml\" && grep -q \"crates/$package\" Cargo.toml; then",
+          "    printf 'BUZZ_SOURCE_PACKAGE_CHECK name=%s status=present\\n' \"$package\"",
+          "  else",
+          "    printf 'BUZZ_SOURCE_PACKAGE_CHECK name=%s status=missing\\n' \"$package\" >&2",
+          "    exit 1",
+          "  fi",
+          "done",
         ].join("\n"),
       ])
       .withMountedCache(
@@ -160,24 +169,39 @@ export class BuzzLinuxSmoke {
         [
           "set -euo pipefail",
           "cd /src",
-          "grep -q 'APPRUN_WRAPPED=' desktop/scripts/fix-appimage.sh",
-          "grep -q 'Installing GStreamer launcher shim' desktop/scripts/fix-appimage.sh",
+          "run_post_repack_check() {",
+          "  local name=$1",
+          "  shift",
+          "  printf 'BUZZ_POST_REPACK_CHECK_START name=%s\\n' \"$name\" >&2",
+          "  if \"$@\"; then",
+          "    printf 'BUZZ_POST_REPACK_CHECK_PASS name=%s\\n' \"$name\" >&2",
+          "  else",
+          "    status=$?",
+          "    printf 'BUZZ_POST_REPACK_CHECK_FAIL name=%s status=%s command=%q\\n' \"$name\" \"$status\" \"$*\" >&2",
+          "    return \"$status\"",
+          "  fi",
+          "}",
+          `write_checksum() { sha256sum "$1" | awk '{print $1}' > "$2"; }`,
+          "run_post_repack_check fix-appimage-script grep -q 'APPRUN_WRAPPED=' desktop/scripts/fix-appimage.sh",
+          "run_post_repack_check gstreamer-shim-script grep -q 'Installing GStreamer launcher shim' desktop/scripts/fix-appimage.sh",
           "appimage=$(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f -print -quit)",
-          "test -n \"$appimage\"",
-          "appimage=$(realpath \"$appimage\")",
-          "bash desktop/scripts/fix-appimage.sh \"$appimage\"",
+          "run_post_repack_check appimage-present test -n \"$appimage\"",
+          "appimage=$(run_post_repack_check appimage-realpath realpath \"$appimage\")",
+          "run_post_repack_check appimage-repack bash desktop/scripts/fix-appimage.sh \"$appimage\"",
           "rm -rf /tmp/buzz-verify && mkdir -p /tmp/buzz-verify && cd /tmp/buzz-verify",
-          "\"$appimage\" --appimage-extract >/dev/null",
-          "grep -q WEBKIT_SKIA_ENABLE_CPU_RENDERING squashfs-root/AppRun",
-          "grep -q FONTCONFIG_FILE squashfs-root/AppRun",
-          "test -x squashfs-root/usr/bin/buzz-desktop",
-          "test -x squashfs-root/usr/bin/buzz-desktop.bin",
-          "grep -q 'GST_PLUGIN_SYSTEM_PATH_1_0' squashfs-root/usr/bin/buzz-desktop",
-          "grep -q 'unset \"\\$var\"' squashfs-root/usr/bin/buzz-desktop",
+          "run_post_repack_check appimage-extract \"$appimage\" --appimage-extract >/dev/null",
+          "run_post_repack_check webkit-runtime-setting grep -q WEBKIT_SKIA_ENABLE_CPU_RENDERING squashfs-root/AppRun",
+          "run_post_repack_check fontconfig-setting grep -q FONTCONFIG_FILE squashfs-root/AppRun",
+          "run_post_repack_check desktop-launcher test -x squashfs-root/usr/bin/buzz-desktop",
+          "run_post_repack_check desktop-binary test -x squashfs-root/usr/bin/buzz-desktop.bin",
+          "run_post_repack_check gstreamer-system-path grep -q 'GST_PLUGIN_SYSTEM_PATH_1_0' squashfs-root/usr/bin/buzz-desktop",
+          "run_post_repack_check launcher-variable-unset grep -q 'unset \"\\$var\"' squashfs-root/usr/bin/buzz-desktop",
           "cd /src",
           "mkdir -p /out",
-          `cp "$appimage" "${artifactPath}"`,
-          `sha256sum "$appimage" | awk '{print $1}' > "${artifactPath}.sha256"`,
+          `run_post_repack_check artifact-copy cp "$appimage" "${artifactPath}"`,
+          `run_post_repack_check checksum-write write_checksum "$appimage" "${artifactPath}.sha256"`,
+          `run_post_repack_check checksum-present test -s "${artifactPath}.sha256"`,
+          `run_post_repack_check checksum-format grep -Eq '^[0-9a-f]{64}$' "${artifactPath}.sha256"`,
         ].join("\n"),
       ])
 
@@ -258,7 +282,19 @@ export class BuzzLinuxSmoke {
     revision: string,
   ): Promise<{ output: string; sha256: string }> {
     const artifact = build.container.file(build.artifactPath)
-    const sha256 = (await build.container.file(`${build.artifactPath}.sha256`).contents()).trim()
+    let sha256: string
+    try {
+      sha256 = (await build.container.file(`${build.artifactPath}.sha256`).contents()).trim()
+      if (!/^[0-9a-f]{64}$/.test(sha256)) {
+        throw new Error(`invalid SHA-256 value length=${sha256.length}`)
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `BUZZ_CHECKSUM_OBSERVATION_FAIL path=${build.artifactPath}.sha256 ${detail}`,
+        { cause: error },
+      )
+    }
     await Promise.all([
       this.artifactCheck("ubuntu:24.04", artifact).sync(),
       this.artifactCheck("fedora:latest", artifact).sync(),

@@ -50,7 +50,7 @@ permissions:
 
 concurrency:
   group: tap-auto-update-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   DAGGER_VERSION: "0.21.9"
@@ -206,6 +206,7 @@ jobs:
     if: needs.resolve.outputs.has_packages == 'true'
     name: Build ${{ matrix.package_id }} Bundle
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}

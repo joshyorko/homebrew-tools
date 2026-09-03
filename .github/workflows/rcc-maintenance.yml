@@ -18,6 +18,7 @@ jobs:
   maintenance:
     name: Workflow Maintenance
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       committed: ${{ steps.commit.outputs.committed }}
     steps:
@@ -59,7 +60,7 @@ jobs:
         rcc_bin="${rcc_dir}/rcc"
         if [ ! -x "$rcc_bin" ]; then
           mkdir -p "$rcc_dir"
-          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/v${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
+          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
           chmod +x "$rcc_bin"
         fi
         echo "$rcc_dir" >> "$GITHUB_PATH"

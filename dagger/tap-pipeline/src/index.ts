@@ -7,6 +7,7 @@ import {
   listAutoUpdateSlots as slotSummaries,
   packageSummaries,
   packagedVersionForUpstreamComparison,
+  parseDebianPackageVersion,
   parseAutoUpdateSlotId,
   parseRecoveryBrewfile,
   packagesForAutoUpdateSlot as slotPackages,
@@ -2040,11 +2041,11 @@ end
     }
 
     const packages = await this.fetchText(entry.autoUpdate.url)
-    const match = packages.match(/^Version:\s*(\d+(?:\.\d+)+)$/m)
-    if (!match) {
+    const version = parseDebianPackageVersion(packages, "chatgpt")
+    if (!version) {
       throw new Error(`Unable to find a ChatGPT version in ${entry.autoUpdate.url}`)
     }
-    return match[1]
+    return version
   }
 
   private async resolveCodexDesktopVersion(requestedConversionCommit?: string): Promise<string> {
@@ -2214,7 +2215,9 @@ end
   }
 
   private downloadAsset(container: Container, url: string, path: string): Container {
-    const authenticatedContainer = this.withGithubAuth(container)
+    const authenticatedContainer = new URL(url).hostname === "github.com"
+      ? this.withGithubAuth(container)
+      : container
 
     return authenticatedContainer.withExec([
       "node",
@@ -2482,6 +2485,7 @@ end
     const artifactPath = `/tmp/${assetName}`
 
     const container = this.t3BaseContainer()
+      .withEnvVariable("ENABLE_V8_FUNCTIONS", "false")
       .withDirectory("/tap", tap)
       .withExec([
         "bash",
@@ -2604,7 +2608,7 @@ end
     libexec.install Dir["*"]
     python = Formula["python@3.13"].opt_bin/"python3.13"
     system python, "-m", "venv", libexec/"venv"
-    system libexec/"venv/bin/pip", "install", "--no-index", "--find-links=#{libexec}/wheelhouse", "headroom-ai[proxy]==0.34.0"
+    system libexec/"venv/bin/pip", "install", "--no-index", "--find-links=#{libexec}/wheelhouse", "headroom-ai[proxy]"
 
     (bin/"headroom").write <<~SH
       #!/bin/bash
@@ -2836,6 +2840,7 @@ end
     this.setGithubToken(githubToken)
 
     const tap = this.source
+    const ciConversionCommit = codexDesktopConversionCommit || "patchraptor-main"
 
     switch (packageId) {
       case "rcc": {
@@ -3352,7 +3357,7 @@ end
       case "codex-desktop-linux": {
         const officialBuild = await this.buildCodexDesktopLinuxOfficialArtifact(
           tap,
-          codexDesktopConversionCommit,
+          ciConversionCommit,
           codexDesktopPackageSource,
         )
         const releaseUrl = `file:///artifacts/${officialBuild.assetName}`

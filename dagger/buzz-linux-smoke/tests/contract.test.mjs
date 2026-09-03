@@ -4,9 +4,56 @@ import test from "node:test"
 
 const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
 
-test("defaults to the current Linux media-capable Buzz release", () => {
-  assert.match(source, /DEFAULT_SOURCE_REF = "3a96acea09b4a9e3f02c3a26cfb0607d2ccacf42"/)
-  assert.match(source, /DEFAULT_VERSION = "0\.5\.3"/)
+test("defaults to the verified package-compatible Buzz release", () => {
+  assert.match(source, /DEFAULT_SOURCE_REF = "95154bee4034ca7a40b33095c2ddbde8c9aa1614"/)
+  assert.match(source, /DEFAULT_VERSION = "0\.5\.20"/)
+  assert.match(source, /for package in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-credential-nostr buzz-cli/)
+  assert.match(source, /test -f .*crates\/\$package\/Cargo\.toml/)
+  assert.match(source, /BUZZ_SOURCE_PACKAGE_CHECK name=%s status=present/)
+  assert.match(source, /BUZZ_SOURCE_PACKAGE_CHECK name=%s status=missing/)
+})
+
+test("keeps scheduled source inputs pinned through the detached checkout", () => {
+  assert.match(source, /git clone --filter=blob:none "\$\{sourceRepository\}" \/src/)
+  assert.match(source, /git checkout --detach "\$\{sourceRef\}"/)
+  assert.match(source, /test "\$\(git rev-parse HEAD\)" = "\$\{sourceRef\}"/)
+  assert.match(source, /sourceRepository = DEFAULT_SOURCE_REPOSITORY/)
+  assert.match(source, /sourceRef = DEFAULT_SOURCE_REF/)
+  assert.match(source, /version = DEFAULT_VERSION/)
+})
+
+test("labels every post-repack assertion and checksum observation failure", () => {
+  assert.match(source, /BUZZ_POST_REPACK_CHECK_START name=/)
+  assert.match(source, /BUZZ_POST_REPACK_CHECK_PASS name=/)
+  assert.match(source, /BUZZ_POST_REPACK_CHECK_FAIL name=.*status=.*command=/)
+  assert.match(source, /BUZZ_CHECKSUM_OBSERVATION_FAIL/)
+
+  for (const check of [
+    "fix-appimage-script",
+    "gstreamer-shim-script",
+    "appimage-present",
+    "appimage-realpath",
+    "appimage-repack",
+    "appimage-extract",
+    "webkit-runtime-setting",
+    "fontconfig-setting",
+    "desktop-launcher",
+    "desktop-binary",
+    "gstreamer-system-path",
+    "launcher-variable-unset",
+    "artifact-copy",
+    "checksum-write",
+    "checksum-present",
+    "checksum-format",
+  ]) {
+    assert.match(source, new RegExp(`run_post_repack_check ${check}`))
+  }
+})
+
+test("separates post-repack execution failures from checksum observation failures", () => {
+  assert.match(source, /await build\.container\.sync\(\)/)
+  assert.match(source, /BUZZ_POST_REPACK_EXECUTION_FAIL/)
+  assert.match(source, /BUZZ_CHECKSUM_OBSERVATION_FAIL/)
 })
 
 test("rejects source builds without the Linux WebKitGTK media capability", () => {
@@ -37,7 +84,7 @@ test("builds every sidecar required by the upstream bundler", () => {
 })
 
 test("records the artifact checksum inside the packaging container", () => {
-  assert.match(source, /sha256sum "\$appimage" \| awk '\{print \$1\}' > ".*\.sha256"/)
+  assert.match(source, /sha256sum "\$1" \| awk '\{print \$1\}' > "\$2"/)
   assert.match(source, /build\.container\.file\(`\$\{build\.artifactPath\}\.sha256`\)\.contents\(\)/)
   assert.doesNotMatch(source, /build\.container\.withExec\(\["sha256sum", build\.artifactPath\]\)\.stdout\(\)/)
 })

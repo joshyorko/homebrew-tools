@@ -17,6 +17,15 @@ export type DictationManifestPackage = {
   sha256: string
 }
 
+export function parseDebianPackageVersion(packages: string, packageName: string): string | undefined {
+  const packageLine = `Package: ${packageName}`
+  const stanza = packages
+    .split(/\r?\n(?:[ \t]*\r?\n)+/)
+    .find((candidate) => candidate.split(/\r?\n/).some((line) => line.trim() === packageLine))
+
+  return stanza?.match(/^Version:\s*(\S+)\s*$/m)?.[1]
+}
+
 /**
  * Validate the shape returned by GitHub's /releases/latest endpoint.
  *
