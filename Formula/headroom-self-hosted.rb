@@ -1,9 +1,9 @@
 class HeadroomSelfHosted < Formula
   desc "Self-hosted Headroom CLI and proxy from the pinned self-hosted source"
   homepage "https://github.com/joshyorko/headroom"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/headroom-self-hosted-selfhosted.9fe3e834004d/headroom-self-hosted-selfhosted.9fe3e834004d.tar.gz"
-  version "selfhosted.9fe3e834004d"
-  sha256 "93d1a31244b9b90f4b82041500cfadfacbc32058c702040956412d51a8719043"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/headroom-self-hosted-selfhosted.769a1843882f/headroom-self-hosted-selfhosted.769a1843882f.tar.gz"
+  version "selfhosted.769a1843882f"
+  sha256 "a170197512ed72820b36ad5aea6668f9edaaa716edb98517d76f026994ec1b1f"
   license "Apache-2.0"
 
   livecheck do
@@ -17,7 +17,7 @@ class HeadroomSelfHosted < Formula
     libexec.install Dir["*"]
     python = Formula["python@3.13"].opt_bin/"python3.13"
     system python, "-m", "venv", libexec/"venv"
-    system libexec/"venv/bin/pip", "install", "--no-index", "--find-links=#{libexec}/wheelhouse", "headroom-ai[proxy]==0.34.0"
+    system libexec/"venv/bin/pip", "install", "--no-index", "--find-links=#{libexec}/wheelhouse", "headroom-ai[proxy]"
 
     (bin/"headroom").write <<~SH
       #!/bin/bash
