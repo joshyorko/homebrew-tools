@@ -752,3 +752,50 @@ The tap-pipeline test suite covers:
 ## License
 
 MIT
+
+
+## Actions Runtime (`action-server`)
+
+The `action-server` cask and executable retain their names, but now track stable,
+published `actions-runtime-X.Y.Z` releases from `joshyorko/actions`. Required assets
+are `actions-runtime-X.Y.Z-linux64` and `actions-runtime-X.Y.Z-macos-arm64`.
+Legacy `action-server-v*`, draft, and prerelease entries are excluded by both the
+scheduler and artifact resolver. Downloaded bytes must match each upstream GitHub
+asset's SHA-256 digest before the existing bundle/mirror pipeline can publish them.
+The initial 1.0.1 cask uses immutable upstream URLs until the first tap mirror is
+published; subsequent release bundles render tap mirror URLs.
+
+### Migrating legacy 1.2.6 installations
+
+Runtime 1.0.1 is numerically lower than legacy Action Server 1.2.6, so do not rely
+on `brew upgrade` to select it. Stop any running Action Server, preserve your
+application data/configuration, then explicitly reinstall:
+
+```bash
+brew update
+brew reinstall --cask joshyorko/tools/action-server
+hash -r
+action-server version  # must report 1.0.1 for this migration
+```
+
+Fresh installs use `brew install --cask joshyorko/tools/action-server`. Reinstall
+replaces the executable; it does not promise compatibility or migrate application
+data from the legacy runtime. Linux x86_64 and macOS Apple Silicon are supported;
+there is no macOS Intel asset. Binaries are unsigned and macOS is not notarized.
+No signing credentials are needed by this tap.
+
+### Actual dispatch contract
+
+```bash
+gh workflow run tap-manual.yml --repo joshyorko/homebrew-tools -f action=ci -f package_id=action-server
+gh workflow run tap-manual.yml --repo joshyorko/homebrew-tools -f action=release -f package_id=action-server
+gh workflow run tap-auto-update.yml --repo joshyorko/homebrew-tools -f slot_id=action-server-daily
+```
+
+The upstream Actions generator's caller targeting
+`Sema4AI/homebrew-tools/actions/workflows/publish.yml` with a `version` input is a
+separate cross-repository follow-up tracked in
+[joshyorko/actions#101](https://github.com/joshyorko/actions/issues/101) and
+[this tap's #103](https://github.com/joshyorko/homebrew-tools/issues/103).
+It must target the workflows/inputs above with authorized cross-repository
+credentials. This tap does not add a `publish.yml` or generic dispatch receiver.
