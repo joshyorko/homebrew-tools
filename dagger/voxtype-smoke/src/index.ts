@@ -153,6 +153,7 @@ export class VoxtypeSmoke {
         "-lc",
         [
           "set -euo pipefail",
+          "rm -f /etc/apt/sources.list.d/github-cli.list",
           "apt-get update",
           "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libasound2",
           "rm -rf /var/lib/apt/lists/*",

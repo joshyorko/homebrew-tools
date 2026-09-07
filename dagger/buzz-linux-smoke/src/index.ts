@@ -13,6 +13,18 @@ function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
 }
 
+type BuzzSourceIdentity = Readonly<{
+  repository: string
+  ref: string
+}>
+
+type BuzzBuild = {
+  assetName: string
+  artifactPath: string
+  source: BuzzSourceIdentity
+  container: Container
+}
+
 @object()
 export class BuzzLinuxSmoke {
   private artifactCheck(image: string, artifact: File): Container {
@@ -34,10 +46,10 @@ export class BuzzLinuxSmoke {
           "test -x squashfs-root/usr/bin/buzz-desktop.bin",
           "grep -q 'GST_PLUGIN_SYSTEM_PATH_1_0' squashfs-root/usr/bin/buzz-desktop",
           "grep -q 'unset \"\\$var\"' squashfs-root/usr/bin/buzz-desktop",
-          "grep -q WEBKIT_SKIA_ENABLE_CPU_RENDERING squashfs-root/AppRun",
-          "grep -q 'Noto Color Emoji' squashfs-root/usr/etc/fonts/fonts.conf",
+          "! test -e squashfs-root/usr/etc/fonts/fonts.conf",
           "! find squashfs-root/usr/lib -maxdepth 1 -name 'libwayland-client.so*' | grep -q .",
           "! find squashfs-root/usr/lib -maxdepth 1 -name 'libglib-2.0.so*' | grep -q .",
+          "! find squashfs-root/usr/lib -maxdepth 1 -name 'libgst*.so*' | grep -q .",
         ].join("\n"),
       ])
   }
@@ -48,15 +60,18 @@ export class BuzzLinuxSmoke {
     sourceRef: string,
     version: string,
     revision: string,
-  ): { assetName: string; artifactPath: string; container: Container } {
+  ): BuzzBuild {
     const assetName = `buzz-linux-${version}-${revision}-x86_64.AppImage`
     const artifactPath = `/out/${assetName}`
+    const appimagePath = `desktop/src-tauri/target/release/bundle/appimage/Buzz_${version}_amd64.AppImage`
+    const source = Object.freeze({ repository: sourceRepository, ref: sourceRef })
     const dependencies = [
       "build-essential",
       "ca-certificates",
       "curl",
       "desktop-file-utils",
       "file",
+      "fontconfig",
       "git",
       "libasound2-dev",
       "libayatana-appindicator3-dev",
@@ -106,6 +121,10 @@ export class BuzzLinuxSmoke {
           "test -f desktop/src-tauri/src/linux_media.rs",
           "grep -q set_enable_media_stream desktop/src-tauri/src/linux_media.rs",
           "grep -q linux_media::enable_media_capture desktop/src-tauri/src/lib.rs",
+          "test -f desktop/src-tauri/src/webkit_rendering.rs",
+          "grep -q WEBKIT_DMABUF_RENDERER_FORCE_SHM desktop/src-tauri/src/webkit_rendering.rs",
+          "grep -q WEBKIT_DISABLE_COMPOSITING_MODE desktop/src-tauri/src/webkit_rendering.rs",
+          "grep -q 'webkit_rendering::apply' desktop/src-tauri/src/main.rs",
           "for package in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-credential-nostr buzz-cli; do",
           "  printf 'BUZZ_SOURCE_PACKAGE_CHECK name=%s status=start\\n' \"$package\"",
           "  if test -f \"crates/$package/Cargo.toml\" && grep -q \"crates/$package\" Cargo.toml; then",
@@ -153,6 +172,7 @@ export class BuzzLinuxSmoke {
           "just desktop-install-ci",
           `cd desktop && node scripts/set-version-from-tag.mjs "${version}"`,
           "cd /src",
+          `rm -f "${appimagePath}"`,
           "cat > desktop/src-tauri/tauri.canary.conf.json <<'JSON'",
           '{"bundle":{"createUpdaterArtifacts":false}}',
           "JSON",
@@ -182,20 +202,63 @@ export class BuzzLinuxSmoke {
           "  fi",
           "}",
           `write_checksum() { sha256sum "$1" | awk '{print $1}' > "$2"; }`,
+          "check_webkit_rendering_behavior() {",
+          "  local output",
+          "  local status",
+          "  if output=$(WEBKIT_DMABUF_RENDERER_FORCE_SHM=0 timeout 5s ./squashfs-root/AppRun --safe-rendering 2>&1); then",
+          "    printf '%s\\n' \"$output\" >&2",
+          "    return 1",
+          "  else",
+          "    status=$?",
+          "  fi",
+          "  test \"$status\" -eq 1 || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q -- '--safe-rendering cannot be applied:' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q -- 'WEBKIT_DMABUF_RENDERER_FORCE_SHM=0' || return 1",
+          "}",
+          "check_host_fontconfig() {",
+          "  local font",
+          "  font=$(fc-match -f '%{file}\\n' sans-serif) || return 1",
+          "  test -n \"$font\" || return 1",
+          "  test -f \"$font\" || return 1",
+          "}",
+          "check_gstreamer_shim_behavior() {",
+          "  local fixture=/tmp/buzz-shim-check",
+          "  local appdir",
+          "  local output",
+          "  rm -rf \"$fixture\" || return 1",
+          "  mkdir -p \"$fixture/AppDir/usr/bin\" || return 1",
+          "  cp squashfs-root/usr/bin/buzz-desktop \"$fixture/AppDir/usr/bin/buzz-desktop\" || return 1",
+          "  appdir=\"$fixture/AppDir\"",
+          "  printf '%s\\n' '#!/usr/bin/env bash' 'printf \"GST_PLUGIN_SYSTEM_PATH_1_0=%s\\n\" \"${GST_PLUGIN_SYSTEM_PATH_1_0-}\"' 'printf \"GST_PLUGIN_SYSTEM_PATH=%s\\n\" \"${GST_PLUGIN_SYSTEM_PATH-}\"' 'printf \"GST_PLUGIN_PATH_1_0=%s\\n\" \"${GST_PLUGIN_PATH_1_0-}\"' 'printf \"GST_PLUGIN_PATH=%s\\n\" \"${GST_PLUGIN_PATH-}\"' 'printf \"GST_PLUGIN_SCANNER_1_0=%s\\n\" \"${GST_PLUGIN_SCANNER_1_0-}\"' 'printf \"GST_PLUGIN_SCANNER=%s\\n\" \"${GST_PLUGIN_SCANNER-}\"' 'printf \"args=%s\\n\" \"$*\"' > \"$appdir/usr/bin/buzz-desktop.bin\" || return 1",
+          "  chmod +x \"$appdir/usr/bin/buzz-desktop\" \"$appdir/usr/bin/buzz-desktop.bin\" || return 1",
+          "  output=$(GST_PLUGIN_SYSTEM_PATH_1_0=\"$appdir/usr/lib/gstreamer-1.0\" GST_PLUGIN_SYSTEM_PATH=\"$appdir/usr/lib/gstreamer-1.0\" GST_PLUGIN_PATH_1_0=\"$appdir/usr/lib/gstreamer-1.0\" GST_PLUGIN_PATH=/host/gstreamer GST_PLUGIN_SCANNER_1_0=\"$appdir/usr/lib/gstreamer-1.0/gst-plugin-scanner\" GST_PLUGIN_SCANNER=/host/scanner \"$appdir/usr/bin/buzz-desktop\" shim-test) || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^GST_PLUGIN_SYSTEM_PATH_1_0=$' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^GST_PLUGIN_SYSTEM_PATH=$' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^GST_PLUGIN_PATH_1_0=$' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^GST_PLUGIN_PATH=/host/gstreamer$' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^GST_PLUGIN_SCANNER_1_0=$' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^GST_PLUGIN_SCANNER=/host/scanner$' || return 1",
+          "  printf '%s\\n' \"$output\" | grep -q '^args=shim-test$' || return 1",
+          "}",
           "run_post_repack_check fix-appimage-script grep -q 'APPRUN_WRAPPED=' desktop/scripts/fix-appimage.sh",
           "run_post_repack_check gstreamer-shim-script grep -q 'Installing GStreamer launcher shim' desktop/scripts/fix-appimage.sh",
-          "appimage=$(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f -print -quit)",
-          "run_post_repack_check appimage-present test -n \"$appimage\"",
+          `appimage="${appimagePath}"`,
+          "run_post_repack_check appimage-present test -s \"$appimage\"",
           "appimage=$(run_post_repack_check appimage-realpath realpath \"$appimage\")",
           "run_post_repack_check appimage-repack bash desktop/scripts/fix-appimage.sh \"$appimage\"",
           "rm -rf /tmp/buzz-verify && mkdir -p /tmp/buzz-verify && cd /tmp/buzz-verify",
           "run_post_repack_check appimage-extract \"$appimage\" --appimage-extract >/dev/null",
-          "run_post_repack_check webkit-runtime-setting grep -q WEBKIT_SKIA_ENABLE_CPU_RENDERING squashfs-root/AppRun",
-          "run_post_repack_check fontconfig-setting grep -q FONTCONFIG_FILE squashfs-root/AppRun",
+          "run_post_repack_check webkit-rendering-binary test -x squashfs-root/usr/bin/buzz-desktop.bin",
+          "run_post_repack_check webkit-rendering-force-shm grep -a -q WEBKIT_DMABUF_RENDERER_FORCE_SHM squashfs-root/usr/bin/buzz-desktop.bin",
+          "run_post_repack_check webkit-rendering-safe-mode grep -a -q WEBKIT_DISABLE_COMPOSITING_MODE squashfs-root/usr/bin/buzz-desktop.bin",
+          "run_post_repack_check webkit-rendering-behavior check_webkit_rendering_behavior",
+          "run_post_repack_check fontconfig-no-stale-override test ! -e squashfs-root/usr/etc/fonts/fonts.conf",
+          "run_post_repack_check fontconfig-host-default check_host_fontconfig",
           "run_post_repack_check desktop-launcher test -x squashfs-root/usr/bin/buzz-desktop",
           "run_post_repack_check desktop-binary test -x squashfs-root/usr/bin/buzz-desktop.bin",
           "run_post_repack_check gstreamer-system-path grep -q 'GST_PLUGIN_SYSTEM_PATH_1_0' squashfs-root/usr/bin/buzz-desktop",
           "run_post_repack_check launcher-variable-unset grep -q 'unset \"\\$var\"' squashfs-root/usr/bin/buzz-desktop",
+          "run_post_repack_check gstreamer-shim-behavior check_gstreamer_shim_behavior",
           "cd /src",
           "mkdir -p /out",
           `run_post_repack_check artifact-copy cp "$appimage" "${artifactPath}"`,
@@ -205,7 +268,7 @@ export class BuzzLinuxSmoke {
         ].join("\n"),
       ])
 
-    return { assetName, artifactPath, container }
+    return { assetName, artifactPath, source, container }
   }
 
   @func()
@@ -231,6 +294,7 @@ export class BuzzLinuxSmoke {
     const build = this.sourceBuild(tap, sourceRepository, sourceRef, version, revision)
     const verification = await this.verifyBuild(tap, build, version, revision)
     const sha256 = verification.sha256
+    const source = build.source
     const releaseTag = `buzz-linux-${version}-${revision}`
     const downloadUrl = `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`
     const caskContents = await tap.file(CASK_PATH).contents()
@@ -248,20 +312,20 @@ export class BuzzLinuxSmoke {
       artifact_sha256: sha256,
       download_url: downloadUrl,
       release_title: `Buzz Linux ${version}-${revision}`,
-      release_notes: `Portable x86_64 Linux build compiled from block/buzz@${sourceRef}.`,
+      release_notes: `Portable x86_64 Linux build compiled from block/buzz@${source.ref}.`,
       commit_message: `Update buzz-linux cask to ${version}-${revision}`,
       upstream: {
         kind: "git",
-        repo: sourceRepository,
-        ref: sourceRef,
+        repo: source.repository,
+        ref: source.ref,
         version,
-        commit: sourceRef,
+        commit: source.ref,
       },
     }
     const ciLog = [
       "Buzz Linux smoke test passed.",
-      `source_repository=${sourceRepository}`,
-      `source_ref=${sourceRef}`,
+      `source_repository=${source.repository}`,
+      `source_ref=${source.ref}`,
       `artifact=artifacts/${build.assetName}`,
       `sha256=${sha256}`,
       verification.output,
@@ -277,10 +341,19 @@ export class BuzzLinuxSmoke {
 
   private async verifyBuild(
     tap: Directory,
-    build: { assetName: string; artifactPath: string; container: Container },
+    build: BuzzBuild,
     version: string,
     revision: string,
   ): Promise<{ output: string; sha256: string }> {
+    try {
+      await build.container.sync()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `BUZZ_POST_REPACK_EXECUTION_FAIL source_ref=${build.source.ref} artifact=${build.artifactPath} ${detail}`,
+        { cause: error },
+      )
+    }
     const artifact = build.container.file(build.artifactPath)
     let sha256: string
     try {
@@ -316,7 +389,11 @@ export class BuzzLinuxSmoke {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils && rm -rf /var/lib/apt/lists/*",
+        [
+          "set -euxo pipefail",
+          "rm -f /etc/apt/sources.list.d/github-cli.list",
+          "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils libasound2 libgtk-3-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 && rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
       ])
       .withUser("linuxbrew")
       .withDirectory("/tap", smokeTap)
@@ -326,6 +403,16 @@ export class BuzzLinuxSmoke {
         "-lc",
         [
           "set -euxo pipefail",
+          "check_exported_artifact_checksum() {",
+          `  local actual=$(sha256sum "/artifacts/${build.assetName}" | awk '{print $1}')`,
+          `  if test "$actual" = "${sha256}"; then`,
+          "    printf 'BUZZ_EXPORTED_ARTIFACT_CHECK status=pass sha256=%s\\n' \"$actual\"",
+          "  else",
+          `    printf 'BUZZ_EXPORTED_ARTIFACT_CHECK status=fail expected=%s actual=%s\\n' "${sha256}" "$actual" >&2`,
+          "    return 1",
+          "  fi",
+          "}",
+          "check_exported_artifact_checksum",
           "repo=$(brew --repository)",
           "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
           "mkdir -p \"$tap_dir/Casks\"",
@@ -348,15 +435,19 @@ export class BuzzLinuxSmoke {
           "printf '%s\\n' \"$runtime_env\" | grep -q 'GST_PLUGIN_PATH_1_0=/tmp/buzz-runtime-fixture/plugins'",
           "printf '%s\\n' \"$runtime_env\" | grep -q 'GST_PLUGIN_SCANNER_1_0=/tmp/buzz-runtime-fixture/bin/gst-plugin-scanner'",
           "printf '%s\\n' \"$runtime_env\" | grep -q '^PATH=/tmp/buzz-runtime-fixture/data/Buzz/node-tools/bin:/tmp/buzz-runtime-fixture/data/Buzz/runtimes/node/v24.11.0/linux-x64/bin:/tmp/buzz-runtime-fixture/bin:/usr/bin$'",
+          "runtime_probe=$(APPIMAGE_EXTRACT_AND_RUN=1 XDG_DATA_HOME=/tmp/buzz-runtime-fixture/data PATH=\"/tmp/buzz-runtime-fixture/bin:/usr/bin\" \"$wrapper\" --print-agent-access-owner-only)",
+          "printf '%s\\n' \"$runtime_probe\" | grep -Eq '^(true|false)$'",
           "test -f \"$HOME/.local/share/applications/buzz.desktop\"",
           "test -f \"$HOME/.local/share/icons/hicolor/128x128/apps/buzz.png\"",
           "grep -q \"Exec=$(brew --prefix)/bin/buzz %U\" \"$HOME/.local/share/applications/buzz.desktop\"",
           "grep -q 'x-scheme-handler/buzz' \"$HOME/.local/share/applications/buzz.desktop\"",
-          "appimage=$(find \"$(brew --prefix)/Caskroom/buzz-linux\" -name '*.AppImage' -type f -print -quit)",
+          `appimage_count=$(find "$(brew --prefix)/Caskroom/buzz-linux" -type f -name "${build.assetName}" | wc -l)`,
+          "test \"$appimage_count\" -eq 1",
+          `appimage=$(find "$(brew --prefix)/Caskroom/buzz-linux" -type f -name "${build.assetName}" -print -quit)`,
           "APPIMAGE_EXTRACT_AND_RUN=1 \"$appimage\" --appimage-extract >/dev/null",
-          "grep -q WEBKIT_SKIA_ENABLE_CPU_RENDERING squashfs-root/AppRun",
-          "grep -q 'Noto Color Emoji' squashfs-root/usr/etc/fonts/fonts.conf",
-          `echo "source_ref=${sourceRef}"`,
+          "test ! -e squashfs-root/usr/etc/fonts/fonts.conf",
+          `echo "source_repository=${build.source.repository}"`,
+          `echo "source_ref=${build.source.ref}"`,
           `echo "artifact_sha256=${sha256}"`,
         ].join("\n"),
       ])
