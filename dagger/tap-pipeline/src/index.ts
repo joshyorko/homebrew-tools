@@ -22,6 +22,7 @@ import {
   selectLatestStableRelease,
   TransientUpstreamProbeError,
 } from "./library.js"
+import { ActionsRuntimeRelease, resolveActionsRuntimeRelease, verifyActionsRuntimeDigest } from "./actions-runtime.js"
 import { rewriteCaskUrl } from "./cask-render.js"
 import {
   DevsyRelease,
@@ -908,14 +909,14 @@ export class TapPipeline {
       assetName: build.linux.assetName,
       artifactSha256: build.linux.sha256,
       downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/action-server-${build.version}/${build.linux.assetName}`,
-      releaseTitle: `Action Server ${build.version}`,
+      releaseTitle: `Actions Runtime ${build.version}`,
       releaseNotes: `Release bundle mirrored from ${build.upstreamTag}`,
       commitMessage: `Update action-server cask to v${build.version}`,
       upstream: {
         kind: "github_release",
         repo: "https://github.com/joshyorko/actions",
-        assetPrefix: "action-server-",
-        tagPrefix: "action-server-v",
+        assetPrefix: "actions-runtime-",
+        tagPrefix: "actions-runtime-",
         version: build.version,
         commit: build.upstreamTag,
       },
@@ -2291,6 +2292,11 @@ end
           throw new Error(`Expected GitHub-backed upstream for ${packageId}`)
         }
 
+        if (packageId === "action-server") {
+          const releases = await this.fetchJson(`${githubApiRepoUrl(repo)}/releases?per_page=100`) as ActionsRuntimeRelease[]
+          return resolveActionsRuntimeRelease(releases).version
+        }
+
         const release = await this.fetchJson(`${githubApiRepoUrl(repo)}/releases/latest`) as {
           tag_name: string
         }
@@ -2395,58 +2401,27 @@ end
   }
 
   private async buildActionServerArtifacts(): Promise<ActionServerBuild> {
-    const releases = await this.fetchJson("https://api.github.com/repos/joshyorko/actions/releases?per_page=10") as Array<{
-      tag_name: string
-      assets: Array<{ name: string; browser_download_url: string }>
-    }>
-    const release = releases.find((candidate) => candidate.tag_name.startsWith("action-server-v"))
-
-    if (!release) {
-      throw new Error("No action-server release found")
-    }
-
-    const version = release.tag_name.replace(/^action-server-v/, "")
-    const resolveOptionalAsset = (name: string): { name: string; browser_download_url: string } | undefined =>
-      release.assets.find((candidate) => candidate.name === name)
-    const linuxAsset = resolveOptionalAsset("action-server-linux64")
-    const macosArmAsset = resolveOptionalAsset("action-server-macosarm64")
-
-    if (!linuxAsset || !macosArmAsset) {
-      throw new Error("Action Server release is missing required linux or macOS arm assets")
-    }
-
-    const macosIntelAsset = resolveOptionalAsset("action-server-macos64")
-
+    const releases = await this.fetchJson("https://api.github.com/repos/joshyorko/actions/releases?per_page=100") as ActionsRuntimeRelease[]
+    const { version, upstreamTag, linux, macosArm } = resolveActionsRuntimeRelease(releases)
     let container = this.githubApiContainer()
-    container = this.downloadAsset(container, linuxAsset.browser_download_url, "/tmp/action-server-linux64")
-    container = this.downloadAsset(container, macosArmAsset.browser_download_url, "/tmp/action-server-macosarm64")
-
-    if (macosIntelAsset) {
-      container = this.downloadAsset(container, macosIntelAsset.browser_download_url, "/tmp/action-server-macos64")
-    }
-
+    container = this.downloadAsset(container, linux.browser_download_url, `/tmp/${linux.name}`)
+    container = this.downloadAsset(container, macosArm.browser_download_url, `/tmp/${macosArm.name}`)
     return {
       version,
-      upstreamTag: release.tag_name,
+      upstreamTag,
       container,
       linux: {
-        assetName: linuxAsset.name,
-        artifactPath: "/tmp/action-server-linux64",
-        sha256: await this.sha256For(container, "/tmp/action-server-linux64"),
-        sourceUrl: linuxAsset.browser_download_url,
+        assetName: linux.name,
+        artifactPath: `/tmp/${linux.name}`,
+        sha256: verifyActionsRuntimeDigest(linux, await this.sha256For(container, `/tmp/${linux.name}`)),
+        sourceUrl: linux.browser_download_url,
       },
       macosArm: {
-        assetName: macosArmAsset.name,
-        artifactPath: "/tmp/action-server-macosarm64",
-        sha256: await this.sha256For(container, "/tmp/action-server-macosarm64"),
-        sourceUrl: macosArmAsset.browser_download_url,
+        assetName: macosArm.name,
+        artifactPath: `/tmp/${macosArm.name}`,
+        sha256: verifyActionsRuntimeDigest(macosArm, await this.sha256For(container, `/tmp/${macosArm.name}`)),
+        sourceUrl: macosArm.browser_download_url,
       },
-      macosIntel: macosIntelAsset ? {
-        assetName: macosIntelAsset.name,
-        artifactPath: "/tmp/action-server-macos64",
-        sha256: await this.sha256For(container, "/tmp/action-server-macos64"),
-        sourceUrl: macosIntelAsset.browser_download_url,
-      } : undefined,
     }
   }
 
@@ -2854,6 +2829,7 @@ end
       "  end",
       "",
       "  on_macos do",
+      ...(!build.macosIntel ? ["    depends_on arch: :arm64"] : []),
       "    on_arm do",
       `      sha256 \"${build.macosArm.sha256}\"`,
       `      url \"${urls.macosArm}\"`,
@@ -2882,6 +2858,9 @@ end
       "    Usage:",
       "      action-server --help",
       "      action-server version",
+      "",
+      "    Legacy 1.2.6 installs require: brew reinstall --cask joshyorko/tools/action-server",
+      "    Runtime binaries are unsigned; macOS builds are not notarized.",
       "  EOS",
       "end",
       "",
@@ -3012,6 +2991,7 @@ end
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
           .withDirectory("/tap", smokeTap)
+          .withFile("/tmp/legacy-action-server.rb", tap.file("dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"))
           .withFile(`/artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
           .withFile(`/artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
 
@@ -3029,7 +3009,18 @@ end
               ...tapStagingCommands("action-server"),
               "brew install --cask test/tap/action-server",
               "test -x \"$(brew --prefix)/bin/action-server\"",
-              "action-server version",
+              `test "$(action-server version)" = "${build.version}"`,
+              "action-server start --help",
+              // Exercise the actual legacy cask, binary name and installed metadata.
+              "cp \"$tap_dir/Casks/action-server.rb\" /tmp/runtime-cask.rb",
+              "cp \"/tmp/legacy-action-server.rb\" \"$tap_dir/Casks/action-server.rb\"",
+              "brew reinstall --cask test/tap/action-server",
+              "brew list --cask --versions action-server | grep -F '1.2.6'",
+              'test "$(action-server version)" = "1.2.6"',
+              "cp /tmp/runtime-cask.rb \"$tap_dir/Casks/action-server.rb\"",
+              "brew reinstall --cask test/tap/action-server",
+              `test "$(action-server version)" = "${build.version}"`,
+              `brew list --cask --versions action-server | grep -F '${build.version}'`,
             ].join("\n"),
           ])
           .stdout()

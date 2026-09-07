@@ -405,13 +405,13 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     supportsPrCi: true,
     autoUpdate: {
       kind: "github_release_latest_tag",
-      stripPrefix: "action-server-v",
+      stripPrefix: "actions-runtime-",
     },
     upstream: {
       kind: "github_release",
       repo: "https://github.com/joshyorko/actions",
-      assetPrefix: "action-server-",
-      tagPrefix: "action-server-v",
+      assetPrefix: "actions-runtime-",
+      tagPrefix: "actions-runtime-",
     },
   },
   {
