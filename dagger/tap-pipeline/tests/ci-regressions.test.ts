@@ -157,6 +157,22 @@ test("Codex ci-check defaults to PatchRaptor while preserving the scheduled late
   assert.match(codexBuild, /upstream-linux-package\.js/)
 })
 
+test("CI workflows forward the existing GitHub token as a Dagger secret reference", () => {
+  for (const path of [".github/workflows/tap-ci.yml", ".github/workflows/tap-manual.yml"]) {
+    const workflow = read(path)
+    assert.match(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}/)
+    const ciCommands = [...workflow.matchAll(/call: >-\n(          ci-check\n(?:          [^\n]+\n)*)/g)]
+    assert.ok(ciCommands.length > 0, `missing ci-check command in ${path}`)
+    for (const [, command] of ciCommands) {
+      const tokenArguments = command.split(/\s+/).filter((value) => value.startsWith("--github-token"))
+      assert.deepEqual(tokenArguments, ["--github-token=env://GH_TOKEN"], path)
+    }
+    const buzzCi = workflow.split("- name: Run Buzz Linux CI through Dagger")[1]?.split("- name:")[0]
+    assert.ok(buzzCi, `missing direct Buzz CI step in ${path}`)
+    assert.doesNotMatch(buzzCi, /--github-token/)
+  }
+})
+
 test("superseded auto-update runs are canceled and bundle jobs are time-bounded", () => {
   const workflow = read(".github/workflows/tap-auto-update.yml")
 
