@@ -2991,6 +2991,7 @@ end
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
           .withDirectory("/tap", smokeTap)
+          .withFile("/tmp/legacy-action-server.rb", tap.file("dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"))
           .withFile(`/artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
           .withFile(`/artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
 
@@ -3010,11 +3011,12 @@ end
               "test -x \"$(brew --prefix)/bin/action-server\"",
               `test "$(action-server version)" = "${build.version}"`,
               "action-server start --help",
-              // Exercise Homebrew's numeric downgrade bookkeeping without running a legacy server.
+              // Exercise the actual legacy cask, binary name and installed metadata.
               "cp \"$tap_dir/Casks/action-server.rb\" /tmp/runtime-cask.rb",
-              "sed -i 's/version \"[^\"]*\"/version \"1.2.6\"/' \"$tap_dir/Casks/action-server.rb\"",
+              "cp \"/tmp/legacy-action-server.rb\" \"$tap_dir/Casks/action-server.rb\"",
               "brew reinstall --cask test/tap/action-server",
               "brew list --cask --versions action-server | grep -F '1.2.6'",
+              'test "$(action-server version)" = "1.2.6"',
               "cp /tmp/runtime-cask.rb \"$tap_dir/Casks/action-server.rb\"",
               "brew reinstall --cask test/tap/action-server",
               `test "$(action-server version)" = "${build.version}"`,
