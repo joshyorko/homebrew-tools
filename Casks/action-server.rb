@@ -1,5 +1,6 @@
 cask "action-server" do
-  version "1.0.1"
+  # Bootstrap sentinel: auto-update must publish the first Runtime mirror bundle.
+  version "0.0.0"
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."

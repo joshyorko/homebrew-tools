@@ -762,8 +762,11 @@ are `actions-runtime-X.Y.Z-linux64` and `actions-runtime-X.Y.Z-macos-arm64`.
 Legacy `action-server-v*`, draft, and prerelease entries are excluded by both the
 scheduler and artifact resolver. Downloaded bytes must match each upstream GitHub
 asset's SHA-256 digest before the existing bundle/mirror pipeline can publish them.
-The initial 1.0.1 cask uses immutable upstream URLs until the first tap mirror is
-published; subsequent release bundles render tap mirror URLs.
+The committed bootstrap cask deliberately uses version `0.0.0` with verified
+Runtime 1.0.1 upstream URLs. This sentinel makes `action-server-daily` detect a
+version difference and publish the first tap mirror. The generated release cask
+uses the real upstream version (`1.0.1`) and tap mirror URLs. Run auto-update
+before the migration commands below; the sentinel is not a Runtime version.
 
 ### Migrating legacy 1.2.6 installations
 
