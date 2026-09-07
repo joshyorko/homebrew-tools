@@ -141,14 +141,18 @@ test("Dagger uses one immutable Vulkan builder for public and local packages", a
   assert.match(source, /voxtype-\$\{version\}-linux-x86_64-audio-bridge/)
 })
 
-test("public dictation versions and Homebrew ownership are immutable", async () => {
+test("public dictation artifacts use immutable versioned URLs and retain Homebrew ownership", async () => {
   const daggerSource = await readFile(new URL("../src/index.ts", import.meta.url), "utf8")
   const eitypeFormula = await readFile(new URL("../../../Formula/eitype.rb", import.meta.url), "utf8")
   const installer = await readFile(new URL("../../../scripts/install-dictation-local.sh", import.meta.url), "utf8")
 
   assert.match(daggerSource, /buildEitypeArtifact\(tap, `refs\/tags\/\$\{release\.tagName\}`\)/)
   assert.match(daggerSource, /eitype-\$\{build\.version\}/)
-  assert.match(eitypeFormula, /version "0\.2\.1"/)
+  const version = eitypeFormula.match(/^  version "([^"]+)"$/m)?.[1]
+  assert.ok(version, "Eitype formula must declare its artifact version")
+  const url = eitypeFormula.match(/^  url "([^"]+)"$/m)?.[1]
+  assert.equal(url, `https://github.com/joshyorko/homebrew-tools/releases/download/eitype-${version}/eitype-${version}-homebrew-x86_64-linux.tar.gz`)
+  assert.match(eitypeFormula, /^  sha256 "[0-9a-f]{64}"$/m)
   assert.doesNotMatch(installer, /gnome-extensions|voxtype-arc-hud|Arc Reactor|gnome-extension/)
 })
 

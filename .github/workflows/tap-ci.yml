@@ -37,10 +37,11 @@ jobs:
       with:
         node-version: "24"
 
-    - name: Run tap-pipeline test suite
+    - name: Run pipeline and Buzz regression suites
       run: |
         set -euo pipefail
         npm test --prefix dagger/tap-pipeline
+        npm test --prefix dagger/buzz-linux-smoke
 
   plan:
     name: Resolve Changed Packages
