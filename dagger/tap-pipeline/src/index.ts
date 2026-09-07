@@ -704,7 +704,16 @@ export class TapPipeline {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl fakeroot g++ git imagemagick jq make python3 rpm tar unzip xz-utils && npm install -g node-gyp && corepack enable && corepack prepare pnpm@11.10.0 --activate && rm -rf /var/lib/apt/lists/*",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl fakeroot g++ git imagemagick jq libsecret-1-dev make pkg-config python3 rpm tar unzip xz-utils",
+          "pkg-config --exists libsecret-1",
+          "npm install -g node-gyp",
+          "corepack enable",
+          "corepack prepare pnpm@11.10.0 --activate",
+          "rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
       ])
       .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
       .withEnvVariable("CARGO_HOME", "/usr/local/cargo")
@@ -3046,7 +3055,7 @@ end
           .withExec([
             "bash",
             "-lc",
-            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils zstd && rm -rf /var/lib/apt/lists/*",
+            "rm -f /etc/apt/sources.list.d/github-cli.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils zstd && rm -rf /var/lib/apt/lists/*",
           ])
           .withUser("linuxbrew")
           .withDirectory("/tap", smokeTap)
@@ -3481,7 +3490,7 @@ end
           .withExec([
             "bash",
             "-lc",
-            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils tar xz-utils zstd && rm -rf /var/lib/apt/lists/*",
+            "rm -f /etc/apt/sources.list.d/github-cli.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils tar xz-utils zstd && rm -rf /var/lib/apt/lists/*",
           ])
           .withUser("linuxbrew")
           .withDirectory("/tap", smokeTap)
@@ -3535,7 +3544,7 @@ end
           .withExec([
             "bash",
             "-lc",
-            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils libglib2.0-bin shared-mime-info xdg-utils && rm -rf /var/lib/apt/lists/*",
+            "rm -f /etc/apt/sources.list.d/github-cli.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils libglib2.0-bin shared-mime-info xdg-utils && rm -rf /var/lib/apt/lists/*",
           ])
           .withUser("linuxbrew")
           .withDirectory("/tap", smokeTap)
@@ -3639,7 +3648,7 @@ end
           .withExec([
             "bash",
             "-lc",
-            "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libxkbcommon0 && rm -rf /var/lib/apt/lists/*",
+            "rm -f /etc/apt/sources.list.d/github-cli.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libxkbcommon0 && rm -rf /var/lib/apt/lists/*",
           ])
           .withUser("linuxbrew")
           .withDirectory("/tap", smokeTap)
@@ -4316,7 +4325,7 @@ end
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils tar xz-utils zstd && rm -rf /var/lib/apt/lists/*",
+        "rm -f /etc/apt/sources.list.d/github-cli.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils tar xz-utils zstd && rm -rf /var/lib/apt/lists/*",
       ])
       .withUser("linuxbrew")
       .withDirectory("/tap", smokeTap)
