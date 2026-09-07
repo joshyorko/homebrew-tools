@@ -435,7 +435,7 @@ export class BuzzLinuxSmoke {
           "printf '%s\\n' \"$runtime_env\" | grep -q 'GST_PLUGIN_PATH_1_0=/tmp/buzz-runtime-fixture/plugins'",
           "printf '%s\\n' \"$runtime_env\" | grep -q 'GST_PLUGIN_SCANNER_1_0=/tmp/buzz-runtime-fixture/bin/gst-plugin-scanner'",
           "printf '%s\\n' \"$runtime_env\" | grep -q '^PATH=/tmp/buzz-runtime-fixture/data/Buzz/node-tools/bin:/tmp/buzz-runtime-fixture/data/Buzz/runtimes/node/v24.11.0/linux-x64/bin:/tmp/buzz-runtime-fixture/bin:/usr/bin$'",
-          "runtime_probe=$(XDG_DATA_HOME=/tmp/buzz-runtime-fixture/data PATH=\"/tmp/buzz-runtime-fixture/bin:/usr/bin\" \"$wrapper\" --print-agent-access-owner-only)",
+          "runtime_probe=$(APPIMAGE_EXTRACT_AND_RUN=1 XDG_DATA_HOME=/tmp/buzz-runtime-fixture/data PATH=\"/tmp/buzz-runtime-fixture/bin:/usr/bin\" \"$wrapper\" --print-agent-access-owner-only)",
           "printf '%s\\n' \"$runtime_probe\" | grep -Eq '^(true|false)$'",
           "test -f \"$HOME/.local/share/applications/buzz.desktop\"",
           "test -f \"$HOME/.local/share/icons/hicolor/128x128/apps/buzz.png\"",

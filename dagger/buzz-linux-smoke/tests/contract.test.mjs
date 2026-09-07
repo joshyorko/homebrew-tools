@@ -84,6 +84,13 @@ test("executes the generated GStreamer shim and checks path filtering", () => {
   assert.match(source, /args=/)
 })
 
+test("runs the installed AppImage probe without requiring FUSE", () => {
+  assert.match(
+    source,
+    /runtime_probe=\$\(APPIMAGE_EXTRACT_AND_RUN=1 XDG_DATA_HOME=\/tmp\/buzz-runtime-fixture\/data/,
+  )
+})
+
 test("keeps source identity attached to the immutable build being verified", () => {
   assert.match(source, /type BuzzSourceIdentity = Readonly/)
   assert.match(source, /const source = Object\.freeze\(\{ repository: sourceRepository, ref: sourceRef \}\)/)
