@@ -77,6 +77,15 @@ test("issue 101 preserves exact AppImage selection and legacy side effects", () 
   }
 })
 
+test("Devsy Desktop cask URL is versioned for Homebrew audit", () => {
+  const cask = readFileSync(new URL("../../../Casks/devsy-desktop.rb", import.meta.url), "utf8")
+
+  assert.match(
+    cask,
+    /url "https:\/\/github\.com\/joshyorko\/homebrew-tools\/releases\/download\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage"/,
+  )
+})
+
 test("package registry covers every planned adapter kind", () => {
   const kinds = new Set(PACKAGE_REGISTRY.map((entry) => entry.kind))
 
@@ -468,7 +477,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.doesNotMatch(cask, /arch arm/)
   assert.equal(caskVersion, formulaVersion)
   assert.equal(caskRevision, undefined)
-  assert.match(caskUrl ?? "", new RegExp(`/(?:v|devsy-desktop-)${caskVersion}/Devsy_linux_x86_64\\.AppImage$`))
+  assert.match(caskUrl ?? "", /\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage$/)
   assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
   assert.match(cask, /target: "devsy-desktop"/)
   assert.match(cask, /x-scheme-handler\/devsy/)
