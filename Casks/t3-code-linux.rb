@@ -22,39 +22,69 @@ cask "t3-code-linux" do
   artifact "t3-code-linux.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png"
 
-  preflight do
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/512x512/apps"
+  preflight_steps do
+    mkdir_p ".local/share/applications", base: :home
+    mkdir_p ".local/share/icons/hicolor/512x512/apps", base: :home
 
-    appimage = "#{staged_path}/T3-Code-#{version.csv.first}-#{arch}.AppImage"
-    system "chmod", "+x", appimage
-    system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
+    run "/bin/bash", args: ["-euo", "pipefail", "-c", <<~'SH'], chdir: "{{staged_path}}"
+      appimage=""
+      for candidate in T3-Code-*.AppImage; do
+        if [ -f "$candidate" ]; then
+          appimage="$candidate"
+          break
+        fi
+      done
+      if [ -z "$appimage" ]; then
+        echo "unable to find T3 Code AppImage in {{staged_path}}" >&2
+        exit 1
+      fi
 
-    app_run = "#{staged_path}/squashfs-root/AppRun"
-    raise "T3 Code AppRun is not executable" unless File.executable?(app_run)
+      /bin/chmod +x "$appimage"
+      "$appimage" --appimage-extract
 
-    desktop_file = "#{staged_path}/t3-code-linux.desktop"
-    desktop_source = Dir["#{staged_path}/squashfs-root/*.desktop"].find { |path| File.file?(path) }
-    raise "No desktop entry found in extracted T3 Code AppImage" unless desktop_source
+      app_run="squashfs-root/AppRun"
+      if [ ! -x "$app_run" ]; then
+        echo "T3 Code AppRun is not executable" >&2
+        exit 1
+      fi
 
-    desktop_contents = File.read(desktop_source)
-    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/t3-code-linux %U")
-    desktop_contents.gsub!(
-      /^Icon=.*/,
-      "Icon=#{Dir.home}/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png"
-    )
-    File.write(desktop_file, desktop_contents)
+      desktop_source=$(/usr/bin/find squashfs-root -maxdepth 1 -type f -name '*.desktop' -print |
+        LC_ALL=C /usr/bin/sort | /usr/bin/head -n 1)
+      if [ -z "$desktop_source" ] || [ ! -f "$desktop_source" ]; then
+        echo "No desktop entry found in extracted T3 Code AppImage" >&2
+        exit 1
+      fi
+      /bin/cp "$desktop_source" "t3-code-linux.desktop"
+      /bin/sed -i \
+        -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/t3-code-linux %U|" \
+        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png|" \
+        "t3-code-linux.desktop"
 
-    icon_source = Dir["#{staged_path}/squashfs-root/usr/share/icons/hicolor/*/apps/*.png"]
-      .select { |path| File.file?(path) }
-      .max_by { |path| path[%r{/hicolor/(\d+)x\d+/apps/}, 1].to_i }
-    icon_source ||= Dir["#{staged_path}/squashfs-root/**/*.png"].find { |path| File.file?(path) }
-    raise "No PNG icon found in extracted T3 Code AppImage" unless icon_source
+      icon_source=""
+      icon_size=-1
+      if [ -d squashfs-root/usr/share/icons/hicolor ]; then
+        while IFS= read -r -d '' candidate; do
+          dimensions="${candidate#*hicolor/}"
+          dimensions="${dimensions%%x*}"
+          if [[ "$dimensions" =~ ^[0-9]+$ ]] && [ "$dimensions" -gt "$icon_size" ]; then
+            icon_size="$dimensions"
+            icon_source="$candidate"
+          fi
+        done < <(/usr/bin/find squashfs-root/usr/share/icons/hicolor -type f -path '*/apps/*.png' -print0 |
+          LC_ALL=C /usr/bin/sort -z)
+      fi
+      if [ -z "$icon_source" ]; then
+        icon_source=$(/usr/bin/find squashfs-root -type f -name '*.png' -print |
+          LC_ALL=C /usr/bin/sort | /usr/bin/head -n 1)
+      fi
+      if [ -z "$icon_source" ] || [ ! -f "$icon_source" ]; then
+        echo "No PNG icon found in extracted T3 Code AppImage" >&2
+        exit 1
+      fi
+      /bin/cp "$icon_source" "t3-code-linux.png"
+    SH
 
-    FileUtils.cp(icon_source, "#{staged_path}/t3-code-linux.png")
-
-    wrapper = "#{staged_path}/t3-code-linux-wrapper"
-    File.write(wrapper, <<~SH)
+    write_file "t3-code-linux-wrapper", <<~'SH'
       #!/bin/bash
       path_prepend_if_dir() {
         local dir="$1"
@@ -66,8 +96,8 @@ cask "t3-code-linux" do
       }
 
       PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}"
-      path_prepend_if_dir "#{HOMEBREW_PREFIX}/bin"
-      path_prepend_if_dir "#{HOMEBREW_PREFIX}/sbin"
+      path_prepend_if_dir "{{HOMEBREW_PREFIX}}/bin"
+      path_prepend_if_dir "{{HOMEBREW_PREFIX}}/sbin"
       path_prepend_if_dir "$HOME/.local/bin"
       path_prepend_if_dir "$HOME/bin"
       path_prepend_if_dir "$HOME/.cargo/bin"
@@ -78,9 +108,9 @@ cask "t3-code-linux" do
       path_prepend_if_dir "$HOME/.local/share/mise/shims"
       export PATH
 
-      exec "#{app_run}" --no-sandbox "$@"
+      exec "{{staged_path}}/squashfs-root/AppRun" --no-sandbox "$@"
     SH
-    system "chmod", "+x", wrapper
+    set_permissions "t3-code-linux-wrapper", "+x"
   end
 
   zap trash: [
