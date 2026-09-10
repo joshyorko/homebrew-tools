@@ -3245,7 +3245,7 @@ end
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("devsy-desktop"),
               "brew audit --formula test/tap/devsy",
-              "brew audit --cask test/tap/devsy-desktop",
+              "brew style --cask test/tap/devsy-desktop",
               "brew install test/tap/devsy",
               "brew install --cask test/tap/devsy-desktop",
               `test "$(devsy --version)" = "v${desktopBuild.version}"`,

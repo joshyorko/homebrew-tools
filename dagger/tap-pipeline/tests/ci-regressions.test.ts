@@ -32,6 +32,14 @@ test("DevPod package CI trusts its local dependency formula", () => {
   assert.match(devpodCi, /brew trust --formula test\/tap\/devpod-appindicator-runtime-tools/)
 })
 
+test("Devsy Desktop package CI styles the local cask fixture", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const devsyDesktopCi = section(pipeline, 'case "devsy-desktop": {', 'case "fizzy-cli-master": {')
+
+  assert.match(devsyDesktopCi, /brew style --cask test\/tap\/devsy-desktop/)
+  assert.doesNotMatch(devsyDesktopCi, /brew audit --cask test\/tap\/devsy-desktop/)
+})
+
 test("Headroom follows the pushed self-hosted branch and installs the bundled proxy wheelhouse", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const formula = section(
