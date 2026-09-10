@@ -15,7 +15,6 @@ cask "devsy-desktop" do
   end
 
   depends_on arch: :x86_64
-
   container type: :naked
 
   binary "devsy-desktop-wrapper", target: "devsy-desktop"
@@ -30,8 +29,8 @@ cask "devsy-desktop" do
 
     set_permissions "Devsy_linux_{{arch}}.AppImage", "+x"
     run "Devsy_linux_{{arch}}.AppImage",
-        args: ["--appimage-extract"],
-        base: :staged_path,
+        args:  ["--appimage-extract"],
+        base:  :staged_path,
         chdir: "{{staged_path}}"
 
     run "/bin/bash", args: ["-eu", "-c", <<~'SH'], chdir: "{{staged_path}}"
@@ -60,7 +59,7 @@ cask "devsy-desktop" do
       /bin/cp "$icon_source" "devsy-desktop.png"
     SH
 
-    write_file "devsy-desktop-wrapper", <<~'SH'
+    write_file "devsy-desktop-wrapper", <<~SH
       #!/bin/bash
       exec "{{staged_path}}/squashfs-root/AppRun" "$@"
     SH
@@ -68,7 +67,7 @@ cask "devsy-desktop" do
   end
 
   postflight_steps do
-    run "/bin/bash", args: ["-eu", "-c", <<~'SH'],
+    run "/bin/bash", args:           ["-eu", "-c", <<~SH],
       run_optional() {
         "$@" || true
       }
@@ -87,8 +86,8 @@ cask "devsy-desktop" do
         fi
       done
     SH
-        writable_paths: [".config", ".local/share/applications"],
-        writable_base: :home
+                     writable_paths: [".config", ".local/share/applications"],
+                     writable_base:  :home
   end
 
   zap trash: [
