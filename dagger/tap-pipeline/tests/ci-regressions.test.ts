@@ -18,6 +18,13 @@ function section(source: string, startMarker: string, endMarker: string): string
   return source.slice(start, end)
 }
 
+test("package CI uses the current Homebrew main image for structured cask steps", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+
+  assert.match(pipeline, /const BREW_IMAGE = "ghcr\.io\/homebrew\/brew:main"/)
+  assert.doesNotMatch(pipeline, /homebrew\/brew:latest/)
+})
+
 test("Headroom follows the pushed self-hosted branch and installs the bundled proxy wheelhouse", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const formula = section(

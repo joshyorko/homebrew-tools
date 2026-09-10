@@ -35,7 +35,7 @@ import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
 
 const TAP_DIR = "/tap"
-const BREW_IMAGE = "homebrew/brew:latest"
+const BREW_IMAGE = "ghcr.io/homebrew/brew:main"
 const NODE_IMAGE = "node:24-bookworm"
 const NODE_25_IMAGE = "node:25-bookworm"
 const PYTHON_IMAGE = "python:3.13-bookworm"
