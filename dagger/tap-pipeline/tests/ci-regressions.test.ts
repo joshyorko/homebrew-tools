@@ -25,6 +25,13 @@ test("package CI uses the current Homebrew main image for structured cask steps"
   assert.doesNotMatch(pipeline, /homebrew\/brew:latest/)
 })
 
+test("DevPod package CI trusts its local dependency formula", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const devpodCi = section(pipeline, 'case "devpod-linux": {', 'case "t3code-cli-main": {')
+
+  assert.match(devpodCi, /brew trust --formula test\/tap\/devpod-appindicator-runtime-tools/)
+})
+
 test("Headroom follows the pushed self-hosted branch and installs the bundled proxy wheelhouse", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const formula = section(

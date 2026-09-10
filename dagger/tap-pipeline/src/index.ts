@@ -3059,6 +3059,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("devpod-linux"),
+              "brew trust --formula test/tap/devpod-appindicator-runtime-tools",
               "brew install --cask test/tap/devpod-linux",
               "test -x \"$(brew --prefix)/bin/devpod\"",
               "test -x \"$(brew --prefix)/bin/devpod-desktop\"",
