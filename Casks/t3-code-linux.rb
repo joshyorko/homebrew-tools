@@ -26,22 +26,13 @@ cask "t3-code-linux" do
     mkdir_p ".local/share/applications", base: :home
     mkdir_p ".local/share/icons/hicolor/512x512/apps", base: :home
 
+    set_permissions "T3-Code-{{version}}-{{arch}}.AppImage", "+x"
+    run "T3-Code-{{version}}-{{arch}}.AppImage",
+        args: ["--appimage-extract"],
+        base: :staged_path,
+        chdir: "{{staged_path}}"
+
     run "/bin/bash", args: ["-euo", "pipefail", "-c", <<~'SH'], chdir: "{{staged_path}}"
-      appimage=""
-      for candidate in T3-Code-*.AppImage; do
-        if [ -f "$candidate" ]; then
-          appimage="$candidate"
-          break
-        fi
-      done
-      if [ -z "$appimage" ]; then
-        echo "unable to find T3 Code AppImage in {{staged_path}}" >&2
-        exit 1
-      fi
-
-      /bin/chmod +x "$appimage"
-      "$appimage" --appimage-extract
-
       app_run="squashfs-root/AppRun"
       if [ ! -x "$app_run" ]; then
         echo "T3 Code AppRun is not executable" >&2

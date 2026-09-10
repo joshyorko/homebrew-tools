@@ -28,22 +28,13 @@ cask "devsy-desktop" do
     mkdir_p ".local/share/applications", base: :home
     mkdir_p ".local/share/icons/hicolor/128x128/apps", base: :home
 
+    set_permissions "Devsy_linux_{{arch}}.AppImage", "+x"
+    run "Devsy_linux_{{arch}}.AppImage",
+        args: ["--appimage-extract"],
+        base: :staged_path,
+        chdir: "{{staged_path}}"
+
     run "/bin/bash", args: ["-eu", "-c", <<~'SH'], chdir: "{{staged_path}}"
-      appimage=""
-      for candidate in Devsy_linux_*.AppImage; do
-        if [ -f "$candidate" ]; then
-          appimage="$candidate"
-          break
-        fi
-      done
-      if [ -z "$appimage" ]; then
-        echo "unable to find Devsy AppImage in {{staged_path}}" >&2
-        exit 1
-      fi
-
-      /bin/chmod +x "$appimage"
-      "$appimage" --appimage-extract
-
       app_run="squashfs-root/AppRun"
       if [ ! -x "$app_run" ]; then
         echo "No executable AppRun found in extracted Devsy AppImage" >&2
@@ -77,7 +68,6 @@ cask "devsy-desktop" do
   end
 
   postflight_steps do
-    mkdir_p ".config", base: :home
     run "/bin/bash", args: ["-eu", "-c", <<~'SH'],
       run_optional() {
         "$@" || true

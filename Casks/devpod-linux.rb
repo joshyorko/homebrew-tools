@@ -333,7 +333,6 @@ cask "devpod-linux" do
   end
 
   postflight_steps do
-    mkdir_p ".config", base: :home
     run "/bin/bash", args: ["-eu", "-c", <<~'SH'],
       run_optional() {
         "$@" || true

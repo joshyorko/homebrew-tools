@@ -33,6 +33,11 @@ const DEPRECATED_HOOK_CASKS = {
   "Casks/vscode-insiders-linux.rb": ["preflight_steps", "postflight_steps"],
 } as const
 
+const OUT_OF_SCOPE_HOOK_CASKS = [
+  "Casks/codex-desktop.rb",
+  "Casks/buzz-linux.rb",
+] as const
+
 test("affected Josh-owned casks use structured flight steps", () => {
   for (const [path, requiredStanzas] of Object.entries(DEPRECATED_HOOK_CASKS)) {
     const source = readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8")
@@ -47,6 +52,28 @@ test("affected Josh-owned casks use structured flight steps", () => {
         `${path} must define exactly one ${stanza} stanza`,
       )
     }
+  }
+})
+
+test("issue 101 preserves exact AppImage selection and legacy side effects", () => {
+  const devsy = readFileSync(new URL("../../../Casks/devsy-desktop.rb", import.meta.url), "utf8")
+  const t3 = readFileSync(new URL("../../../Casks/t3-code-linux.rb", import.meta.url), "utf8")
+  const devpod = readFileSync(new URL("../../../Casks/devpod-linux.rb", import.meta.url), "utf8")
+  const vscode = readFileSync(new URL("../../../Casks/vscode-insiders-linux.rb", import.meta.url), "utf8")
+
+  assert.match(devsy, /Devsy_linux_\{\{arch\}\}\.AppImage/)
+  assert.doesNotMatch(devsy, /for candidate in Devsy_linux_\*\.AppImage/)
+  assert.match(t3, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
+  assert.doesNotMatch(t3, /for candidate in T3-Code-\*\.AppImage/)
+  for (const source of [devpod, devsy, vscode]) {
+    assert.doesNotMatch(source, /^\s*mkdir_p "\.config", base: :home$/m)
+  }
+
+  for (const path of OUT_OF_SCOPE_HOOK_CASKS) {
+    const source = readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8")
+
+    assert.doesNotMatch(source, /^\s*preflight_steps do$/m, `${path} is outside issue 101 scope`)
+    assert.doesNotMatch(source, /^\s*postflight_steps do$/m, `${path} is outside issue 101 scope`)
   }
 })
 
@@ -311,7 +338,7 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(source, /! grep -Eq .*AppImage/)
 
   assert.match(cask, /^\s*version "main\.\d{14}\.[0-9a-f]{12}"$/m)
-  assert.match(cask, /for candidate in T3-Code-\*\.AppImage/)
+  assert.match(cask, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
   assert.match(cask, /app_run="squashfs-root\/AppRun"/)
   assert.match(cask, /echo "T3 Code AppRun is not executable"/)
   assert.match(cask, /exec "\{\{staged_path\}\}\/squashfs-root\/AppRun" --no-sandbox "\$@"/)
