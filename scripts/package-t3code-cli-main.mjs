@@ -51,6 +51,17 @@ function readPnpmWorkspaceCatalog(path) {
   return catalog;
 }
 
+function readPnpmPackageVersion(path, packageName) {
+  if (!existsSync(path)) return undefined;
+
+  const packagePrefix = `  '${packageName}@`;
+  const line = readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith(packagePrefix) && entry.endsWith("':"));
+
+  return line ? line.slice(packagePrefix.length, -2) : undefined;
+}
+
 function resolveCatalogDependencies(dependencies, catalog) {
   const resolved = {};
 
@@ -94,6 +105,10 @@ function main() {
 
   const rootPackageJson = readJson(join(upstreamDir, "package.json"));
   const pnpmWorkspaceCatalog = readPnpmWorkspaceCatalog(join(upstreamDir, "pnpm-workspace.yaml"));
+  const pinnedPlatformNodeSharedVersion = readPnpmPackageVersion(
+    join(upstreamDir, "pnpm-lock.yaml"),
+    "@effect/platform-node-shared",
+  );
   const serverPackageJson = readJson(join(upstreamDir, "apps/server/package.json"));
   const licensePath = join(upstreamDir, "LICENSE");
   const readmePath = join(upstreamDir, "README.md");
@@ -127,6 +142,9 @@ function main() {
     },
     files: ["dist"],
     engines: serverPackageJson.engines,
+    ...(pinnedPlatformNodeSharedVersion
+      ? { overrides: { "@effect/platform-node-shared": pinnedPlatformNodeSharedVersion } }
+      : {}),
     dependencies: resolveCatalogDependencies(
       serverPackageJson.dependencies,
       {
