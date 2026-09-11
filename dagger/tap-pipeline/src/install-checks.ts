@@ -165,11 +165,13 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "test -x \"$(brew --prefix)/bin/voxtype\"",
     "test -f \"$(brew --prefix)/share/voxtype/default.toml\"",
     "brew test test/tap/voxtype",
-  ]),
+    "voxtype --version",
+  ], ["libasound2t64", "libvulkan1", "libxkbcommon0"]),
   eitype: formula("Formula/eitype.rb", "eitype", [
     "brew test test/tap/eitype",
     "test -x \"$(brew --prefix)/bin/eitype\"",
-  ]),
+    "eitype --help",
+  ], ["libxkbcommon0"]),
   rcc: cask("Casks/rcc.rb", "rcc", [
     "test -x \"$(brew --prefix)/bin/rcc\"",
     "rcc --version",

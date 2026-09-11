@@ -79,6 +79,13 @@ test("Buzz Brew runtime bootstrap uses the Ubuntu 24.04 runtime package name", (
   assert.doesNotMatch(buzzSource, /apt-get install[^\n]*desktop-file-utils[^\n]*\blibasound2\b/)
 })
 
+test("dictation artifact checks provision the same runtime libraries as source CI", () => {
+  for (const dependency of ["libasound2t64", "libvulkan1", "libxkbcommon0"]) {
+    assert.ok(artifactCheckPlan("voxtype").systemPackages.includes(dependency), dependency)
+  }
+  assert.ok(artifactCheckPlan("eitype").systemPackages.includes("libxkbcommon0"))
+})
+
 test("Buzz forbidden bundled libraries stop verification before later commands", () => {
   const root = mkdtempSync(join(tmpdir(), "buzz-forbidden-libraries-"))
   try {
