@@ -3408,7 +3408,7 @@ end
               ...tapStagingCommands("t3-code-linux"),
               "brew install --cask test/tap/t3-code-linux",
               "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
-              "installed_dir=$(find \"$(brew --caskroom)/t3-code-linux\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
+              "installed_dir=$(dirname \"$(readlink -f \"$(brew --prefix)/bin/t3-code-linux\")\")",
               "test -n \"$installed_dir\"",
               "test -x \"$installed_dir/squashfs-root/AppRun\"",
               "grep -Fq 'squashfs-root/AppRun' \"$(brew --prefix)/bin/t3-code-linux\"",
