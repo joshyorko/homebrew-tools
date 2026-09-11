@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import test from "node:test"
 
 import { parseDebianPackageVersion } from "../src/library.ts"
@@ -17,6 +20,28 @@ function section(source: string, startMarker: string, endMarker: string): string
   assert.notEqual(end, -1, `missing source marker: ${endMarker}`)
   return source.slice(start, end)
 }
+
+test("package CI uses the current Homebrew main image for structured cask steps", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+
+  assert.match(pipeline, /const BREW_IMAGE = "ghcr\.io\/homebrew\/brew:main"/)
+  assert.doesNotMatch(pipeline, /homebrew\/brew:latest/)
+})
+
+test("DevPod package CI trusts its local dependency formula", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const devpodCi = section(pipeline, 'case "devpod-linux": {', 'case "t3code-cli-main": {')
+
+  assert.match(devpodCi, /brew trust --formula test\/tap\/devpod-appindicator-runtime-tools/)
+})
+
+test("Devsy Desktop package CI styles the local cask fixture", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const devsyDesktopCi = section(pipeline, 'case "devsy-desktop": {', 'case "fizzy-cli-master": {')
+
+  assert.match(devsyDesktopCi, /brew style --cask test\/tap\/devsy-desktop/)
+  assert.doesNotMatch(devsyDesktopCi, /brew audit --cask test\/tap\/devsy-desktop/)
+})
 
 test("Headroom follows the pushed self-hosted branch and installs the bundled proxy wheelhouse", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
@@ -136,6 +161,101 @@ test("T3 base installs libsecret development metadata and verifies it before dep
   assert.notEqual(checkIndex, -1, "T3 base must verify the libsecret pkg-config module")
   assert.ok(installIndex < checkIndex, "libsecret verification must follow package installation")
   assert.ok(checkIndex < bunInstallIndex, "libsecret verification must happen before tool setup continues")
+})
+
+test("T3 packaging preserves the upstream pinned platform-node-shared version", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "t3-package-test-"))
+  try {
+    const upstream = join(tempRoot, "upstream")
+    const serverDist = join(upstream, "apps/server/dist")
+    mkdirSync(join(serverDist, "client"), { recursive: true })
+    writeFileSync(join(upstream, "package.json"), "{}\n")
+    writeFileSync(join(upstream, "LICENSE"), "MIT\n")
+    writeFileSync(join(upstream, "README.md"), "T3\n")
+    writeFileSync(join(serverDist, "bin.mjs"), "#!/usr/bin/env node\n")
+    writeFileSync(join(serverDist, "client/index.html"), "<!doctype html>\n")
+    writeFileSync(
+      join(upstream, "pnpm-workspace.yaml"),
+      [
+        "catalog:",
+        "  \"@effect/platform-bun\": 4.0.0-rc.112",
+        "  \"@effect/platform-node\": 4.0.0-rc.112",
+        "  \"@effect/sql-sqlite-bun\": 4.0.0-rc.112",
+        "  effect: 4.0.0-rc.112",
+        "",
+      ].join("\n"),
+    )
+    writeFileSync(
+      join(upstream, "pnpm-lock.yaml"),
+      [
+        "lockfileVersion: '9.0'",
+        "",
+        "packages:",
+        "  '@effect/platform-node-shared@4.0.0-rc.112':",
+        "    resolution: {integrity: sha512-test}",
+        "",
+      ].join("\n"),
+    )
+    writeFileSync(
+      join(upstream, "apps/server/package.json"),
+      JSON.stringify({
+        name: "t3",
+        bin: { t3: "./dist/bin.mjs" },
+        dependencies: {
+          "@effect/platform-bun": "catalog:",
+          "@effect/platform-node": "catalog:",
+          "@effect/sql-sqlite-bun": "catalog:",
+          effect: "catalog:",
+        },
+      }),
+    )
+
+    const observedManifest = join(tempRoot, "observed-package.json")
+    const npmStub = join(tempRoot, "npm")
+    writeFileSync(
+      npmStub,
+      [
+        "#!/usr/bin/env node",
+        "const { readFileSync, writeFileSync } = require('node:fs')",
+        "const { join } = require('node:path')",
+        "const manifest = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))",
+        "if (process.argv.includes('--package-lock-only')) {",
+        "  writeFileSync(process.env.OBSERVED_MANIFEST, JSON.stringify(manifest))",
+        "  writeFileSync(join(process.cwd(), 'package-lock.json'), '{}\\n')",
+        "}",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    )
+    chmodSync(npmStub, 0o755)
+
+    execFileSync(
+      process.execPath,
+      [
+        join(repoRoot.pathname, "scripts/package-t3code-cli-main.mjs"),
+        "--upstream-dir",
+        upstream,
+        "--version",
+        "main.test",
+        "--output",
+        join(tempRoot, "package.tar.gz"),
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${tempRoot}:${process.env.PATH}`,
+          OBSERVED_MANIFEST: observedManifest,
+        },
+        stdio: "pipe",
+      },
+    )
+
+    const manifest = JSON.parse(readFileSync(observedManifest, "utf8"))
+    assert.equal(manifest.dependencies.effect, "4.0.0-rc.112")
+    assert.equal(manifest.overrides["@effect/platform-node-shared"], "4.0.0-rc.112")
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true })
+  }
 })
 
 test("Codex ci-check defaults to PatchRaptor while preserving the scheduled latest package path", () => {

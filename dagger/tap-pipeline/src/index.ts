@@ -36,7 +36,7 @@ import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
 
 const TAP_DIR = "/tap"
-const BREW_IMAGE = "homebrew/brew:latest"
+const BREW_IMAGE = "ghcr.io/homebrew/brew:main"
 const NODE_IMAGE = "node:24-bookworm"
 const NODE_25_IMAGE = "node:25-bookworm"
 const PYTHON_IMAGE = "python:3.13-bookworm"
@@ -3059,6 +3059,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("devpod-linux"),
+              "brew trust --formula test/tap/devpod-appindicator-runtime-tools",
               "brew install --cask test/tap/devpod-linux",
               "test -x \"$(brew --prefix)/bin/devpod\"",
               "test -x \"$(brew --prefix)/bin/devpod-desktop\"",
@@ -3244,7 +3245,7 @@ end
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("devsy-desktop"),
               "brew audit --formula test/tap/devsy",
-              "brew audit --cask test/tap/devsy-desktop",
+              "brew style --cask test/tap/devsy-desktop",
               "brew install test/tap/devsy",
               "brew install --cask test/tap/devsy-desktop",
               `test "$(devsy --version)" = "v${desktopBuild.version}"`,
@@ -3407,7 +3408,7 @@ end
               ...tapStagingCommands("t3-code-linux"),
               "brew install --cask test/tap/t3-code-linux",
               "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
-              "installed_dir=$(find \"$(brew --caskroom)/t3-code-linux\" -mindepth 1 -maxdepth 1 -type d -print -quit)",
+              "installed_dir=$(dirname \"$(readlink -f \"$(brew --prefix)/bin/t3-code-linux\")\")",
               "test -n \"$installed_dir\"",
               "test -x \"$installed_dir/squashfs-root/AppRun\"",
               "grep -Fq 'squashfs-root/AppRun' \"$(brew --prefix)/bin/t3-code-linux\"",

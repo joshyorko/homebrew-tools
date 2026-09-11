@@ -31,18 +31,24 @@ cask "chatgpt" do
   artifact "usr/share/pixmaps/chatgpt.png",
            target: "#{Dir.home}/.local/share/pixmaps/chatgpt.png"
 
-  preflight do
-    rpm2cpio = Formula["rpm2cpio"].bin/"rpm2cpio"
-    cpio = Formula["cpio"].bin/"cpio"
-    rpm_path = staged_path/"chatgpt-#{version}-1.#{arch}.rpm"
-    system "sh", "-c", "'#{rpm2cpio}' '#{rpm_path}' | '#{cpio}' -idm --quiet", chdir: staged_path
-    FileUtils.rm rpm_path
+  preflight_steps do
+    run "{{HOMEBREW_PREFIX}}/bin/rpm2cpio",
+        args: ["{{staged_path}}/chatgpt-{{version}}-1.{{arch}}.rpm"],
+        stdout_path: "chatgpt.cpio"
+    run "{{HOMEBREW_PREFIX}}/bin/cpio",
+        args: ["-idm", "--quiet"],
+        stdin_path: "chatgpt.cpio",
+        chdir: "{{staged_path}}"
+    remove "chatgpt-{{version}}-1.{{arch}}.rpm"
+    remove "chatgpt.cpio"
 
-    desktop_file = staged_path/"usr/share/applications/chatgpt.desktop"
-    content = File.read(desktop_file)
-    content.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/chatgpt %U")
-    content.gsub!(/^Icon=.*/, "Icon=#{Dir.home}/.local/share/pixmaps/chatgpt.png")
-    File.write(desktop_file, content)
+    run "/bin/bash", args: ["-eu", "-c", <<~'SH'], chdir: "{{staged_path}}"
+      desktop_file="usr/share/applications/chatgpt.desktop"
+      /bin/sed -i \
+        -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/chatgpt %U|" \
+        -e "s|^Icon=.*|Icon=$HOME/.local/share/pixmaps/chatgpt.png|" \
+        "$desktop_file"
+    SH
   end
 
   zap trash: [

@@ -25,6 +25,67 @@ const REQUIRED_RELEASE_FIELDS = [
   "upstream",
 ] as const
 
+const DEPRECATED_HOOK_CASKS = {
+  "Casks/chatgpt.rb": ["preflight_steps"],
+  "Casks/devpod-linux.rb": ["preflight_steps", "postflight_steps"],
+  "Casks/devsy-desktop.rb": ["preflight_steps", "postflight_steps"],
+  "Casks/t3-code-linux.rb": ["preflight_steps"],
+  "Casks/vscode-insiders-linux.rb": ["preflight_steps", "postflight_steps"],
+} as const
+
+const OUT_OF_SCOPE_HOOK_CASKS = [
+  "Casks/codex-desktop.rb",
+  "Casks/buzz-linux.rb",
+] as const
+
+test("affected Josh-owned casks use structured flight steps", () => {
+  for (const [path, requiredStanzas] of Object.entries(DEPRECATED_HOOK_CASKS)) {
+    const source = readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8")
+
+    assert.doesNotMatch(source, /^\s*preflight do$/m, `${path} still has a legacy preflight hook`)
+    assert.doesNotMatch(source, /^\s*postflight do$/m, `${path} still has a legacy postflight hook`)
+
+    for (const stanza of requiredStanzas) {
+      assert.equal(
+        source.match(new RegExp(`^\\s*${stanza} do$`, "gm"))?.length,
+        1,
+        `${path} must define exactly one ${stanza} stanza`,
+      )
+    }
+  }
+})
+
+test("issue 101 preserves exact AppImage selection and legacy side effects", () => {
+  const devsy = readFileSync(new URL("../../../Casks/devsy-desktop.rb", import.meta.url), "utf8")
+  const t3 = readFileSync(new URL("../../../Casks/t3-code-linux.rb", import.meta.url), "utf8")
+  const devpod = readFileSync(new URL("../../../Casks/devpod-linux.rb", import.meta.url), "utf8")
+  const vscode = readFileSync(new URL("../../../Casks/vscode-insiders-linux.rb", import.meta.url), "utf8")
+
+  assert.match(devsy, /Devsy_linux_\{\{arch\}\}\.AppImage/)
+  assert.doesNotMatch(devsy, /for candidate in Devsy_linux_\*\.AppImage/)
+  assert.match(t3, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
+  assert.doesNotMatch(t3, /for candidate in T3-Code-\*\.AppImage/)
+  for (const source of [devpod, devsy, vscode]) {
+    assert.doesNotMatch(source, /^\s*mkdir_p "\.config", base: :home$/m)
+  }
+
+  for (const path of OUT_OF_SCOPE_HOOK_CASKS) {
+    const source = readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8")
+
+    assert.doesNotMatch(source, /^\s*preflight_steps do$/m, `${path} is outside issue 101 scope`)
+    assert.doesNotMatch(source, /^\s*postflight_steps do$/m, `${path} is outside issue 101 scope`)
+  }
+})
+
+test("Devsy Desktop cask URL is versioned for Homebrew audit", () => {
+  const cask = readFileSync(new URL("../../../Casks/devsy-desktop.rb", import.meta.url), "utf8")
+
+  assert.match(
+    cask,
+    /url "https:\/\/github\.com\/joshyorko\/homebrew-tools\/releases\/download\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage"/,
+  )
+})
+
 test("package registry covers every planned adapter kind", () => {
   const kinds = new Set(PACKAGE_REGISTRY.map((entry) => entry.kind))
 
@@ -286,10 +347,10 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(source, /! grep -Eq .*AppImage/)
 
   assert.match(cask, /^\s*version "main\.\d{14}\.[0-9a-f]{12}"$/m)
-  assert.match(cask, /T3-Code-#\{version\.csv\.first\}-#\{arch\}\.AppImage/)
-  assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
-  assert.match(cask, /raise "T3 Code AppRun is not executable" unless File\.executable\?\(app_run\)/)
-  assert.match(cask, /exec "#\{app_run\}" --no-sandbox "\$@"/)
+  assert.match(cask, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
+  assert.match(cask, /app_run="squashfs-root\/AppRun"/)
+  assert.match(cask, /echo "T3 Code AppRun is not executable"/)
+  assert.match(cask, /exec "\{\{staged_path\}\}\/squashfs-root\/AppRun" --no-sandbox "\$@"/)
   assert.doesNotMatch(cask, /exec .*AppImage.*--no-sandbox/)
   assert.match(readme, /T3 Code[\s\S]*launches its extracted `AppRun`[\s\S]*does not require FUSE at runtime/)
 })
@@ -330,11 +391,12 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.match(cask, /arm64_linux:\s+"[0-9a-f]{64}"/)
   assert.match(cask, /depends_on formula: "cpio"/)
   assert.match(cask, /depends_on formula: "rpm2cpio"/)
-  assert.match(cask, /Formula\["rpm2cpio"\]/)
+  assert.match(cask, /run "\{\{HOMEBREW_PREFIX\}\}\/bin\/rpm2cpio"/)
+  assert.match(cask, /run "\{\{HOMEBREW_PREFIX\}\}\/bin\/cpio"/)
   assert.match(cask, /binary "usr\/lib\/chatgpt\/codex-launcher", target: "chatgpt"/)
   assert.match(cask, /usr\/share\/applications\/chatgpt\.desktop/)
   assert.match(cask, /usr\/share\/pixmaps\/chatgpt\.png/)
-  assert.match(cask, /Exec=#\{HOMEBREW_PREFIX\}\/bin\/chatgpt %U/)
+  assert.match(cask, /Exec=\{\{HOMEBREW_PREFIX\}\}\/bin\/chatgpt %U/)
   assert.doesNotMatch(cask, /dpkg\s+-i|sources\.list\.d|apparmor_parser/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
@@ -415,15 +477,15 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.doesNotMatch(cask, /arch arm/)
   assert.equal(caskVersion, formulaVersion)
   assert.equal(caskRevision, undefined)
-  assert.match(caskUrl ?? "", new RegExp(`/(?:v|devsy-desktop-)${caskVersion}/Devsy_linux_x86_64\\.AppImage$`))
+  assert.match(caskUrl ?? "", /\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage$/)
   assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
   assert.match(cask, /target: "devsy-desktop"/)
   assert.match(cask, /x-scheme-handler\/devsy/)
   assert.doesNotMatch(cask, /target: "devsy"/)
   assert.doesNotMatch(cask, /binary .*resources\/bin\/devsy/)
   assert.doesNotMatch(cask, /--no-sandbox/)
-  assert.match(cask, /app_run = "#\{staged_path\}\/squashfs-root\/AppRun"/)
-  assert.match(cask, /exec "#\{app_run\}" "\$@"/)
+  assert.match(cask, /app_run="squashfs-root\/AppRun"/)
+  assert.match(cask, /exec "\{\{staged_path\}\}\/squashfs-root\/AppRun" "\$@"/)
   assert.doesNotMatch(cask, /exec "#\{appimage\}" "\$@"/)
   assert.doesNotMatch(cask, /\bflatpak\b/i)
   assert.doesNotMatch(cask, /\brpm\b/i)

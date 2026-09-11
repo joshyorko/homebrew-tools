@@ -5,7 +5,7 @@ cask "devsy-desktop" do
   version "1.17.1"
   sha256 x86_64_linux: "0bf816a96018c5ec682fd414b7e738e9dcebc0b462cf45f5027d65d9465ab2f7"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-desktop-1.17.1/Devsy_linux_x86_64.AppImage"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-desktop-#{version}/Devsy_linux_x86_64.AppImage"
   name "Devsy"
   desc "Desktop interface for the Devsy development environment platform"
   homepage "https://devsy.sh/"
@@ -15,7 +15,6 @@ cask "devsy-desktop" do
   end
 
   depends_on arch: :x86_64
-
   container type: :naked
 
   binary "devsy-desktop-wrapper", target: "devsy-desktop"
@@ -24,54 +23,71 @@ cask "devsy-desktop" do
   artifact "devsy-desktop.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devsy-desktop.png"
 
-  preflight do
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/128x128/apps"
+  preflight_steps do
+    mkdir_p ".local/share/applications", base: :home
+    mkdir_p ".local/share/icons/hicolor/128x128/apps", base: :home
 
-    appimage = "#{staged_path}/Devsy_linux_#{arch}.AppImage"
-    system "chmod", "+x", appimage
-    system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
+    set_permissions "Devsy_linux_{{arch}}.AppImage", "+x"
+    run "Devsy_linux_{{arch}}.AppImage",
+        args:  ["--appimage-extract"],
+        base:  :staged_path,
+        chdir: "{{staged_path}}"
 
-    app_run = "#{staged_path}/squashfs-root/AppRun"
-    raise "No executable AppRun found in extracted Devsy AppImage" unless File.executable?(app_run)
+    run "/bin/bash", args: ["-eu", "-c", <<~'SH'], chdir: "{{staged_path}}"
+      app_run="squashfs-root/AppRun"
+      if [ ! -x "$app_run" ]; then
+        echo "No executable AppRun found in extracted Devsy AppImage" >&2
+        exit 1
+      fi
 
-    desktop_source = "#{staged_path}/squashfs-root/devsy-desktop.desktop"
-    raise "No desktop entry found in extracted Devsy AppImage" unless File.file?(desktop_source)
+      desktop_source="squashfs-root/devsy-desktop.desktop"
+      if [ ! -f "$desktop_source" ]; then
+        echo "No desktop entry found in extracted Devsy AppImage" >&2
+        exit 1
+      fi
+      /bin/cp "$desktop_source" "devsy-desktop.desktop"
+      /bin/sed -i \
+        -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/devsy-desktop %U|" \
+        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/128x128/apps/devsy-desktop.png|" \
+        "devsy-desktop.desktop"
 
-    desktop_contents = File.read(desktop_source)
-    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/devsy-desktop %U")
-    desktop_contents.gsub!(
-      /^Icon=.*/,
-      "Icon=#{Dir.home}/.local/share/icons/hicolor/128x128/apps/devsy-desktop.png"
-    )
-    File.write("#{staged_path}/devsy-desktop.desktop", desktop_contents)
-
-    icon_source = "#{staged_path}/squashfs-root/usr/share/icons/hicolor/128x128/apps/devsy-desktop.png"
-    raise "No 128x128 icon found in extracted Devsy AppImage" unless File.file?(icon_source)
-
-    FileUtils.cp(icon_source, "#{staged_path}/devsy-desktop.png")
-
-    wrapper = "#{staged_path}/devsy-desktop-wrapper"
-    File.write(wrapper, <<~SH)
-      #!/bin/bash
-      exec "#{app_run}" "$@"
+      icon_source="squashfs-root/usr/share/icons/hicolor/128x128/apps/devsy-desktop.png"
+      if [ ! -f "$icon_source" ]; then
+        echo "No 128x128 icon found in extracted Devsy AppImage" >&2
+        exit 1
+      fi
+      /bin/cp "$icon_source" "devsy-desktop.png"
     SH
-    FileUtils.chmod 0755, wrapper
+
+    write_file "devsy-desktop-wrapper", <<~SH
+      #!/bin/bash
+      exec "{{staged_path}}/squashfs-root/AppRun" "$@"
+    SH
+    set_permissions "devsy-desktop-wrapper", "0755"
   end
 
-  postflight do
-    applications_dir = "#{Dir.home}/.local/share/applications"
-    desktop_id = "devsy-desktop.desktop"
-    xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"]
-      .find { |candidate| File.executable?(candidate) }
-    update_desktop_database = [
-      "/usr/bin/update-desktop-database",
-      "/bin/update-desktop-database",
-      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
-    ].find { |candidate| File.executable?(candidate) }
+  postflight_steps do
+    run "/bin/bash", args:           ["-eu", "-c", <<~SH],
+      run_optional() {
+        "$@" || true
+      }
 
-    system xdg_mime, "default", desktop_id, "x-scheme-handler/devsy" if xdg_mime
-    system update_desktop_database, applications_dir if update_desktop_database
+      for candidate in /usr/bin/xdg-mime /bin/xdg-mime "{{HOMEBREW_PREFIX}}/bin/xdg-mime"; do
+        if [ -x "$candidate" ]; then
+          run_optional "$candidate" default "devsy-desktop.desktop" "x-scheme-handler/devsy"
+          break
+        fi
+      done
+
+      for candidate in /usr/bin/update-desktop-database /bin/update-desktop-database "{{HOMEBREW_PREFIX}}/bin/update-desktop-database"; do
+        if [ -x "$candidate" ]; then
+          run_optional "$candidate" "$HOME/.local/share/applications"
+          break
+        fi
+      done
+    SH
+                     writable_paths: [".config", ".local/share/applications"],
+                     writable_base:  :home
   end
 
   zap trash: [

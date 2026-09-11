@@ -29,45 +29,70 @@ cask "devpod-linux" do
   artifact "usr/share/icons/hicolor/256x256@2/apps/DevPod Desktop.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
 
-  preflight do
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/32x32/apps"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/128x128/apps"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps"
+  preflight_steps do
+    mkdir_p ".local/share/applications", base: :home
+    mkdir_p ".local/share/icons/hicolor/32x32/apps", base: :home
+    mkdir_p ".local/share/icons/hicolor/128x128/apps", base: :home
+    mkdir_p ".local/share/icons/hicolor/256x256@2/apps", base: :home
 
-    deb = Dir["#{staged_path}/DevPod_*_*.deb"].first
-    raise "unable to find DevPod .deb in #{staged_path}" if deb.blank?
+    run "/bin/bash", args: ["-eu", "-c", <<~'SH'], chdir: "{{staged_path}}"
+      deb=""
+      for candidate in DevPod_*_*.deb; do
+        if [ -f "$candidate" ]; then
+          deb="$candidate"
+          break
+        fi
+      done
+      if [ -z "$deb" ]; then
+        echo "unable to find DevPod .deb in {{staged_path}}" >&2
+        exit 1
+      fi
 
-    system "ar", "x", deb, chdir: staged_path
+      /usr/bin/ar x "$deb"
 
-    data_archive = Dir["#{staged_path}/data.tar.*"].first
-    raise "unable to find data archive in #{deb}" if data_archive.blank?
+      data_archive=""
+      for candidate in data.tar.*; do
+        if [ -f "$candidate" ]; then
+          data_archive="$candidate"
+          break
+        fi
+      done
+      if [ -z "$data_archive" ]; then
+        echo "unable to find data archive in $deb" >&2
+        exit 1
+      fi
 
-    case data_archive
-    when /\.tar\.gz$/
-      system "tar", "-xzf", data_archive, "-C", staged_path
-    when /\.tar\.xz$/
-      system "tar", "-xJf", data_archive, "-C", staged_path
-    when /\.tar\.zst$/
-      system "sh", "-c", "unzstd -c '#{data_archive}' | tar -xf - -C '#{staged_path}'"
-    else
-      system "tar", "-xf", data_archive, "-C", staged_path
-    end
+      case "$data_archive" in
+        *.tar.gz)
+          /usr/bin/tar -xzf "$data_archive" -C "{{staged_path}}"
+          ;;
+        *.tar.xz)
+          /usr/bin/tar -xJf "$data_archive" -C "{{staged_path}}"
+          ;;
+        *.tar.zst)
+          unzstd -c "$data_archive" | /usr/bin/tar -xf - -C "{{staged_path}}"
+          ;;
+        *)
+          /usr/bin/tar -xf "$data_archive" -C "{{staged_path}}"
+          ;;
+      esac
 
-    desktop_file = "#{staged_path}/usr/share/applications/DevPod.desktop"
-    desktop_contents = File.read(desktop_file)
-    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/devpod-desktop %U")
-    icon_path = "#{Dir.home}/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png"
-    desktop_contents.gsub!(/^Icon=.*/, "Icon=#{icon_path}")
-    desktop_contents.gsub!(/^StartupWMClass=.*/, "StartupWMClass=gdk-pixbuf-csource")
-    desktop_contents << "\nStartupWMClass=gdk-pixbuf-csource\n" unless desktop_contents.match?(/^StartupWMClass=/)
-    unless desktop_contents.match?(%r{^MimeType=.*x-scheme-handler/devpod;?})
-      desktop_contents << "MimeType=x-scheme-handler/devpod;\n"
-    end
-    File.write(desktop_file, desktop_contents)
+      desktop_file="usr/share/applications/DevPod.desktop"
+      /bin/sed -i \
+        -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/devpod-desktop %U|" \
+        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png|" \
+        "$desktop_file"
+      if /bin/grep -Eq '^StartupWMClass=' "$desktop_file"; then
+        /bin/sed -i 's|^StartupWMClass=.*|StartupWMClass=gdk-pixbuf-csource|' "$desktop_file"
+      else
+        /bin/printf '\nStartupWMClass=gdk-pixbuf-csource\n' >> "$desktop_file"
+      fi
+      if ! /bin/grep -Eq '^MimeType=.*x-scheme-handler/devpod;?' "$desktop_file"; then
+        /bin/printf 'MimeType=x-scheme-handler/devpod;\n' >> "$desktop_file"
+      fi
+    SH
 
-    wrapper = "#{staged_path}/devpod-desktop-wrapper"
-    File.write(wrapper, <<~SH)
+    write_file "devpod-desktop-wrapper", <<~'SH'
       #!/bin/bash
       # Desktop launchers on GNOME/Bluefin do not reliably inherit the user's
       # interactive shell PATH, so ensure both Homebrew and system XDG tools
@@ -82,16 +107,16 @@ cask "devpod-linux" do
       }
 
       PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}"
-      path_prepend_if_dir "#{HOMEBREW_PREFIX}/bin"
-      path_prepend_if_dir "#{HOMEBREW_PREFIX}/sbin"
+      path_prepend_if_dir "{{HOMEBREW_PREFIX}}/bin"
+      path_prepend_if_dir "{{HOMEBREW_PREFIX}}/sbin"
       path_prepend_if_dir "$HOME/.local/bin"
       path_prepend_if_dir "$HOME/bin"
       export PATH
 
       APPINDICATOR_LIB_DIRS=(
         "${DEVPOD_APPINDICATOR_LIB_DIR:-}"
-        "#{HOMEBREW_PREFIX}/opt/devpod-appindicator-runtime-tools/lib"
-        "#{HOMEBREW_PREFIX}/opt/libayatana-appindicator/lib"
+        "{{HOMEBREW_PREFIX}}/opt/devpod-appindicator-runtime-tools/lib"
+        "{{HOMEBREW_PREFIX}}/opt/libayatana-appindicator/lib"
       )
       APPINDICATOR_SO_CANDIDATES=(
         "libayatana-appindicator3.so.1"
@@ -160,7 +185,7 @@ cask "devpod-linux" do
         exit 1
       fi
 
-      APP_BIN="#{staged_path}/usr/bin/DevPod Desktop"
+      APP_BIN="{{staged_path}}/usr/bin/DevPod Desktop"
       APP_ARGS=("$@")
       WATCH_COLOR_MODE_CHANGES="${DEVPOD_DESKTOP_WATCH_COLOR_MODE_CHANGES:-0}"
       COLOR_MODE_POLL_INTERVAL="${DEVPOD_DESKTOP_COLOR_MODE_POLL_INTERVAL:-2}"
@@ -304,24 +329,31 @@ cask "devpod-linux" do
         exit $?
       done
     SH
-    FileUtils.chmod "+x", wrapper
+    set_permissions "devpod-desktop-wrapper", "+x"
   end
 
-  postflight do
-    applications_dir = "#{Dir.home}/.local/share/applications"
-    desktop_id = "sh.loft.devpod.desktop"
+  postflight_steps do
+    run "/bin/bash", args: ["-eu", "-c", <<~'SH'],
+      run_optional() {
+        "$@" || true
+      }
 
-    xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"].find do |candidate|
-      File.executable?(candidate)
-    end
-    update_desktop_database = [
-      "/usr/bin/update-desktop-database",
-      "/bin/update-desktop-database",
-      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
-    ].find { |candidate| File.executable?(candidate) }
+      for candidate in /usr/bin/xdg-mime /bin/xdg-mime "{{HOMEBREW_PREFIX}}/bin/xdg-mime"; do
+        if [ -x "$candidate" ]; then
+          run_optional "$candidate" default "sh.loft.devpod.desktop" "x-scheme-handler/devpod"
+          break
+        fi
+      done
 
-    system xdg_mime, "default", desktop_id, "x-scheme-handler/devpod" if xdg_mime
-    system update_desktop_database, applications_dir if update_desktop_database
+      for candidate in /usr/bin/update-desktop-database /bin/update-desktop-database "{{HOMEBREW_PREFIX}}/bin/update-desktop-database"; do
+        if [ -x "$candidate" ]; then
+          run_optional "$candidate" "$HOME/.local/share/applications"
+          break
+        fi
+      done
+    SH
+        writable_paths: [".config", ".local/share/applications"],
+        writable_base: :home
   end
 
   zap trash: [
