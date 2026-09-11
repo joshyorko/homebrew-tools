@@ -35,12 +35,17 @@ test("labels every post-repack assertion and checksum observation failure", () =
     "appimage-realpath",
     "appimage-repack",
     "appimage-extract",
-    "webkit-runtime-setting",
-    "fontconfig-setting",
+    "webkit-rendering-binary",
+    "webkit-rendering-force-shm",
+    "webkit-rendering-safe-mode",
+    "webkit-rendering-behavior",
+    "fontconfig-no-stale-override",
+    "fontconfig-host-default",
     "desktop-launcher",
     "desktop-binary",
     "gstreamer-system-path",
     "launcher-variable-unset",
+    "gstreamer-shim-behavior",
     "artifact-copy",
     "checksum-write",
     "checksum-present",
@@ -54,6 +59,71 @@ test("separates post-repack execution failures from checksum observation failure
   assert.match(source, /await build\.container\.sync\(\)/)
   assert.match(source, /BUZZ_POST_REPACK_EXECUTION_FAIL/)
   assert.match(source, /BUZZ_CHECKSUM_OBSERVATION_FAIL/)
+})
+
+test("verifies current WebKit startup behavior in the built executable", () => {
+  assert.doesNotMatch(source, /WEBKIT_SKIA_ENABLE_CPU_RENDERING/)
+  assert.doesNotMatch(source, /grep -q FONTCONFIG_FILE squashfs-root\/AppRun/)
+  assert.match(source, /WEBKIT_DMABUF_RENDERER_FORCE_SHM/)
+  assert.match(source, /WEBKIT_DISABLE_COMPOSITING_MODE/)
+  assert.match(source, /--safe-rendering/)
+  assert.match(source, /run_post_repack_check webkit-rendering-behavior/)
+})
+
+test("uses host fontconfig without restoring the deleted bundled override", () => {
+  assert.match(source, /fontconfig-no-stale-override test ! -e squashfs-root\/usr\/etc\/fonts\/fonts\.conf/)
+  assert.match(source, /fontconfig-host-default check_host_fontconfig/)
+  assert.match(source, /fc-match -f/)
+  assert.doesNotMatch(source, /Noto Color Emoji/)
+})
+
+test("executes the generated GStreamer shim and checks path filtering", () => {
+  assert.match(source, /check_gstreamer_shim_behavior\(\) \{/)
+  assert.match(source, /GST_PLUGIN_SYSTEM_PATH_1_0=\\"\$appdir\/usr\/lib\/gstreamer-1\.0/)
+  assert.match(source, /run_post_repack_check gstreamer-shim-behavior check_gstreamer_shim_behavior/)
+  assert.match(source, /args=/)
+})
+
+test("runs the installed AppImage probe without requiring FUSE", () => {
+  assert.match(
+    source,
+    /runtime_probe=\$\(APPIMAGE_EXTRACT_AND_RUN=1 XDG_DATA_HOME=\/tmp\/buzz-runtime-fixture\/data/,
+  )
+})
+
+test("keeps source identity attached to the immutable build being verified", () => {
+  assert.match(source, /type BuzzSourceIdentity = Readonly/)
+  assert.match(source, /const source = Object\.freeze\(\{ repository: sourceRepository, ref: sourceRef \}\)/)
+  assert.match(source, /source: BuzzSourceIdentity/)
+  assert.match(source, /build\.source\.ref/)
+  assert.doesNotMatch(source, /`echo "source_ref=\$\{sourceRef\}"`/)
+})
+
+test("selects a fresh versioned AppImage instead of a stale cached candidate", () => {
+  assert.match(source, /const appimagePath = `desktop\/src-tauri\/target\/release\/bundle\/appimage\/Buzz_\$\{version\}_amd64\.AppImage`/)
+  assert.match(source, /rm -f .*\$\{appimagePath\}/)
+  assert.doesNotMatch(source, /appimage=\$\(find desktop\/src-tauri\/target\/release\/bundle\/appimage/)
+})
+
+test("removes only the stale GitHub CLI apt source before signed Brew setup", () => {
+  assert.match(
+    source,
+    /"rm -f \/etc\/apt\/sources\.list\.d\/github-cli\.list",\n\s+"apt-get update &&/,
+  )
+  assert.doesNotMatch(source, /allow-insecure|allow-unauthenticated|trusted=/i)
+})
+
+test("installs the host desktop libraries needed by the real Brew runtime probe", () => {
+  const brewSetup = source.slice(source.indexOf(".from(BREW_IMAGE)"), source.indexOf('.withUser("linuxbrew")'))
+  const packages = brewSetup.match(/apt-get install -y --no-install-recommends ([^&]+) &&/)[1].trim().split(/\s+/)
+  for (const dependency of ["libasound2", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]) {
+    assert.ok(packages.includes(dependency), `Brew runtime is missing ${dependency}`)
+  }
+})
+
+test("checks the hash of the artifact mounted for Homebrew installation", () => {
+  assert.match(source, /sha256sum "\/artifacts\/\$\{build\.assetName\}"/)
+  assert.match(source, /BUZZ_EXPORTED_ARTIFACT_CHECK/)
 })
 
 test("rejects source builds without the Linux WebKitGTK media capability", () => {

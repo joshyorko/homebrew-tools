@@ -136,6 +136,7 @@ export class VscodeInsidersLinuxSmoke {
         "-lc",
         [
           "set -euo pipefail",
+          "rm -f /etc/apt/sources.list.d/github-cli.list",
           "apt-get update",
           "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils libglib2.0-bin shared-mime-info xdg-utils",
           "rm -rf /var/lib/apt/lists/*",
