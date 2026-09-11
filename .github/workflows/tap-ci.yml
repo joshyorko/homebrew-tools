@@ -2,23 +2,16 @@ name: Tap CI
 
 on:
   pull_request:
-    paths: &tap_paths
-    - ".github/workflows/tap-ci.yml"
-    - ".github/workflows/tap-auto-update.yml"
-    - ".github/workflows/tap-manual.yml"
-    - "Casks/**"
-    - "Formula/**"
-    - "scripts/**"
-    - "dagger/**"
-    - "README.md"
-    - "AGENTS.md"
   push:
     branches:
     - main
-    paths: *tap_paths
 
 permissions:
   contents: read
+
+concurrency:
+  group: tap-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DAGGER_VERSION: "0.21.9"
@@ -28,6 +21,7 @@ env:
 jobs:
   tap-pipeline-tests:
     name: Tap Pipeline Tests
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -45,6 +39,7 @@ jobs:
 
   plan:
     name: Resolve Changed Packages
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     outputs:
       has_packages: ${{ steps.plan.outputs.has_packages }}
@@ -55,33 +50,31 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Plan changed packages
-      id: dagger_plan
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+    - name: Set up Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
       with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          detect-changed-packages
-          --base-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
-          --head-ref="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+        node-version: "24"
 
     - name: Build package matrix
       id: plan
+      env:
+        BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        EVENT_NAME: ${{ github.event_name }}
       run: |
         set -euo pipefail
-        packages_json='${{ steps.dagger_plan.outputs.output }}'
-        matrix="$(jq -cn --argjson packages "$packages_json" '{include: ($packages | map({package_id: .}))}')"
+        plan_json="$(node scripts/plan-tap-ci.mjs)"
+        matrix="$(jq -c '{include: .}' <<<"$plan_json")"
         count="$(jq '.include | length' <<<"$matrix")"
-        package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$packages_json")"
+        package_ids="$(jq -r 'if length == 0 then "none" else map("\(.package_id)[\(.mode)]") | join(", ") end' <<<"$plan_json")"
 
-        echo "Changed package ids: $package_ids"
+        echo "Planned package CI: $package_ids"
         {
-          echo "## Changed Packages"
+          echo "## Tap CI Plan"
           echo
-          echo "Package ids: $package_ids"
+          echo "Packages: $package_ids"
+          echo
+          jq -r 'if length == 0 then "No package-level CI work is required." else .[] | "- \(.package_id): \(.mode) — \(.reason)" end' <<<"$plan_json"
         } >> "$GITHUB_STEP_SUMMARY"
 
         echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -89,6 +82,7 @@ jobs:
 
   ci:
     name: Package CI
+    timeout-minutes: 60
     needs:
     - tap-pipeline-tests
     - plan
@@ -100,8 +94,20 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Run package CI through Dagger
-      if: matrix.package_id != 'buzz-linux'
+    - name: Run package artifact CI through Dagger
+      if: matrix.mode == 'artifact'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          artifact-check
+          --package-id="${{ matrix.package_id }}"
+
+    - name: Run package source CI through Dagger
+      if: matrix.mode == 'build' && matrix.package_id != 'buzz-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -114,7 +120,7 @@ jobs:
           --github-token=env://GH_TOKEN
 
     - name: Run Buzz Linux CI through Dagger
-      if: matrix.package_id == 'buzz-linux'
+      if: matrix.mode == 'build' && matrix.package_id == 'buzz-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -125,8 +131,26 @@ jobs:
           smoke-test
           --tap=.
 
+    - name: Record local Dagger engine cache stats
+      if: always() && !cancelled()
+      continue-on-error: true
+      run: |
+        set -euo pipefail
+        {
+          echo "### Local Dagger Engine Cache Stats"
+          echo
+          echo '```json'
+        dagger -s query <<'GRAPHQL'
+        { engine { localCache { entrySet { entryCount diskSpaceBytes } } } }
+        GRAPHQL
+          echo '```'
+          echo
+          echo "These are local engine stats only; they do not prove Dagger Cloud cache or volume reuse."
+        } >> "$GITHUB_STEP_SUMMARY"
+
   no_package_ci_required:
     name: No Package CI Required
+    timeout-minutes: 60
     needs:
     - tap-pipeline-tests
     - plan

@@ -34,6 +34,7 @@ import {
 } from "./devsy-render.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
+import { artifactCheckPlan, buzzArtifactVerificationCommands, rejectForbiddenShaCommand } from "./install-checks.js"
 
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "ghcr.io/homebrew/brew:main"
@@ -220,6 +221,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Casks\" \"$tap_dir/Formula\"",
         "cp /tap/Casks/devsy-desktop.rb \"$tap_dir/Casks/\"",
         "cp /tap/Formula/devsy.rb \"$tap_dir/Formula/\"",
+      ]
+    case "buzz-linux":
+      return [
+        "mkdir -p \"$tap_dir/Casks\"",
+        "cp /tap/Casks/buzz-linux.rb \"$tap_dir/Casks/\"",
       ]
     case "fizzy-cli-master":
       return [
@@ -2916,6 +2922,172 @@ end
       /livecheck do\n(?:.*\n)*?\s+end\n/m,
       "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
     )
+  }
+
+  @func()
+  async artifactCheck(packageId: string): Promise<string> {
+    const entry = this.packageEntry(packageId)
+    const plan = artifactCheckPlan(packageId)
+    const brewName = (path: string) => path.split("/").pop()?.replace(/\.rb$/, "") ?? ""
+    let tap = dag.directory()
+
+    for (const path of plan.homebrewPaths) {
+      tap = tap.withFile(path, this.source.file(path))
+    }
+
+    if (packageId === "action-server") {
+      const legacyFixture = "dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"
+      tap = tap.withFile(legacyFixture, this.source.file(legacyFixture))
+    }
+
+    const metadataCommands = plan.homebrewPaths.flatMap((path, index) => {
+      const kind = path.startsWith("Formula/") ? "formula" : "cask"
+      const name = brewName(path)
+      const metadata = `/tmp/artifact-${index}.json`
+      const recipe = `$tap_dir/${path}`
+      const checksum = kind === "formula"
+        ? `jq -e '(.formulae[0].urls.stable.checksum // "") | test("^[0-9a-f]{64}$")' "${metadata}"`
+        : `jq -e '(.casks[0].sha256 // "" | tostring) | test("^[0-9a-f]{64}$")' "${metadata}"`
+
+      return [
+        `metadata=$(brew info --json=v2 --${kind} test/tap/${name})`,
+        `printf '%s' "$metadata" > "${metadata}"`,
+        `jq -e '((.${kind === "formula" ? "formulae" : "casks"}) | length == 1)' "${metadata}"`,
+        checksum,
+        rejectForbiddenShaCommand(recipe),
+        `brew cat test/tap/${name} > /tmp/artifact-${index}.rb`,
+        `cmp "${recipe}" /tmp/artifact-${index}.rb`,
+      ]
+    })
+
+    let container = dag
+      .container()
+      .from(BREW_IMAGE)
+      .withUser("root")
+      .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+      .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+      .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+
+    const systemPackages = ["jq", ...plan.systemPackages]
+    if (systemPackages.length > 0) {
+      container = container
+        .withExec([
+          "bash",
+          "-lc",
+          [
+            "set -euo pipefail",
+            "rm -f /etc/apt/sources.list.d/github-cli.list",
+            `apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ${systemPackages.join(" ")} && rm -rf /var/lib/apt/lists/*`,
+          ].join("\n"),
+        ])
+    }
+
+    container = container
+      .withDirectory("/tap", tap)
+      .withUser("linuxbrew")
+
+    const checks = [
+      "set -euo pipefail",
+      "repo=$(brew --repository)",
+      "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+      ...tapStagingCommands(packageId),
+      ...Array.from(new Set([
+        ...plan.trustFormulas,
+        ...plan.homebrewPaths
+          .filter((path) => path.startsWith("Formula/"))
+          .map((path) => brewName(path)),
+      ])).map((formulaName) => `brew trust --formula test/tap/${formulaName}`),
+      ...plan.homebrewPaths
+        .filter((path) => path.startsWith("Casks/"))
+        .map((path) => `brew trust --cask test/tap/${brewName(path)}`),
+      ...metadataCommands,
+      ...plan.commands,
+    ]
+
+    if (packageId === "buzz-linux") {
+      const metadataOutput = await dag
+        .container()
+        .from(BREW_IMAGE)
+        .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+        .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+        .withDirectory("/tap", tap)
+        .withExec([
+          "bash",
+          "-lc",
+          [
+            "set -euo pipefail",
+            "repo=$(brew --repository)",
+            "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+            ...tapStagingCommands("buzz-linux"),
+            "brew trust --cask test/tap/buzz-linux >/dev/null",
+            "brew info --json=v2 --cask test/tap/buzz-linux",
+          ].join("\n"),
+        ])
+        .stdout()
+      const metadata = JSON.parse(metadataOutput) as {
+        casks?: Array<{ url?: unknown; sha256?: unknown }>
+      }
+      const buzzCask = metadata.casks?.[0]
+      const url = typeof buzzCask?.url === "string" ? buzzCask.url : ""
+      const sha256 = typeof buzzCask?.sha256 === "string" ? buzzCask.sha256 : ""
+      if (!/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
+        throw new Error("buzz-linux committed cask is missing an immutable AppImage URL or checksum")
+      }
+
+      const artifactContainer = await dag
+        .container()
+        .from(BREW_IMAGE)
+        .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+        .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+        .withDirectory("/tap", tap)
+        .withUser("linuxbrew")
+        .withExec([
+          "bash",
+          "-lc",
+          [
+            "set -euxo pipefail",
+            "repo=$(brew --repository)",
+            "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
+            ...tapStagingCommands("buzz-linux"),
+            "brew trust --cask test/tap/buzz-linux",
+            "brew install --cask test/tap/buzz-linux",
+            "artifact=$(brew --cache --cask test/tap/buzz-linux)",
+            "test -s \"$artifact\"",
+            "cp \"$artifact\" /tmp/Buzz.AppImage",
+          ].join("\n"),
+        ])
+        .sync()
+      const artifact = artifactContainer.file("/tmp/Buzz.AppImage")
+      await Promise.all(["ubuntu:24.04", "fedora:latest", "archlinux:latest"].map((image) =>
+        dag
+          .container()
+          .from(image)
+          .withEnvVariable("APPIMAGE_EXTRACT_AND_RUN", "1")
+          .withFile("/tmp/Buzz.AppImage", artifact)
+          .withExec([
+            "bash",
+            "-lc",
+            [
+              "set -euxo pipefail",
+              `printf '%s  /tmp/Buzz.AppImage\\n' '${sha256}' | sha256sum -c -`,
+              ...buzzArtifactVerificationCommands("/tmp/Buzz.AppImage").slice(1),
+            ].join("\n"),
+          ])
+          .sync(),
+      ))
+
+      checks.push(
+        `appimage_count=$(find "$(brew --prefix)/Caskroom/buzz-linux" -type f -name '*.AppImage' | wc -l)`,
+        "test \"$appimage_count\" -eq 1",
+        `appimage=$(find "$(brew --prefix)/Caskroom/buzz-linux" -type f -name '*.AppImage' -print -quit)`,
+        "APPIMAGE_EXTRACT_AND_RUN=1 \"$appimage\" --appimage-extract >/dev/null",
+        "test ! -e squashfs-root/usr/etc/fonts/fonts.conf",
+      )
+    }
+
+    return container
+      .withExec(["bash", "-lc", checks.join("\n")])
+      .stdout()
   }
 
   @func()

@@ -392,7 +392,7 @@ export class BuzzLinuxSmoke {
         [
           "set -euxo pipefail",
           "rm -f /etc/apt/sources.list.d/github-cli.list",
-          "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils libasound2 libgtk-3-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 && rm -rf /var/lib/apt/lists/*",
+          "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils libasound2t64 libgtk-3-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 && rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
       .withUser("linuxbrew")

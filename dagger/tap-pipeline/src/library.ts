@@ -17,6 +17,14 @@ export type DictationManifestPackage = {
   sha256: string
 }
 
+export type CiPlanMode = "artifact" | "build"
+
+export type CiPlanEntry = {
+  package_id: string
+  mode: CiPlanMode
+  reason: string
+}
+
 export function parseDebianPackageVersion(packages: string, packageName: string): string | undefined {
   const packageLine = `Package: ${packageName}`
   const stanza = packages
@@ -529,7 +537,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ],
   ["headroom-self-hosted", ["Formula/headroom-self-hosted.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
-  ["devsy-desktop", ["Casks/devsy-desktop.rb"]],
+  ["devsy-desktop", ["Casks/devsy-desktop.rb", "Formula/devsy.rb"]],
   [
     "fizzy-cli-master",
     ["Formula/fizzy-cli-master.rb", "scripts/package-fizzy-cli-master.mjs", "dagger/fizzy-cli-master-smoke/"],
@@ -575,6 +583,36 @@ const PLATFORM_PATH_PREFIXES = [
   "scripts/apply-release-bundle.mjs",
 ]
 
+const RUNTIME_INPUT_PATHS: Array<[string, string]> = [
+  ["dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb", "action-server"],
+]
+
+const KNOWN_REGRESSION_TEST_PATHS = [
+  /^dagger\/tap-pipeline\/tests\/[^/]+\.test\.ts$/,
+  /^dagger\/buzz-linux-smoke\/tests\/[^/]+\.test\.mjs$/,
+]
+
+function pathMatches(path: string, prefix: string): boolean {
+  return prefix.endsWith("/") || prefix.endsWith("@") ? path.startsWith(prefix) : path === prefix
+}
+
+function runtimeInputPackageIds(path: string): string[] {
+  return RUNTIME_INPUT_PATHS.filter(([runtimePath]) => pathMatches(path, runtimePath)).map(([, packageId]) => packageId)
+}
+
+function isTestOrDocumentationPath(path: string): boolean {
+  return runtimeInputPackageIds(path).length === 0 && (
+    path === "AGENTS.md"
+    || path === "README.md"
+    || path.startsWith("docs/")
+    || KNOWN_REGRESSION_TEST_PATHS.some((pattern) => pattern.test(path))
+  )
+}
+
+function isPackagingPath(path: string): boolean {
+  return /^(?:Casks|Formula)\/[^/]+\.rb$/.test(path)
+}
+
 export function packageSummaries(): PackageRegistryEntry[] {
   return PACKAGE_REGISTRY.map((entry) => ({ ...entry }))
 }
@@ -583,8 +621,12 @@ export function changedPackagesFromPaths(paths: string[]): string[] {
   const seen = new Set<string>()
 
   for (const path of paths) {
+    const runtimePackageIdsForPath = runtimeInputPackageIds(path)
+    for (const packageId of runtimePackageIdsForPath) {
+      seen.add(packageId)
+    }
     for (const [packageId, prefixes] of CHANGED_PATHS) {
-      if (prefixes.some((prefix) => path === prefix || path.startsWith(prefix))) {
+      if (prefixes.some((prefix) => pathMatches(path, prefix))) {
         seen.add(packageId)
       }
     }
@@ -594,16 +636,86 @@ export function changedPackagesFromPaths(paths: string[]): string[] {
 }
 
 export function platformPathsChanged(paths: string[]): boolean {
-  return paths.some((path) => PLATFORM_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix)))
+  return paths.some((path) => runtimeInputPackageIds(path).length === 0
+    && PLATFORM_PATH_PREFIXES.some((prefix) => pathMatches(path, prefix)))
 }
 
 export function changedCiPackagesFromPaths(paths: string[]): string[] {
-  const changedPackages = new Set(changedPackagesFromPaths(paths))
-  const sharedPipelineChanged = platformPathsChanged(paths)
+  const relevantPaths = paths.filter((path) => !isTestOrDocumentationPath(path))
+  const changedPackages = new Set(changedPackagesFromPaths(relevantPaths))
+  const sharedPipelineChanged = platformPathsChanged(relevantPaths)
 
   return PACKAGE_REGISTRY
     .filter((entry) => entry.supportsPrCi && (sharedPipelineChanged || changedPackages.has(entry.id)))
     .map((entry) => entry.id)
+}
+
+/**
+ * CI routing decision matrix:
+ *
+ * | Changed input | Result |
+ * | --- | --- |
+ * | Casks/*.rb or Formula/*.rb | Affected package dependents, artifact mode |
+ * | Package builder, source, or runtime fixture | Affected package dependents, build mode |
+ * | Tests or documentation | Regression suite only |
+ * | Unsupported versioned cask leaf | Planning error; leaf checks are not implemented |
+ * | Unknown production source/config, or tap-ci.yml | Every PR package, build mode |
+ *
+ * The package registry remains the single source of repository-specific
+ * routing. GitHub Actions only resolves the native Git diff and fans out the
+ * resulting plan; no third-party path-filter action or custom probe is needed.
+ */
+export function ciPlanFromPaths(paths: string[]): CiPlanEntry[] {
+  const versionedCaskPaths = paths.filter((path) => /^Casks\/[^/]+@[^/]+\.rb$/.test(path))
+  if (versionedCaskPaths.length > 0) {
+    throw new Error(`Unsupported versioned cask path: ${versionedCaskPaths.join(", ")}; versioned leaf checks are not implemented`)
+  }
+
+  const relevantPaths = paths.filter((path) => !isTestOrDocumentationPath(path))
+  if (relevantPaths.length === 0) {
+    return []
+  }
+
+  const packagePaths = new Map<string, string[]>()
+  const unknownPaths: string[] = []
+
+  for (const path of relevantPaths) {
+    const packageIds = changedPackagesFromPaths([path])
+    if (packageIds.length === 0) {
+      unknownPaths.push(path)
+      continue
+    }
+
+    for (const packageId of packageIds) {
+      const current = packagePaths.get(packageId) ?? []
+      current.push(path)
+      packagePaths.set(packageId, current)
+    }
+  }
+
+  const pipelinePaths = relevantPaths.filter((path) => platformPathsChanged([path]))
+  if (unknownPaths.length > 0 || pipelinePaths.length > 0) {
+    const reason = relevantPaths.includes(".github/workflows/tap-ci.yml")
+      ? "tap-ci workflow change: full source-build matrix"
+      : `fail-safe full source-build matrix: ${[...new Set(relevantPaths)].join(", ")}`
+
+    return PACKAGE_REGISTRY
+      .filter((entry) => entry.supportsPrCi)
+      .map((entry) => ({ package_id: entry.id, mode: "build", reason }))
+  }
+
+  return PACKAGE_REGISTRY
+    .filter((entry) => entry.supportsPrCi && packagePaths.has(entry.id))
+    .map((entry) => {
+      const changedPaths = packagePaths.get(entry.id) ?? []
+      const mode = changedPaths.some((path) => !isPackagingPath(path)) ? "build" : "artifact"
+      const label = mode === "artifact" ? "packaging" : "source/build"
+      return {
+        package_id: entry.id,
+        mode,
+        reason: `${label} changes: ${changedPaths.join(", ")}`,
+      }
+    })
 }
 
 function packageEntryForId(packageId: string): PackageRegistryEntry {
