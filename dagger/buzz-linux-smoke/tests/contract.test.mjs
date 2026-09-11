@@ -116,9 +116,10 @@ test("removes only the stale GitHub CLI apt source before signed Brew setup", ()
 test("installs the host desktop libraries needed by the real Brew runtime probe", () => {
   const brewSetup = source.slice(source.indexOf(".from(BREW_IMAGE)"), source.indexOf('.withUser("linuxbrew")'))
   const packages = brewSetup.match(/apt-get install -y --no-install-recommends ([^&]+) &&/)[1].trim().split(/\s+/)
-  for (const dependency of ["libasound2", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]) {
+  for (const dependency of ["libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]) {
     assert.ok(packages.includes(dependency), `Brew runtime is missing ${dependency}`)
   }
+  assert.ok(!packages.includes("libasound2"), "Brew runtime must use the Ubuntu 24.04 package name")
 })
 
 test("checks the hash of the artifact mounted for Homebrew installation", () => {

@@ -737,6 +737,9 @@ Pull requests welcome! Please ensure:
 
 ### Local Release and CI
 
+See [CI performance and acceptance](docs/ci-performance.md) for change routing,
+published-artifact checks, and the supported cache inspection workflow.
+
 ```bash
 npm test --prefix dagger/tap-pipeline
 dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main

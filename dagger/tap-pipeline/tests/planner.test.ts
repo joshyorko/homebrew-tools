@@ -1,10 +1,14 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { execFileSync, spawnSync } from "node:child_process"
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   AUTO_UPDATE_SLOTS,
   PACKAGE_REGISTRY,
+  ciPlanFromPaths,
   changedCiPackagesFromPaths,
   changedPackagesFromPaths,
   isTransientUpstreamProbeError,
@@ -18,6 +22,8 @@ import {
   recoveryPackageSummaries,
   TransientUpstreamProbeError,
 } from "../src/library.ts"
+
+const plannerScript = new URL("../../../scripts/plan-tap-ci.mjs", import.meta.url)
 
 test("recovery inventory and Brewfile are derived from release-capable registry entries", () => {
   const packages = recoveryPackageSummaries()
@@ -157,6 +163,241 @@ test("shared pipeline changes schedule every PR-enabled package", () => {
 test("resource monitor build helper schedules t3code CLI CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
 })
+
+test("package formula and cask edits use artifact checks", () => {
+  assert.deepEqual(ciPlanFromPaths(["Casks/rcc.rb", "Formula/voxtype.rb"]), [
+    {
+      package_id: "voxtype",
+      mode: "artifact",
+      reason: "packaging changes: Formula/voxtype.rb",
+    },
+    {
+      package_id: "rcc",
+      mode: "artifact",
+      reason: "packaging changes: Casks/rcc.rb",
+    },
+  ])
+})
+
+test("dependency formula edits route only to their package dependents", () => {
+  assert.deepEqual(ciPlanFromPaths(["Formula/devpod-appindicator-runtime-tools.rb", "Formula/devsy.rb"]), [
+    {
+      package_id: "devsy",
+      mode: "artifact",
+      reason: "packaging changes: Formula/devsy.rb",
+    },
+    {
+      package_id: "devsy-desktop",
+      mode: "artifact",
+      reason: "packaging changes: Formula/devsy.rb",
+    },
+    {
+      package_id: "devpod-linux",
+      mode: "artifact",
+      reason: "packaging changes: Formula/devpod-appindicator-runtime-tools.rb",
+    },
+  ])
+})
+
+test("runtime test fixtures route to the package that consumes them", () => {
+  assert.deepEqual(ciPlanFromPaths(["dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"]), [
+    {
+      package_id: "action-server",
+      mode: "build",
+      reason: "source/build changes: dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb",
+    },
+  ])
+})
+
+test("package builders and source inputs use source builds", () => {
+  assert.deepEqual(ciPlanFromPaths([
+    "scripts/package-t3code-cli-main.mjs",
+    "config/codex-desktop-linux-features.json",
+  ]), [
+    {
+      package_id: "t3code-cli-main",
+      mode: "build",
+      reason: "source/build changes: scripts/package-t3code-cli-main.mjs",
+    },
+    {
+      package_id: "codex-desktop-linux",
+      mode: "build",
+      reason: "source/build changes: config/codex-desktop-linux-features.json",
+    },
+  ])
+})
+
+test("tests and docs schedule no package builds", () => {
+  assert.deepEqual(ciPlanFromPaths([
+    "README.md",
+    "AGENTS.md",
+    "docs/tap-ci.md",
+    "dagger/tap-pipeline/tests/planner.test.ts",
+    "dagger/buzz-linux-smoke/tests/contract.test.mjs",
+  ]), [])
+})
+
+test("unknown fixtures and test-like paths fail safe to source builds", () => {
+  const plan = ciPlanFromPaths([
+    "dagger/tap-pipeline/tests/fixtures/unknown.rb",
+    "other/tests/fixture.txt",
+    "other/notes.md",
+  ])
+
+  assert.equal(plan.length, 18)
+  assert.equal(plan.every((entry) => entry.mode === "build"), true)
+  assert.match(plan[0].reason, /unknown\.rb/)
+  assert.match(plan[0].reason, /notes\.md/)
+})
+
+test("versioned cask leaves throw instead of claiming package evidence", () => {
+  assert.throws(
+    () => ciPlanFromPaths(["Casks/rcc@18.18.1.rb"]),
+    /Unsupported versioned cask path.*Casks\/rcc@18\.18\.1\.rb/,
+  )
+  assert.throws(
+    () => ciPlanFromPaths(["Casks/rcc@18.18.1.rb", "dagger/tap-pipeline/src/index.ts"]),
+    /Unsupported versioned cask path.*Casks\/rcc@18\.18\.1\.rb/,
+  )
+})
+
+test("unknown production changes fail safe to the full source-build matrix", () => {
+  const plan = ciPlanFromPaths(["dagger/tap-pipeline/src/install-checks.ts"])
+  const expectedPackageIds = [
+    "t3code-cli-main",
+    "antigravity-cli",
+    "chatgpt",
+    "codex-desktop-linux",
+    "headroom-self-hosted",
+    "devsy",
+    "devsy-desktop",
+    "buzz-linux",
+    "fizzy-cli-master",
+    "fizzy-popper-self-hosted",
+    "fizzy-symphony",
+    "vscode-insiders-linux",
+    "voxtype",
+    "eitype",
+    "rcc",
+    "action-server",
+    "devpod-linux",
+    "t3-code-linux",
+  ]
+
+  assert.deepEqual(plan.map(({ package_id, mode }) => ({ package_id, mode })), expectedPackageIds
+    .map((package_id) => ({ package_id, mode: "build" })))
+  assert.match(plan[0].reason, /fail-safe full source-build matrix/)
+})
+
+test("tap workflow changes fail safe to the full source-build matrix", () => {
+  const plan = ciPlanFromPaths([".github/workflows/tap-ci.yml"])
+
+  assert.equal(plan.length, 18)
+  assert.equal(plan.every((entry) => entry.mode === "build"), true)
+})
+
+test("rename and delete diffs preserve both paths and keep deletion visible", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "tap-ci-planner-"))
+
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: fixture })
+    execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })
+    execFileSync("git", ["config", "user.name", "planner"], { cwd: fixture })
+    mkdirSync(join(fixture, "Casks"))
+    writeFileSync(join(fixture, "Casks/rcc.rb"), "rcc")
+    execFileSync("git", ["add", "."], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "base"], { cwd: fixture })
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+
+    assert.deepEqual(runPlanner(fixture, "0".repeat(40), base, "push").map(({ package_id, mode }) => ({ package_id, mode })), [
+      { package_id: "rcc", mode: "artifact" },
+    ])
+    assertPlannerFails(fixture, "missing-ref", base, "push")
+    assertPlannerFails(fixture, base, "0".repeat(40), "push")
+
+    renameSync(join(fixture, "Casks/rcc.rb"), join(fixture, "Casks/chatgpt.rb"))
+    execFileSync("git", ["add", "-A"], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "rename"], { cwd: fixture })
+    const renamed = runPlanner(fixture, base, "HEAD", "push")
+    assert.deepEqual(renamed.map(({ package_id, mode }) => ({ package_id, mode })), [
+      { package_id: "chatgpt", mode: "artifact" },
+      { package_id: "rcc", mode: "artifact" },
+    ])
+    assert.match(renamed[0].reason, /Casks\/chatgpt\.rb/)
+    assert.match(renamed[1].reason, /Casks\/rcc\.rb/)
+
+    const renamedBase = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+    rmSync(join(fixture, "Casks/chatgpt.rb"))
+    execFileSync("git", ["add", "-A"], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "delete"], { cwd: fixture })
+    const deleted = runPlanner(fixture, renamedBase, "HEAD", "push")
+    assert.deepEqual(deleted.map(({ package_id, mode }) => ({ package_id, mode })), [
+      { package_id: "chatgpt", mode: "artifact" },
+    ])
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+})
+
+test("pull request planning uses merge-base while pushes compare exact before and head", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "tap-ci-compare-"))
+
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: fixture })
+    execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })
+    execFileSync("git", ["config", "user.name", "planner"], { cwd: fixture })
+    mkdirSync(join(fixture, "Casks"))
+    mkdirSync(join(fixture, "Formula"))
+    writeFileSync(join(fixture, "Casks/rcc.rb"), "base")
+    execFileSync("git", ["add", "."], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "root"], { cwd: fixture })
+    const root = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+
+    writeFileSync(join(fixture, "Formula/voxtype.rb"), "main update")
+    execFileSync("git", ["add", "."], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "main update"], { cwd: fixture })
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+
+    execFileSync("git", ["checkout", "-q", "-b", "feature", root], { cwd: fixture })
+    writeFileSync(join(fixture, "Casks/rcc.rb"), "feature change")
+    execFileSync("git", ["add", "."], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "feature"], { cwd: fixture })
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+
+    assert.deepEqual(runPlanner(fixture, base, head, "pull_request").map(({ package_id, mode }) => ({ package_id, mode })), [
+      { package_id: "rcc", mode: "artifact" },
+    ])
+    assert.deepEqual(runPlanner(fixture, base, head, "push").map(({ package_id, mode }) => ({ package_id, mode })), [
+      { package_id: "voxtype", mode: "artifact" },
+      { package_id: "rcc", mode: "artifact" },
+    ])
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+})
+
+function runPlanner(cwd: string, baseRef: string, headRef: string, eventName = "push") {
+  const result = plannerProcess(cwd, baseRef, headRef, eventName)
+  assert.equal(result.status, 0, result.stderr)
+  return JSON.parse(result.stdout)
+}
+
+function assertPlannerFails(cwd: string, baseRef: string, headRef: string, eventName: string) {
+  const result = plannerProcess(cwd, baseRef, headRef, eventName)
+  assert.notEqual(result.status, 0)
+}
+
+function plannerProcess(cwd: string, baseRef: string, headRef: string, eventName: string) {
+  return spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", plannerScript.pathname],
+    {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, BASE_REF: baseRef, HEAD_REF: headRef, EVENT_NAME: eventName },
+    },
+  )
+}
 
 test("transient upstream probe errors are explicitly marked", () => {
   assert.equal(
