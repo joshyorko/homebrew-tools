@@ -24,7 +24,8 @@ caskroom="${prefix}/Caskroom/chatgpt"
 
 rm -f \
     "${HOME}/.local/share/applications/chatgpt.desktop" \
-    "${HOME}/.local/share/pixmaps/chatgpt.png"
+    "${HOME}/.local/share/pixmaps/chatgpt.png" \
+    "${HOME}/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png"
 
 if [ -d "$caskroom" ]; then
     rm -rf "$caskroom"

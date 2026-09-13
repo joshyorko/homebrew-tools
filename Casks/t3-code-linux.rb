@@ -48,7 +48,7 @@ cask "t3-code-linux" do
       /bin/cp "$desktop_source" "t3-code-linux.desktop"
       /bin/sed -i \
         -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/t3-code-linux %U|" \
-        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png|" \
+        -e "s|^Icon=.*|Icon=t3-code-linux|" \
         "t3-code-linux.desktop"
 
       icon_source=""

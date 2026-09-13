@@ -404,7 +404,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   )
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*getent passwd[\s\S]*share\/pixmaps\/chatgpt\.png/,
+    /case "chatgpt"[\s\S]*getent passwd[\s\S]*share\/icons\/hicolor\/512x512@2\/apps\/chatgpt\.png/,
   )
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),

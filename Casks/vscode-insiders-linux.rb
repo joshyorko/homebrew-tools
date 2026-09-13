@@ -50,7 +50,7 @@ cask "vscode-insiders-linux" do
         -e 's|^Exec=/usr/share/code-insiders/code-insiders %F$|Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop {{HOMEBREW_PREFIX}}/bin/code-insiders %F|' \
         -e 's|^Exec=/usr/share/code-insiders/code-insiders --new-window %F$|Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop {{HOMEBREW_PREFIX}}/bin/code-insiders --new-window %F|' \
         "$desktop_file"
-      /bin/sed -i "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png|" "$desktop_file"
+      /bin/sed -i "s|^Icon=.*|Icon=vscode-insiders|" "$desktop_file"
 
       url_handler_file="usr/share/applications/code-insiders-url-handler.desktop"
       if ! /bin/grep -Eq '^Exec=/usr/share/code-insiders/code-insiders --open-url %U$' "$url_handler_file"; then
@@ -59,7 +59,7 @@ cask "vscode-insiders-linux" do
       fi
       /bin/sed -i -E \
         -e 's|^Exec=/usr/share/code-insiders/code-insiders --open-url %U$|Exec=/usr/bin/env CHROME_DESKTOP=code-insiders.desktop {{HOMEBREW_PREFIX}}/bin/code-insiders --open-url %U|' \
-        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/512x512/apps/vscode-insiders.png|" \
+        -e "s|^Icon=.*|Icon=vscode-insiders|" \
         "$url_handler_file"
 
       package_json_file="usr/share/code-insiders/resources/app/package.json"

@@ -350,6 +350,29 @@ creates the release and records its exact SHA-256 in the cask.
 dagger -m ./dagger/buzz-linux-smoke call smoke-test --tap=.
 ```
 
+### Repair missing Linux desktop icons
+
+The install-hook migration in issue [#101](https://github.com/joshyorko/homebrew-tools/issues/101)
+could write temporary sandbox paths into desktop entries for `chatgpt`,
+`devpod-linux`, `devsy-desktop`, `t3-code-linux`, and `vscode-insiders-linux`.
+The corrected casks use icon theme names. Existing release assets can be reused;
+the defect was in the tap's installation steps, not the downloaded application.
+
+Save your work and fully quit the affected applications. Run `brew update`,
+then reinstall only the affected casks you have installed:
+
+```bash
+brew reinstall --cask joshyorko/tools/chatgpt
+brew reinstall --cask joshyorko/tools/devpod-linux
+brew reinstall --cask joshyorko/tools/devsy-desktop
+brew reinstall --cask joshyorko/tools/t3-code-linux
+brew reinstall --cask joshyorko/tools/vscode-insiders-linux
+```
+
+Reopen them afterward to refresh their dock entries. Reinstallation preserves
+application data; do not use `--zap`. Updating the tap alone does not rerun
+installation steps for an unchanged application version.
+
 ### ChatGPT Desktop (Official Linux Package)
 
 The `chatgpt` cask downloads the official architecture-specific OpenAI Linux

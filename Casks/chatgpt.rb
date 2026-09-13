@@ -29,7 +29,7 @@ cask "chatgpt" do
   artifact "usr/share/applications/chatgpt.desktop",
            target: "#{Dir.home}/.local/share/applications/chatgpt.desktop"
   artifact "usr/share/pixmaps/chatgpt.png",
-           target: "#{Dir.home}/.local/share/pixmaps/chatgpt.png"
+           target: "#{Dir.home}/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png"
 
   preflight_steps do
     run "{{HOMEBREW_PREFIX}}/bin/rpm2cpio",
@@ -46,13 +46,14 @@ cask "chatgpt" do
       desktop_file="usr/share/applications/chatgpt.desktop"
       /bin/sed -i \
         -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/chatgpt %U|" \
-        -e "s|^Icon=.*|Icon=$HOME/.local/share/pixmaps/chatgpt.png|" \
+        -e "s|^Icon=.*|Icon=chatgpt|" \
         "$desktop_file"
     SH
   end
 
   zap trash: [
     "#{Dir.home}/.local/share/applications/chatgpt.desktop",
+    "#{Dir.home}/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png",
     "#{Dir.home}/.local/share/pixmaps/chatgpt.png",
   ]
 

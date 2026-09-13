@@ -35,6 +35,7 @@ jobs:
       run: |
         set -euo pipefail
         npm test --prefix dagger/tap-pipeline
+        node --test scripts/test-cask-icon-paths.mjs
         npm test --prefix dagger/buzz-linux-smoke
 
   plan:

@@ -48,7 +48,7 @@ cask "devsy-desktop" do
       /bin/cp "$desktop_source" "devsy-desktop.desktop"
       /bin/sed -i \
         -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/devsy-desktop %U|" \
-        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/128x128/apps/devsy-desktop.png|" \
+        -e "s|^Icon=.*|Icon=devsy-desktop|" \
         "devsy-desktop.desktop"
 
       icon_source="squashfs-root/usr/share/icons/hicolor/128x128/apps/devsy-desktop.png"

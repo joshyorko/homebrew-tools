@@ -80,7 +80,7 @@ cask "devpod-linux" do
       desktop_file="usr/share/applications/DevPod.desktop"
       /bin/sed -i \
         -e "s|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/devpod-desktop %U|" \
-        -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png|" \
+        -e "s|^Icon=.*|Icon=devpod-desktop|" \
         "$desktop_file"
       if /bin/grep -Eq '^StartupWMClass=' "$desktop_file"; then
         /bin/sed -i 's|^StartupWMClass=.*|StartupWMClass=gdk-pixbuf-csource|' "$desktop_file"
