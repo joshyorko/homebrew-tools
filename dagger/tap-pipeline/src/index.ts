@@ -8,6 +8,7 @@ import {
   packageSummaries,
   packagedVersionForUpstreamComparison,
   parseDebianPackageVersion,
+  parseVscodeInsidersUpdate,
   parseAutoUpdateSlotId,
   parseRecoveryBrewfile,
   packagesForAutoUpdateSlot as slotPackages,
@@ -357,7 +358,7 @@ type VscodeBuild = {
   commitSha: string
   container: Container
   packageVersion: string
-  releaseBuild: string
+  sourceArchiveSha256: string
   resolvedUrl: string
 }
 
@@ -1254,11 +1255,11 @@ end
       artifactSha256: sha256,
       downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/vscode-insiders-linux-${build.caskVersion.replace(/,/g, "-")}/${build.assetName}`,
       releaseTitle: `VS Code Insiders Linux ${build.caskVersion}`,
-      releaseNotes: `Packaged from official RPM ${build.resolvedUrl} (${build.packageVersion}-${build.releaseBuild})`,
+      releaseNotes: `Packaged from Microsoft's immutable Linux archive ${build.resolvedUrl} (SHA256 ${build.sourceArchiveSha256})`,
       commitMessage: `Update vscode-insiders-linux cask to ${build.caskVersion}`,
       upstream: {
-        kind: "rpm",
-        sourceUrl: build.resolvedUrl,
+        kind: "http_file",
+        url: build.resolvedUrl,
         version: build.caskVersion,
         commit: build.commitSha,
       },
@@ -1684,8 +1685,8 @@ end
     const metadata = await this.resolveVscodeMetadata(sourceUrl)
     const resolvedUrl = metadata.resolvedUrl
     const packageVersion = metadata.packageVersion
-    const releaseBuild = metadata.releaseBuild
     const commitSha = metadata.commitSha
+    const sourceArchiveSha256 = metadata.sourceArchiveSha256
     const caskVersion = version && version.length > 0 ? version : metadata.caskVersion
     const assetName = `vscode-insiders-linux-${caskVersion.replace(/,/g, "-")}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
@@ -1696,15 +1697,17 @@ end
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates cpio curl jq rpm tar && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar && rm -rf /var/lib/apt/lists/*",
       ])
       .withDirectory("/tap", tap)
-      .withExec(["bash", "-lc", `curl -fsSL "${resolvedUrl}" -o /tmp/vscode-insiders-source.rpm`])
+      .withExec(["bash", "-lc", `curl -fsSL "${resolvedUrl}" -o /tmp/vscode-insiders-source.tar.gz`])
       .withExec([
         "node",
         "/tap/scripts/package-vscode-insiders-linux.mjs",
-        "--source-rpm",
-        "/tmp/vscode-insiders-source.rpm",
+        "--source-archive",
+        "/tmp/vscode-insiders-source.tar.gz",
+        "--source-sha256",
+        sourceArchiveSha256,
         "--output",
         artifactPath,
       ])
@@ -1716,7 +1719,7 @@ end
       commitSha,
       container,
       packageVersion,
-      releaseBuild,
+      sourceArchiveSha256,
       resolvedUrl,
     }
   }
@@ -2243,45 +2246,19 @@ end
   private async resolveVscodeMetadata(sourceUrl?: string): Promise<{
     resolvedUrl: string
     packageVersion: string
-    releaseBuild: string
+    sourceArchiveSha256: string
     commitSha: string
     caskVersion: string
   }> {
-    const resolvedSourceUrl = sourceUrl ?? "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
-    const resolvedUrl = (await dag
-      .container()
-      .from(NODE_IMAGE)
-      .withExec([
-        "node",
-        "--input-type=module",
-        "-e",
-        [
-          "const url = process.argv[1]",
-          "const response = await fetch(url, { method: 'HEAD', redirect: 'follow' })",
-          "if (!response.ok) {",
-          "  throw new Error(`Failed to resolve ${url}: ${response.status}`)",
-          "}",
-          "process.stdout.write(response.url)",
-        ].join("\n"),
-        resolvedSourceUrl,
-      ])
-      .stdout()).trim()
-
-    const match = resolvedUrl.match(/\/download\/insider\/([0-9a-f]+)\/code-insiders-([0-9.]+)-(.+)\.x86_64\.rpm$/)
-
-    if (!match) {
-      throw new Error(`Failed to parse VS Code Insiders metadata from ${resolvedUrl}`)
-    }
-
-    const [, commitSha, packageVersion, releaseBuild] = match
-    const commitShort = commitSha.slice(0, 12)
+    const apiUrl = sourceUrl ?? "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest"
+    const update = parseVscodeInsidersUpdate(await this.fetchJson(apiUrl))
 
     return {
-      resolvedUrl,
-      packageVersion,
-      releaseBuild,
-      commitSha,
-      caskVersion: `${packageVersion},${releaseBuild},${commitShort}`,
+      resolvedUrl: update.archiveUrl,
+      packageVersion: update.productVersion,
+      sourceArchiveSha256: update.archiveSha256,
+      commitSha: update.commitSha,
+      caskVersion: update.caskVersion,
     }
   }
 
@@ -2326,6 +2303,8 @@ end
 
         return (await this.resolveVscodeMetadata(sourceUrl)).caskVersion
       }
+      case "vscode_insiders_api":
+        return (await this.resolveVscodeMetadata(entry.autoUpdate.url)).caskVersion
       case "deb_packages_version":
         return packageId === "codex-desktop-linux"
           ? this.resolveCodexDesktopVersion(codexDesktopConversionCommit)

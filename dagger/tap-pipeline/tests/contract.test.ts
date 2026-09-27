@@ -98,7 +98,8 @@ test("package registry covers every planned adapter kind", () => {
       "github_release_deb_cask",
       "headroom_self_hosted_formula",
       "http_binary_formula",
-    "rpm_repack_cask",
+      "rpm_repack_cask",
+      "source_archive_repack_cask",
       "source_build_go_formula",
       "source_build_node_appimage_cask",
       "source_build_node_formula",
@@ -423,6 +424,32 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.match(uninstaller, /brew uninstall --cask chatgpt/)
   assert.match(uninstaller, /chatgpt-local/)
   assert.doesNotMatch(uninstaller, /\.config\/ChatGPT|\.cache\/ChatGPT|\.local\/share\/ChatGPT/)
+})
+
+test("VS Code Insiders uses Microsoft's commit-pinned archive metadata", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "vscode-insiders-linux")
+
+  assert.ok(entry)
+  assert.equal(entry.kind, "source_archive_repack_cask")
+  assert.ok(entry.autoUpdate.kind === "vscode_insiders_api")
+  assert.ok(entry.upstream.kind === "http_file")
+  assert.match(entry.autoUpdate.url, /api\/update\/linux-x64\/insider\/latest$/)
+
+  const cask = readFileSync(new URL("../../../Casks/vscode-insiders-linux.rb", import.meta.url), "utf8")
+  assert.match(cask, /code-insiders\.desktop/)
+  assert.match(cask, /code-insiders-workspace\.xml/)
+  assert.match(cask, /x-scheme-handler\/vscode-insiders/)
+  assert.match(cask, /CHROME_DESKTOP=code-insiders\.desktop/)
+  assert.match(cask, /del\(\.updateUrl\).*update\.mode.*none/)
+  assert.match(cask, /depends_on formula: "jq"/)
+
+  const smokeModule = readFileSync(
+    new URL("../../../dagger/vscode-insiders-linux-smoke/src/index.ts", import.meta.url),
+    "utf8",
+  )
+  assert.match(smokeModule, /api\/update\/linux-x64\/insider\/latest/)
+  assert.match(smokeModule, /--source-sha256/)
+  assert.doesNotMatch(smokeModule, /source-rpm|rpm -qp/)
 })
 
 test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {

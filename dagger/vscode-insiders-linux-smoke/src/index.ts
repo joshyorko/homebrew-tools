@@ -1,6 +1,6 @@
 import { dag, Container, Directory, File, object, func } from "@dagger.io/dagger"
 
-const DEFAULT_SOURCE_URL = "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
+const DEFAULT_SOURCE_URL = "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest"
 const NODE_IMAGE = "node:24-bookworm"
 const BREW_IMAGE = "homebrew/brew:latest"
 const CASK_PATH = "Casks/vscode-insiders-linux.rb"
@@ -14,50 +14,35 @@ export class VscodeInsidersLinuxSmoke {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates cpio curl jq rpm tar && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl jq tar && rm -rf /var/lib/apt/lists/*",
       ])
   }
 
   private async resolveMetadata(sourceUrl: string): Promise<{
+    archiveSha256: string
     caskVersion: string
     packageVersion: string
-    releaseBuild: string
     resolvedUrl: string
+    commitSha: string
   }> {
     const metadataContainer = this.baseContainer()
       .withEnvVariable("SOURCE_URL", sourceUrl)
       .withExec([
-        "bash",
-        "-lc",
+        "node",
+        "--input-type=module",
+        "-e",
         [
-          "set -euo pipefail",
-          "resolved_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \"$SOURCE_URL\")",
-          "curl -fsSL \"$resolved_url\" -o /tmp/vscode-insiders-source.rpm",
-          "package_version=$(rpm -qp --queryformat '%{VERSION}' /tmp/vscode-insiders-source.rpm)",
-          "release_build=$(rpm -qp --queryformat '%{RELEASE}' /tmp/vscode-insiders-source.rpm)",
-          "commit_sha=$(printf '%s' \"$resolved_url\" | sed -nE 's#^.*/download/insider/([0-9a-f]+)/.*#\\1#p')",
-          "commit_short=${commit_sha:0:12}",
-          "printf 'resolved_url=%s\\npackage_version=%s\\nrelease_build=%s\\ncask_version=%s,%s,%s\\n' \"$resolved_url\" \"$package_version\" \"$release_build\" \"$package_version\" \"$release_build\" \"$commit_short\"",
+          "const response = await fetch(process.env.SOURCE_URL)",
+          "if (!response.ok) throw new Error(`Failed to resolve ${process.env.SOURCE_URL}: ${response.status}`)",
+          "const update = await response.json()",
+          "if (typeof update.productVersion !== 'string' || !/^\\d+(?:\\.\\d+)+-insider$/.test(update.productVersion)) throw new Error('Invalid VS Code Insiders productVersion')",
+          "if (typeof update.version !== 'string' || !/^[0-9a-f]{40}$/.test(update.version)) throw new Error('Invalid VS Code Insiders commit hash')",
+          "if (typeof update.sha256hash !== 'string' || !/^[0-9a-f]{64}$/i.test(update.sha256hash)) throw new Error('Invalid VS Code Insiders archive SHA256')",
+          "process.stdout.write(JSON.stringify({ archiveSha256: update.sha256hash.toLowerCase(), caskVersion: `${update.productVersion},${update.version}`, commitSha: update.version, packageVersion: update.productVersion, resolvedUrl: `https://update.code.visualstudio.com/commit:${update.version}/linux-x64/insider` }))",
         ].join("\n"),
       ])
 
-    const metadata = await metadataContainer.stdout()
-    const entries = Object.fromEntries(
-      metadata
-        .trim()
-        .split("\n")
-        .map((line) => {
-          const [key, ...rest] = line.split("=")
-          return [key, rest.join("=")]
-        }),
-    )
-
-    return {
-      caskVersion: entries.cask_version,
-      packageVersion: entries.package_version,
-      releaseBuild: entries.release_build,
-      resolvedUrl: entries.resolved_url,
-    }
+    return JSON.parse(await metadataContainer.stdout())
   }
 
   private async artifactBuild(
@@ -66,11 +51,13 @@ export class VscodeInsidersLinuxSmoke {
     version?: string,
   ): Promise<{
     artifactPath: string
+    archiveSha256: string
     assetName: string
     caskVersion: string
     container: Container
     packageVersion: string
     resolvedUrl: string
+    commitSha: string
   }> {
     const metadata = await this.resolveMetadata(sourceUrl)
     const caskVersion = version && version.length > 0 ? version : metadata.caskVersion
@@ -79,28 +66,32 @@ export class VscodeInsidersLinuxSmoke {
 
     const container = this.baseContainer()
       .withDirectory("/tap", tap)
-      .withExec(["bash", "-lc", `curl -fsSL "${metadata.resolvedUrl}" -o /tmp/vscode-insiders-source.rpm`])
+      .withExec(["bash", "-lc", `curl -fsSL "${metadata.resolvedUrl}" -o /tmp/vscode-insiders-source.tar.gz`])
       .withExec([
         "node",
         "/tap/scripts/package-vscode-insiders-linux.mjs",
-        "--source-rpm",
-        "/tmp/vscode-insiders-source.rpm",
+        "--source-archive",
+        "/tmp/vscode-insiders-source.tar.gz",
+        "--source-sha256",
+        metadata.archiveSha256,
         "--output",
         artifactPath,
       ])
 
     return {
       artifactPath,
+      archiveSha256: metadata.archiveSha256,
       assetName,
       caskVersion,
       container,
       packageVersion: metadata.packageVersion,
       resolvedUrl: metadata.resolvedUrl,
+      commitSha: metadata.commitSha,
     }
   }
 
   /**
-   * Build and export the packaged VS Code Insiders artifact from the current upstream Linux RPM.
+   * Build and export the packaged VS Code Insiders artifact from Microsoft's commit-pinned Linux archive.
    */
   @func()
   async packageArtifact(tap: Directory, sourceUrl = DEFAULT_SOURCE_URL, version = ""): Promise<File> {
@@ -109,7 +100,7 @@ export class VscodeInsidersLinuxSmoke {
   }
 
   /**
-   * Package the latest upstream Linux RPM, install the cask through Linuxbrew,
+   * Package the latest Microsoft Linux archive, install the cask through Linuxbrew,
    * and verify the CLI launcher plus desktop integration work as expected.
    */
   @func()
@@ -153,6 +144,7 @@ export class VscodeInsidersLinuxSmoke {
           "repo=$(brew --repository)",
           "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
           `echo "resolved_url=${build.resolvedUrl}"`,
+          `echo "upstream_archive_sha256=${build.archiveSha256}"`,
           `echo "packaged_version=${build.caskVersion}"`,
           `echo "artifact_sha256=${sha256}"`,
           "mkdir -p \"$tap_dir\"",
@@ -180,8 +172,11 @@ export class VscodeInsidersLinuxSmoke {
           "pkg_path=$(find \"$(brew --prefix)/Caskroom/vscode-insiders-linux\" -path '*/usr/share/code-insiders/resources/app/package.json' -print -quit)",
           "test -n \"$pkg_path\"",
           "test \"$(jq -r '.desktopName' \"$pkg_path\")\" = 'code-insiders.desktop'",
+          "product_json_path=$(dirname \"$pkg_path\")/product.json",
+          "test \"$(jq -r '.configurationDefaults[\"update.mode\"]' \"$product_json_path\")\" = 'none'",
+          "test \"$(jq -r 'has(\"updateUrl\")' \"$product_json_path\")\" = 'false'",
           "installed_package_version=$(jq -r '.version' \"$pkg_path\")",
-          `test "\${installed_package_version%-insider}" = "${build.packageVersion}"`,
+          `test "\$installed_package_version" = "${build.packageVersion}"`,
           "xdg_handler=$(xdg-mime query default x-scheme-handler/vscode-insiders)",
           "test \"$xdg_handler\" = 'code-insiders-url-handler.desktop'",
           "if command -v xdg-settings >/dev/null 2>&1; then",
@@ -202,6 +197,8 @@ export class VscodeInsidersLinuxSmoke {
           "fi",
           "echo '--- installed package version ---'",
           "grep -m1 '\"version\"' \"$pkg_path\"",
+          "echo '--- Microsoft archive SHA256 ---'",
+          `printf '%s\\n' "${build.archiveSha256}"`,
           "echo '--- xdg-mime default ---'",
           "printf '%s\\n' \"$xdg_handler\"",
         ].join("\n"),
