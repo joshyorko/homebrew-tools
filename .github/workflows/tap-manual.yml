@@ -1,169 +1,222 @@
-name: Tap Manual
+name: Restore Retained Release Assets
 
 on:
   workflow_dispatch:
     inputs:
-      action:
-        description: "artifact install check, full build CI, release, or force-release"
+      package_id:
+        description: "Existing release to restore from its retained GitHub Actions bundle"
         required: true
         type: choice
         options:
-        - ci
-        - artifact
-        - release
-        - force-release
-      package_id:
-        description: "Package id from dagger/tap-pipeline listPackages()"
-        required: true
-        type: string
+        - chatgpt-linux
+        - vscode-insiders-linux
+        - devsy
+        - devsy-desktop
+        - headroom-self-hosted
+        - t3code-cli-main
+        - codex-desktop-linux
 
 permissions:
+  actions: read
   contents: write
 
-env:
-  DAGGER_VERSION: "0.21.9"
-  GH_TOKEN: ${{ github.token }}
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  RELEASE_RETENTION_PER_PACKAGE: "3"
+concurrency:
+  group: tap-publish
+  cancel-in-progress: false
+  queue: max
 
 jobs:
-  run:
+  restore:
+    name: Restore ${{ inputs.package_id }} from retained bundle
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE_ID: ${{ inputs.package_id }}
+      MANIFEST: scripts/retained-release-restore-manifest.json
+      RESET_HELPER: scripts/restore-retained-release.mjs
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Verify committed package artifact through Dagger
-      if: inputs.action == 'artifact'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          artifact-check
-          --package-id="${{ inputs.package_id }}"
-    - name: Run package CI through Dagger
-      if: inputs.action == 'ci' && inputs.package_id != 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          ci-check
-          --package-id="${{ inputs.package_id }}"
-          --github-token=env://GH_TOKEN
 
-    - name: Run Buzz Linux CI through Dagger
-      if: inputs.action == 'ci' && inputs.package_id == 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/buzz-linux-smoke
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          smoke-test
-          --tap=.
-
-    - name: Resolve immutable Buzz Linux source
-      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
-      id: buzz_source
+    - name: Select allowlisted release and source artifact
+      id: target
       run: |
         set -euo pipefail
-        release="$(gh api repos/block/buzz/releases/latest)"
-        tag="$(jq -er '.tag_name | select(startswith("desktop-v"))' <<<"$release")"
-        version="${tag#desktop-v}"
-        commit="$(gh api "repos/block/buzz/commits/$tag" --jq '.sha')"
-        test "$commit" = "$(jq -er '.target_commitish' <<<"$release")"
+        test "$GITHUB_REPOSITORY" = "joshyorko/homebrew-tools"
+        target="$(jq -cer --arg package "$PACKAGE_ID" '.packages[$package] // error("package not in restore manifest")' "$MANIFEST")"
         {
-          echo "version=$version"
-          echo "commit=$commit"
+          jq -r '"original_release_id=\(.original_release_id)"' <<<"$target"
+          jq -r '"release_tag=\(.release_tag)"' <<<"$target"
+          jq -r '"tag_commit_sha=\(.tag_commit_sha)"' <<<"$target"
+          jq -r '"release_title=\(.release_title)"' <<<"$target"
+          jq -r '"source_artifact_id=\(.source_artifact_id)"' <<<"$target"
+          jq -r '"source_run_id=\(.source_run_id)"' <<<"$target"
+          jq -r '"source_artifact_name=\(.source_artifact_name)"' <<<"$target"
+          jq -r '"source_run_head_sha=\(.source_run_head_sha)"' <<<"$target"
+          jq -r '"source_artifact_size=\(.source_artifact_size)"' <<<"$target"
         } >> "$GITHUB_OUTPUT"
 
-    - name: Export release bundle
-      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id != 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          -o "$RUNNER_TEMP/bundle"
-          release-bundle
-          --package-id="${{ inputs.package_id }}"
-
-    - name: Export Buzz Linux release bundle
-      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/buzz-linux-smoke
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          -o "$RUNNER_TEMP/bundle"
-          release-bundle
-          --tap=.
-          --source-ref="${{ steps.buzz_source.outputs.commit }}"
-          --version="${{ steps.buzz_source.outputs.version }}"
-
-    - name: Publish manual release output
-      if: inputs.action == 'release' || inputs.action == 'force-release'
+    - name: Verify retained artifact identity and availability
       env:
-        PACKAGE_ID: ${{ inputs.package_id }}
+        ARTIFACT_ID: ${{ steps.target.outputs.source_artifact_id }}
+        SOURCE_RUN_ID: ${{ steps.target.outputs.source_run_id }}
+        ARTIFACT_NAME: ${{ steps.target.outputs.source_artifact_name }}
+        SOURCE_RUN_SHA: ${{ steps.target.outputs.source_run_head_sha }}
+        ARTIFACT_SIZE: ${{ steps.target.outputs.source_artifact_size }}
       run: |
         set -euo pipefail
-        bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$RUNNER_TEMP/bundle")"
-        release_json="$bundle_dir/release.json"
-        release_tag="$(jq -r '.release_tag' "$release_json")"
-        homebrew_path="$(jq -r '.homebrew_path' "$release_json")"
-        release_title="$(jq -r '.release_title' "$release_json")"
-        commit_message="$(jq -r '.commit_message' "$release_json")"
-        notes_file="$RUNNER_TEMP/release-notes.txt"
-        jq -r '.release_notes' "$release_json" > "$notes_file"
-        release_exists=false
+        artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID")"
+        test "$(jq -r '.name' <<<"$artifact")" = "$ARTIFACT_NAME"
+        test "$(jq -r '.expired' <<<"$artifact")" = false
+        test "$(jq -r '.workflow_run.id' <<<"$artifact")" = "$SOURCE_RUN_ID"
+        test "$(jq -r '.workflow_run.head_sha' <<<"$artifact")" = "$SOURCE_RUN_SHA"
+        test "$(jq -r '.size_in_bytes' <<<"$artifact")" = "$ARTIFACT_SIZE"
 
-        if gh release view "$release_tag" >/dev/null 2>&1; then
-          release_exists=true
-        fi
+    - name: Download original retained artifact
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        artifact-ids: ${{ steps.target.outputs.source_artifact_id }}
+        repository: joshyorko/homebrew-tools
+        run-id: ${{ steps.target.outputs.source_run_id }}
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/retained-release
 
-        if [ "${{ inputs.action }}" = release ] && [ "$release_exists" = true ]; then
-          echo "Release $release_tag already exists. Use force-release to overwrite assets and reapply bundle output."
-          exit 0
-        fi
-
-        if [ "$release_exists" = false ]; then
-          gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
-        fi
-
-        shopt -s nullglob
-        artifacts=("$bundle_dir/artifacts/"*)
-        if [ "${#artifacts[@]}" -eq 0 ]; then
-          echo "No release artifacts were exported by dagger/tap-pipeline." >&2
-          exit 1
-        fi
-
-        gh release upload "$release_tag" "${artifacts[@]}" --clobber
-        node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE"
-        node scripts/prune-package-releases.mjs \
-          --repo "$GITHUB_REPOSITORY" \
+    - name: Resolve bundle and verify every original asset
+      id: verify_bundle
+      run: |
+        set -euo pipefail
+        bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$RUNNER_TEMP/retained-release")"
+        receipt="$RUNNER_TEMP/retained-release-receipt.json"
+        node "$RESET_HELPER" \
+          --mode verify-bundle \
+          --manifest "$MANIFEST" \
           --package-id "$PACKAGE_ID" \
-          --current-tag "$release_tag" \
-          --keep "$RELEASE_RETENTION_PER_PACKAGE"
+          --bundle-dir "$bundle_dir" \
+          --output "$receipt"
+        echo "bundle_dir=$bundle_dir" >> "$GITHUB_OUTPUT"
+        echo "receipt=$receipt" >> "$GITHUB_OUTPUT"
 
-        if git diff --quiet; then
-          exit 0
+    - name: Verify immutable tag and safely restore release assets
+      id: restore_release
+      env:
+        ORIGINAL_RELEASE_ID: ${{ steps.target.outputs.original_release_id }}
+        RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+        EXPECTED_TAG_SHA: ${{ steps.target.outputs.tag_commit_sha }}
+        RELEASE_TITLE: ${{ steps.target.outputs.release_title }}
+        BUNDLE_DIR: ${{ steps.verify_bundle.outputs.bundle_dir }}
+        RECEIPT: ${{ steps.verify_bundle.outputs.receipt }}
+      run: |
+        set -euo pipefail
+        release_endpoint="repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG"
+        tag_ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
+        tag_type="$(jq -er '.object.type' <<<"$tag_ref")"
+        tag_object_sha="$(jq -er '.object.sha' <<<"$tag_ref")"
+        case "$tag_type" in
+          commit) resolved_tag_sha="$tag_object_sha" ;;
+          tag) resolved_tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object_sha" --jq '.object.sha')" ;;
+          *) echo "Unsupported tag object type: $tag_type" >&2; exit 1 ;;
+        esac
+        test "$resolved_tag_sha" = "$EXPECTED_TAG_SHA"
+
+        live_release_file="$RUNNER_TEMP/live-release.json"
+        release_error="$RUNNER_TEMP/release-read-error.txt"
+        set +e
+        gh api "$release_endpoint" > "$live_release_file" 2> "$release_error"
+        release_status=$?
+        set -e
+        if [ "$release_status" -eq 0 ]; then
+          live_release="$live_release_file"
+        elif grep -Fq 'HTTP 404' "$release_error"; then
+          live_release=absent
+        else
+          cat "$release_error" >&2
+          exit "$release_status"
         fi
 
-        gh auth setup-git
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add "$homebrew_path"
-        git commit -m "$commit_message"
-        git pull --rebase origin "${GITHUB_REF_NAME}"
-        git push origin "HEAD:${GITHUB_REF_NAME}"
+        plan_file="$RUNNER_TEMP/release-plan.json"
+        node "$RESET_HELPER" \
+          --mode plan-release \
+          --manifest "$MANIFEST" \
+          --package-id "$PACKAGE_ID" \
+          --live-release "$live_release" \
+          --output "$plan_file"
+        action="$(jq -er '.action' "$plan_file")"
+        marker="$(jq -er '.reset_marker' "$MANIFEST")"
+        restore_note="Original verified release bytes restored from the retained bundle; this is not a new build."
+        notes_file="$RUNNER_TEMP/release-notes.txt"
+        jq -r --arg package "$PACKAGE_ID" '.packages[$package].release_body // ""' "$MANIFEST" > "$notes_file"
+        printf '\n%s\n%s\n' "$restore_note" "$marker" >> "$notes_file"
+
+        case "$action" in
+          replace-original)
+            test "$(jq -er '.id' "$live_release_file")" = "$ORIGINAL_RELEASE_ID"
+            # Deliberately omit gh release delete --cleanup-tag: the original tag stays in place.
+            gh release delete "$RELEASE_TAG" --yes
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file "$notes_file" --verify-tag --latest=false
+            ;;
+          create)
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file "$notes_file" --verify-tag --latest=false
+            ;;
+          reuse-reset)
+            jq -r '.body // ""' "$live_release_file" > "$notes_file"
+            if ! grep -Fq "$restore_note" "$notes_file"; then
+              printf '\n%s\n' "$restore_note" >> "$notes_file"
+            fi
+            gh release edit "$RELEASE_TAG" --notes-file "$notes_file" --latest=false
+            ;;
+          *) echo "Unknown release action: $action" >&2; exit 1 ;;
+        esac
+
+        while IFS= read -r item; do
+          asset_name="$(jq -er '.name' <<<"$item")"
+          asset_action="$(jq -er '.action' <<<"$item")"
+          asset_path="$BUNDLE_DIR/artifacts/$asset_name"
+          case "$asset_action" in
+            skip-verified) ;;
+            upload)
+              gh release upload "$RELEASE_TAG" "$asset_path"
+              ;;
+            remove-starter-and-upload)
+              gh release delete-asset "$RELEASE_TAG" "$asset_name" --yes
+              gh release upload "$RELEASE_TAG" "$asset_path"
+              ;;
+            *) echo "Unknown asset action: $asset_action" >&2; exit 1 ;;
+          esac
+        done < <(jq -c '.assets[]' "$plan_file")
+
+        live_release_id=""
+        verified=false
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          if ! gh api "$release_endpoint" > "$live_release_file" 2> "$release_error"; then
+            sleep 3
+            continue
+          fi
+          live_release_id="$(jq -er '.id' "$live_release_file")"
+          remote_plan="$RUNNER_TEMP/readback-plan.json"
+          if node "$RESET_HELPER" \
+            --mode plan-release \
+            --manifest "$MANIFEST" \
+            --package-id "$PACKAGE_ID" \
+            --live-release "$live_release_file" \
+            --output "$remote_plan" >/dev/null 2>&1 \
+            && jq -e 'all(.assets[]; .action == "skip-verified")' "$remote_plan" >/dev/null; then
+            verified=true
+            break
+          fi
+          sleep 3
+        done
+        test "$verified" = true
+        jq --arg action "$action" --arg release_id "$live_release_id" \
+          '. + {restore_action: $action, restored_release_id: $release_id, result: "verified"}' \
+          "$RECEIPT" > "$RUNNER_TEMP/final-receipt.json"
+        mv "$RUNNER_TEMP/final-receipt.json" "$RECEIPT"
+        echo "receipt=$RECEIPT" >> "$GITHUB_OUTPUT"
+
+    - name: Upload verification receipt
+      if: ${{ always() && steps.verify_bundle.outcome == 'success' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: retained-release-restore-receipt-${{ github.run_id }}
+        path: ${{ steps.verify_bundle.outputs.receipt }}
+        if-no-files-found: error

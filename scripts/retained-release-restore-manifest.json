@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "repository": "joshyorko/homebrew-tools",
+  "reset_marker": "<!-- tap-release-reset-20260927-01a0e26b -->",
+  "packages": {
+    "chatgpt-linux": {
+      "original_release_id": 397187667,
+      "release_tag": "chatgpt-26.924.22138",
+      "release_title": "ChatGPT 26.924.22138",
+      "release_body": "Verified official OpenAI Linux RPM snapshot 26.924.22138\n",
+      "tag_commit_sha": "ee4df1f6f2969db2270fe068da984971c8c69111",
+      "source_artifact_id": 10903554946,
+      "source_run_id": 36235015488,
+      "source_artifact_name": "release-bundle-chatgpt",
+      "source_run_head_sha": "ee4df1f6f2969db2270fe068da984971c8c69111",
+      "source_artifact_size": 981414083,
+      "assets": [
+        {
+          "name": "chatgpt-26.924.22138-1.aarch64.rpm",
+          "size": 479620905,
+          "sha256": "671505c2e314693f16c1b69097a9a0040125ff4d591f99aa402ede915b79a016"
+        },
+        {
+          "name": "chatgpt-26.924.22138-1.x86_64.rpm",
+          "size": 502608573,
+          "sha256": "c36c14af21c67465dcef6d647e717aed2e1fc186a18a4acb82db7ca777a233c9"
+        }
+      ]
+    },
+    "vscode-insiders-linux": {
+      "original_release_id": 390005059,
+      "release_tag": "vscode-insiders-linux-1.139.0-1789536214.el8-c74ba73b780a",
+      "release_title": "VS Code Insiders Linux 1.139.0,1789536214.el8,c74ba73b780a",
+      "release_body": "Packaged from official RPM https://vscode.download.prss.microsoft.com/dbazure/download/insider/c74ba73b780a4a33173c006e52560d61432f53d6/code-insiders-1.139.0-1789536214.el8.x86_64.rpm (1.139.0-1789536214.el8)\n",
+      "tag_commit_sha": "77c1cc6d05b760987dae7571e3ede04873f36abc",
+      "source_artifact_id": 10450819019,
+      "source_run_id": 35108617083,
+      "source_artifact_name": "release-bundle-vscode-insiders-linux",
+      "source_run_head_sha": "77c1cc6d05b760987dae7571e3ede04873f36abc",
+      "source_artifact_size": 344878868,
+      "assets": [
+        {
+          "name": "vscode-insiders-linux-1.139.0-1789536214.el8-c74ba73b780a.tar.gz",
+          "size": 346419492,
+          "sha256": "dcd7f32a152ca43d5bfc094e11c16b5ff154212e7b8dad0bfebf7ab122546564"
+        }
+      ]
+    },
+    "devsy": {
+      "original_release_id": 392006993,
+      "release_tag": "devsy-1.19.0",
+      "release_title": "Devsy CLI 1.19.0",
+      "release_body": "Verified CLI binaries mirrored from devsy-org/devsy v1.19.0 (a48146d3712ed32bee7672571ded299b0e490914)\n",
+      "tag_commit_sha": "2bbc03cf88979d52510aca412041a3dae77afa61",
+      "source_artifact_id": 10581286625,
+      "source_run_id": 35433566618,
+      "source_artifact_name": "release-bundle-devsy",
+      "source_run_head_sha": "2bbc03cf88979d52510aca412041a3dae77afa61",
+      "source_artifact_size": 88780875,
+      "assets": [
+        {
+          "name": "devsy-linux-amd64",
+          "size": 156950690,
+          "sha256": "2f43f28ab5b399b379091aeb09628ec6b70dc82212a64d30de8e2a4a18a49ef5"
+        },
+        {
+          "name": "devsy-linux-arm64",
+          "size": 146735266,
+          "sha256": "72e366261e5d81e3afc42efd08a81f5eee93d38104f9461cc9c533828224785f"
+        }
+      ]
+    },
+    "devsy-desktop": {
+      "original_release_id": 392007031,
+      "release_tag": "devsy-desktop-1.19.0",
+      "release_title": "Devsy Desktop 1.19.0",
+      "release_body": "Verified Linux AppImage mirrored from devsy-org/devsy v1.19.0 (a48146d3712ed32bee7672571ded299b0e490914)\n",
+      "tag_commit_sha": "2bbc03cf88979d52510aca412041a3dae77afa61",
+      "source_artifact_id": 10581291717,
+      "source_run_id": 35433566618,
+      "source_artifact_name": "release-bundle-devsy-desktop",
+      "source_run_head_sha": "2bbc03cf88979d52510aca412041a3dae77afa61",
+      "source_artifact_size": 173244115,
+      "assets": [
+        {
+          "name": "Devsy_linux_x86_64.AppImage",
+          "size": 174058274,
+          "sha256": "c8be239b93f3ef418cbc8b89464fe7b1e23ae1657d33aec01047311b69d45b81"
+        }
+      ]
+    },
+    "headroom-self-hosted": {
+      "original_release_id": 395583395,
+      "release_tag": "headroom-self-hosted-selfhosted.10bbfa356c18",
+      "release_title": "Headroom self-hosted selfhosted.10bbfa356c18",
+      "release_body": "Built from joshyorko/headroom:self-hosted commit 10bbfa356c18730ba6cfc65cc961c3df2e7239db with the proxy dependency profile; Homebrew installation is offline from the retained wheelhouse.\n",
+      "tag_commit_sha": "2ea80b7a74d5418ea41c1ebca3dec61144112717",
+      "source_artifact_id": 10803981858,
+      "source_run_id": 35988634874,
+      "source_artifact_name": "release-bundle-headroom-self-hosted",
+      "source_run_head_sha": "2ea80b7a74d5418ea41c1ebca3dec61144112717",
+      "source_artifact_size": 168318969,
+      "assets": [
+        {
+          "name": "headroom-self-hosted-selfhosted.10bbfa356c18.tar.gz",
+          "size": 168257623,
+          "sha256": "f9fd8aa59860bdb5cda32a3fd0b3662d509a2a22c7cefa68694f47bb37d7fb82"
+        }
+      ]
+    },
+    "t3code-cli-main": {
+      "original_release_id": 387820153,
+      "release_tag": "t3code-cli-main-main.20260913064619.20a8f1de3668",
+      "release_title": "T3 Code CLI main main.20260913064619.20a8f1de3668",
+      "release_body": "CLI snapshot from pingdotgg/t3code@20a8f1de3668e0ff4da236d75258e2184a68d727\n",
+      "tag_commit_sha": "b8ab99d4f24c9edb75f96cbf10ccf8cfdde09b75",
+      "source_artifact_id": 10312829653,
+      "source_run_id": 34743901166,
+      "source_artifact_name": "release-bundle-t3code-cli-main",
+      "source_run_head_sha": "b8ab99d4f24c9edb75f96cbf10ccf8cfdde09b75",
+      "source_artifact_size": 161978336,
+      "assets": [
+        {
+          "name": "t3code-cli-main-main.20260913064619.20a8f1de3668.tar.gz",
+          "size": 162312748,
+          "sha256": "61f6f6852d5b0f6de789a957fa3c2e062be3afb0b2427744ab9c26e9f8b5a016"
+        }
+      ]
+    },
+    "codex-desktop-linux": {
+      "original_release_id": 373699258,
+      "release_tag": "codex-desktop-linux-26.818.21641.patchraptor.e73b46db37ea.features.f89a4a7cf00f",
+      "release_title": "Codex Desktop Linux 26.818.21641.patchraptor.e73b46db37ea.features.f89a4a7cf00f",
+      "release_body": "Built from PatchRaptor main commit e73b46db37eaa44b35b9831f635df86ea8f73db1 using OpenAI Linux package 26.818.21641; the native updater is disabled for Homebrew ownership of upgrades.\n",
+      "tag_commit_sha": "12d06ee9b0029652afe43baaf55cbf74fa75f1b6",
+      "source_artifact_id": 9405428027,
+      "source_run_id": 32365440840,
+      "source_artifact_name": "release-bundle-codex-desktop-linux",
+      "source_run_head_sha": "12d06ee9b0029652afe43baaf55cbf74fa75f1b6",
+      "source_artifact_size": 392752304,
+      "assets": [
+        {
+          "name": "codex-desktop-linux-26.818.21641.patchraptor.e73b46db37ea.features.f89a4a7cf00f-amd64.deb",
+          "size": 392667880,
+          "sha256": "be67cf874cda46bce6bfee2cba608b294d55d3b0bd577e151e0a23de197d418d"
+        }
+      ]
+    }
+  }
+}
