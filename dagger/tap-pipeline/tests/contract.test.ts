@@ -401,7 +401,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.doesNotMatch(cask, /dpkg\s+-i|sources\.list\.d|apparmor_parser/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*brew tap-new --no-git joshyorko\/tools[\s\S]*brew install --cask --require-sha joshyorko\/tools\/chatgpt[\s\S]*migrate-chatgpt-linux-cask\.sh[\s\S]*migration-sentinel/,
+    /case "chatgpt"[\s\S]*git config --global user\.name[\s\S]*brew tap-new joshyorko\/tools[\s\S]*brew install --cask --require-sha joshyorko\/tools\/chatgpt[\s\S]*migrate-chatgpt-linux-cask\.sh[\s\S]*migration-sentinel/,
   )
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
@@ -414,6 +414,10 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
   assert.match(pipeline, /const smokeCask = caskContents[\s\S]*file:\/\/\/artifacts\/chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
   assert.match(pipeline, /withFile\(`\/artifacts\/\$\{build\.amd64\.assetName\}`, build\.container\.file\(build\.amd64\.artifactPath\)\)/)
+  const tapNewIndex = pipeline.indexOf('"brew tap-new joshyorko/tools"')
+  assert.ok(tapNewIndex >= 0)
+  assert.ok(pipeline.lastIndexOf('"git config --global user.name', tapNewIndex) >= 0)
+  assert.ok(pipeline.lastIndexOf('"git config --global user.email', tapNewIndex) >= 0)
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
