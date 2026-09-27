@@ -103,6 +103,49 @@ restore_old_install() {
     cp -f "$icon" "${HOME}/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png" || return 1
 }
 
+prepare_rollback_backup() {
+    local backup_receipt backup_sha staging_dir
+    if [[ -e "$backup_caskroom" || -L "$backup_caskroom" ]]; then
+        if [[ ! -d "$backup_caskroom" || -L "$backup_caskroom" ]]; then
+            echo "Rollback backup path is occupied; refusing migration." >&2
+            return 1
+        fi
+        backup_receipt="${backup_caskroom}/.metadata/INSTALL_RECEIPT.json"
+        if ! verify_old_receipt "$backup_receipt"; then
+            echo "Existing rollback backup is incomplete or belongs to another cask; refusing migration." >&2
+            return 1
+        fi
+        backup_sha=$(sha256sum "$backup_receipt" | cut -d ' ' -f 1)
+        if [[ "$backup_sha" != "$old_receipt_sha" ]]; then
+            echo "Existing rollback backup does not match the installed receipt; refusing migration." >&2
+            return 1
+        fi
+        return 0
+    fi
+
+    staging_dir=$(mktemp -d "${migration_dir}/old-caskroom-staging.XXXXXX") || return 1
+    if ! cp -al -- "${old_caskroom}/." "${staging_dir}/"; then
+        rm -rf "$staging_dir"
+        return 1
+    fi
+    backup_receipt="${staging_dir}/.metadata/INSTALL_RECEIPT.json"
+    if ! verify_old_receipt "$backup_receipt"; then
+        rm -rf "$staging_dir"
+        echo "Rollback backup copy is incomplete or has the wrong source." >&2
+        return 1
+    fi
+    backup_sha=$(sha256sum "$backup_receipt" | cut -d ' ' -f 1)
+    if [[ "$backup_sha" != "$old_receipt_sha" ]]; then
+        rm -rf "$staging_dir"
+        echo "Rollback backup copy does not match the installed receipt." >&2
+        return 1
+    fi
+    if ! mv -T -- "$staging_dir" "$backup_caskroom"; then
+        rm -rf "$staging_dir"
+        return 1
+    fi
+}
+
 finish_migration() {
     rm -rf "$backup_caskroom" "$migration_dir"
     echo "ChatGPT Linux cask migrated. ChatGPT and Codex user data was preserved."
@@ -158,7 +201,7 @@ else
     old_version=$(jq -er '.source.version' "$receipt") || exit 1
     old_receipt_sha=$(sha256sum "$receipt" | cut -d ' ' -f 1)
     brew fetch --cask "$new_cask"
-    cp -al "$old_caskroom" "$backup_caskroom"
+    prepare_rollback_backup
     jq -cn --arg version "$old_version" --arg receipt "$old_receipt_sha" \
         '{schema:1,phase:"prepared",source:{tap:"joshyorko/tools",version:$version,receipt:$receipt}}' > "${state_file}.tmp"
     mv -f "${state_file}.tmp" "$state_file"
