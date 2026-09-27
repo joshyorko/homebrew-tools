@@ -164,6 +164,10 @@ test("resource monitor build helper schedules t3code CLI CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
 })
 
+test("T3 pnpm patch helper schedules t3code CLI CI", () => {
+  assert.deepEqual(changedCiPackagesFromPaths(["scripts/lib/apply-pnpm-package-patch.mjs"]), ["t3code-cli-main"])
+})
+
 test("package formula and cask edits use artifact checks", () => {
   assert.deepEqual(ciPlanFromPaths(["Casks/rcc.rb", "Formula/voxtype.rb"]), [
     {

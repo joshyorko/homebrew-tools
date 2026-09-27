@@ -525,6 +525,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     [
       "Formula/t3code-cli-main.rb",
       "scripts/package-t3code-cli-main.mjs",
+      "scripts/lib/apply-pnpm-package-patch.mjs",
       "scripts/build-t3code-resource-monitor.sh",
       "dagger/t3code-cli-main-smoke/",
     ],

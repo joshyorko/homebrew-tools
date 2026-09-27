@@ -20,7 +20,7 @@ export class T3CodeCliMainSmoke {
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl unzip python3 make g++ && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git unzip python3 make g++ && rm -rf /var/lib/apt/lists/*",
       ])
       .withExec([
         "bash",
