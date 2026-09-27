@@ -411,6 +411,9 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
     /case "chatgpt"[\s\S]*buildChatgptArtifacts[\s\S]*artifacts\/\$\{build\.amd64\.assetName\}[\s\S]*artifacts\/\$\{build\.arm64\.assetName\}/,
   )
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+  assert.match(pipeline, /const smokeCask = caskContents[\s\S]*file:\/\/\/artifacts\/chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
+  assert.match(pipeline, /withFile\(`\/artifacts\/\$\{build\.amd64\.assetName\}`, build\.container\.file\(build\.amd64\.artifactPath\)\)/)
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
