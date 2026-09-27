@@ -300,7 +300,7 @@ test("Codex ci-check defaults to PatchRaptor while preserving the scheduled late
 })
 
 test("CI workflows forward the existing GitHub token as a Dagger secret reference", () => {
-  for (const path of [".github/workflows/tap-ci.yml", ".github/workflows/tap-manual.yml"]) {
+  for (const path of [".github/workflows/tap-ci.yml"]) {
     const workflow = read(path)
     assert.match(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}/)
     const ciCommands = [...workflow.matchAll(/call: >-\n(          ci-check\n(?:          [^\n]+\n)*)/g)]
@@ -313,6 +313,14 @@ test("CI workflows forward the existing GitHub token as a Dagger secret referenc
     assert.ok(buzzCi, `missing direct Buzz CI step in ${path}`)
     assert.doesNotMatch(buzzCi, /--github-token/)
   }
+})
+
+test("manual runs select one package module without showing Buzz-only steps", () => {
+  const workflow = read(".github/workflows/tap-manual.yml")
+  assert.doesNotMatch(workflow, /- name: .*Buzz/)
+  assert.match(workflow, /name: \$\{\{ inputs\.package_id \}\} \(\$\{\{ inputs\.action \}\}\)/)
+  assert.match(workflow, /inputs\.package_id == 'buzz-linux' && '\.\/dagger\/buzz-linux-smoke' \|\| '\.\/dagger\/tap-pipeline'/)
+  assert.match(workflow, /'smoke-test --tap=\.' \|\| format\('ci-check --package-id="\{0\}" --github-token=env:\/\/GH_TOKEN'/)
 })
 
 test("independent auto-update slots queue without canceling builds and publication is serialized", () => {
