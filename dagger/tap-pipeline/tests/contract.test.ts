@@ -378,7 +378,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.doesNotMatch(cask, /dpkg\s+-i|sources\.list\.d|apparmor_parser/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*brew tap-new --no-git joshyorko\/tools[\s\S]*brew install --cask --require-sha joshyorko\/tools\/chatgpt[\s\S]*migrate-chatgpt-linux-cask\.sh[\s\S]*migration-sentinel/,
+    /case "chatgpt"[\s\S]*brew tap-new joshyorko\/tools[\s\S]*brew install --cask --require-sha joshyorko\/tools\/chatgpt[\s\S]*migrate-chatgpt-linux-cask\.sh[\s\S]*migration-sentinel/,
   )
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
