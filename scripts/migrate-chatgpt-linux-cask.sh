@@ -55,7 +55,7 @@ cleanup_legacy_cask() {
 trap cleanup_legacy_cask EXIT
 
 prepare_legacy_cask() {
-    local installed_path tap_repo old_version recipe_dir recipe temporary_path
+    local installed_path tap_repo old_version recipe_dir recipe temporary_path recipe_version tap_git_head
     installed_path=$(jq -er '.source.path' "$receipt") || return 1
     tap_repo=$(brew --repository joshyorko/tools) || return 1
     legacy_caskfile="${tap_repo}/Casks/chatgpt.rb"
@@ -76,14 +76,28 @@ prepare_legacy_cask() {
     old_version=$(jq -er '.source.version' "${backup_caskroom}/.metadata/INSTALL_RECEIPT.json") || return 1
     recipe_dir="${backup_caskroom}/.metadata/${old_version}"
     recipe=$(find "$recipe_dir" -type f -path '*/Casks/chatgpt.rb' -print -quit 2>/dev/null)
-    if [[ -z "$recipe" ]] || ! grep -Fqx 'cask "chatgpt" do' "$recipe"; then
-        echo "The saved installation does not contain its exact old cask recipe; refusing to migrate." >&2
-        return 1
-    fi
-
     mkdir -p "${tap_repo}/Casks" || return 1
     temporary_path="${legacy_caskfile}.migration.$$"
-    cp -p -- "$recipe" "$temporary_path" || return 1
+    if [[ -n "$recipe" ]] && grep -Fqx 'cask "chatgpt" do' "$recipe"; then
+        cp -p -- "$recipe" "$temporary_path" || return 1
+    else
+        tap_git_head=$(jq -er '.source.tap_git_head | select(type == "string" and test("^[a-f0-9]{40}$"))' \
+            "${backup_caskroom}/.metadata/INSTALL_RECEIPT.json") || {
+            echo "Neither a saved cask recipe nor a valid tap commit is available for uninstall." >&2
+            return 1
+        }
+        if ! git -C "$tap_repo" show "${tap_git_head}:Casks/chatgpt.rb" > "$temporary_path"; then
+            rm -f "$temporary_path"
+            echo "The installed tap commit does not contain its original ChatGPT cask recipe." >&2
+            return 1
+        fi
+    fi
+    recipe_version=$(sed -n 's/^[[:space:]]*version "\([^"]*\)".*/\1/p' "$temporary_path" | head -n 1)
+    if ! grep -Fqx 'cask "chatgpt" do' "$temporary_path" || [[ "$recipe_version" != "$old_version" ]]; then
+        rm -f "$temporary_path"
+        echo "Saved legacy cask recipe does not match the installed cask token and version." >&2
+        return 1
+    fi
     if ! mv -T -- "$temporary_path" "$legacy_caskfile"; then
         rm -f "$temporary_path"
         return 1
