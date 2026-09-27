@@ -1,10 +1,12 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { classifyLiveRelease, planAssetRestore, planReleaseRestore, verifyBundle } from "./restore-retained-release.mjs"
+
+const restoreManifest = JSON.parse(readFileSync(new URL("./retained-release-restore-manifest.json", import.meta.url), "utf8"))
 
 const assetBytes = Buffer.from("the exact release asset")
 const assetSha256 = sha256For(assetBytes)
@@ -17,6 +19,27 @@ function fixture() {
   writeFileSync(join(bundle, "artifacts", "sample.bin"), assetBytes)
   return { root, bundle }
 }
+
+test("keeps only the approved retained-release targets and binds new candidates to their tag commits", () => {
+  assert.deepEqual(Object.keys(restoreManifest.packages).sort(), [
+    "chatgpt-linux",
+    "codex-desktop-linux",
+    "devpod-linux",
+    "devsy",
+    "devsy-desktop",
+    "fizzy-symphony",
+    "headroom-self-hosted",
+    "rcc",
+    "t3code-cli-main",
+    "vscode-insiders-linux",
+  ])
+  for (const packageId of ["devpod-linux", "fizzy-symphony", "rcc"]) {
+    const target = restoreManifest.packages[packageId]
+    assert.equal(target.source_run_head_sha, target.tag_commit_sha)
+    assert.ok(target.assets.length > 0)
+    assert.ok(target.assets.every((asset) => /^[0-9a-f]{64}$/.test(asset.sha256)))
+  }
+})
 
 const expected = {
   original_release_id: 123,

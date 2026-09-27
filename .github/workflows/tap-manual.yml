@@ -12,7 +12,10 @@ on:
         - vscode-insiders-linux
         - devsy
         - devsy-desktop
+        - devpod-linux
+        - fizzy-symphony
         - headroom-self-hosted
+        - rcc
         - t3code-cli-main
         - codex-desktop-linux
 

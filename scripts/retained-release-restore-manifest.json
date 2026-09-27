@@ -145,6 +145,73 @@
           "sha256": "be67cf874cda46bce6bfee2cba608b294d55d3b0bd577e151e0a23de197d418d"
         }
       ]
+    },
+    "devpod-linux": {
+      "original_release_id": 396843634,
+      "release_tag": "devpod-linux-0.26.2",
+      "release_title": "DevPod Linux 0.26.2",
+      "release_body": "Release bundle mirrored from skevetter/devpod v0.26.2\n",
+      "tag_commit_sha": "dfc408a83dca72f0d48ef6574e32dbd9a1b17e7d",
+      "source_artifact_id": 10881670948,
+      "source_run_id": 36174373101,
+      "source_artifact_name": "release-bundle-devpod-linux",
+      "source_run_head_sha": "dfc408a83dca72f0d48ef6574e32dbd9a1b17e7d",
+      "source_artifact_size": 46434804,
+      "assets": [
+        {
+          "name": "DevPod_linux_amd64.deb",
+          "size": 46718262,
+          "sha256": "876804a1e254ca8300308752a8b04fd9c26ab2b7bd93fbd07b5bf41237ae0293"
+        }
+      ]
+    },
+    "fizzy-symphony": {
+      "original_release_id": 367422024,
+      "release_tag": "fizzy-symphony-main.20260808163003.9d1359d0e289",
+      "release_title": "fizzy-symphony main.20260808163003.9d1359d0e289",
+      "release_body": "CLI snapshot from joshyorko/fizzy-symphony@9d1359d0e28980734ea5191d7ca3b0d7912e14e1 (main)\n",
+      "tag_commit_sha": "5838bd6107bb58d5768e9323f06a13ef5a992c63",
+      "source_artifact_id": 9035145938,
+      "source_run_id": 31303113350,
+      "source_artifact_name": "release-bundle-fizzy-symphony",
+      "source_run_head_sha": "5838bd6107bb58d5768e9323f06a13ef5a992c63",
+      "source_artifact_size": 127682999,
+      "assets": [
+        {
+          "name": "fizzy-symphony-main.20260808163003.9d1359d0e289.tar.gz",
+          "size": 127942913,
+          "sha256": "5917096fcd8e1b94225553aafaac119ec8dc0aff382e897fa4c6f98b1f5edad7"
+        }
+      ]
+    },
+    "rcc": {
+      "original_release_id": 384274486,
+      "release_tag": "rcc-18.19.5",
+      "release_title": "RCC 18.19.5",
+      "release_body": "Release bundle mirrored from joshyorko/rcc v18.19.5\n",
+      "tag_commit_sha": "949951988c2474f360696639a9c1f002e99b4940",
+      "source_artifact_id": 10030394980,
+      "source_run_id": 34154007034,
+      "source_artifact_name": "release-bundle-rcc",
+      "source_run_head_sha": "949951988c2474f360696639a9c1f002e99b4940",
+      "source_artifact_size": 38384936,
+      "assets": [
+        {
+          "name": "rcc-linux64",
+          "size": 22360226,
+          "sha256": "1a617ad7c736fa67c605e20e5ebe3c7d54b02cd548f733e05c809cf49a48db1e"
+        },
+        {
+          "name": "rcc-macos64",
+          "size": 22195952,
+          "sha256": "34887e542f9db963987d260eff1f6767268b6c7f96a8282221485e60cbb440c5"
+        },
+        {
+          "name": "rcc-macosarm64",
+          "size": 20953090,
+          "sha256": "867cc6b19c36eae76f01d7004c0a0e322863583af867f6f8201c263eb0febabb"
+        }
+      ]
     }
   }
 }
