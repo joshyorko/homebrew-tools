@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -25,6 +25,8 @@ case "$1" in
   fetch) [[ "$2 $3" == "--cask joshyorko/tools/chatgpt-linux" ]] ;;
   uninstall)
     [[ "$2 $3" == "--cask joshyorko/tools/chatgpt" ]]
+    test -f "$BREW_PREFIX/var/homebrew-tools-chatgpt-linux-migration/old-caskroom/.metadata/INSTALL_RECEIPT.json"
+    test ! -e "$BREW_PREFIX/var/homebrew-tools-chatgpt-linux-migration/old-caskroom/chatgpt"
     rm -rf "$BREW_PREFIX/Caskroom/chatgpt"
     rm -f "$BREW_PREFIX/bin/chatgpt" "$HOME/.local/share/applications/chatgpt.desktop" "$HOME/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png"
     ;;
@@ -153,6 +155,55 @@ test("migration restores the prior app and user data when the new install fails"
     assert.equal(readFileSync(join(temp.home, ".local/share/applications/chatgpt.desktop"), "utf8"), "Exec=/brew/bin/chatgpt %U\n")
     assert.equal(readFileSync(join(temp.home, ".local/share/icons/hicolor/512x512@2/apps/chatgpt.png"), "utf8"), "icon")
     assert.match(readFileSync(join(temp.prefix, "bin/chatgpt"), "utf8"), /^#!\/bin\/sh/)
+  } finally {
+    rmSync(temp.root, { recursive: true, force: true })
+  }
+})
+
+test("migration reuses a completed rollback copy left before the state checkpoint", () => {
+  const temp = fixture()
+  try {
+    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools", "/tap/Casks/chatgpt.rb")
+    const migrationDir = join(temp.prefix, "var/homebrew-tools-chatgpt-linux-migration")
+    const backup = join(migrationDir, "old-caskroom")
+    mkdirSync(migrationDir, { recursive: true })
+    execFileSync("cp", ["-al", `${join(temp.prefix, "Caskroom/chatgpt")}/.`, `${backup}/`])
+    mkdirSync(join(migrationDir, "old-caskroom-staging.crash"), { recursive: true })
+    writeFileSync(join(migrationDir, "old-caskroom-staging.crash/partial"), "orphaned partial copy")
+
+    const result = spawnSync("bash", [migrationScript.pathname], { env: temp.env, encoding: "utf8" })
+
+    assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+    assert.deepEqual(readFileSync(temp.calls, "utf8").trim().split("\n"), [
+      "--prefix",
+      "fetch --cask joshyorko/tools/chatgpt-linux",
+      "uninstall --cask joshyorko/tools/chatgpt",
+      "install --cask --require-sha joshyorko/tools/chatgpt-linux",
+    ])
+    assert.equal(existsSync(migrationDir), false)
+  } finally {
+    rmSync(temp.root, { recursive: true, force: true })
+  }
+})
+
+test("migration refuses a partial final backup without nesting another caskroom copy", () => {
+  const temp = fixture()
+  try {
+    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools", "/tap/Casks/chatgpt.rb")
+    const migrationDir = join(temp.prefix, "var/homebrew-tools-chatgpt-linux-migration")
+    const backup = join(migrationDir, "old-caskroom")
+    mkdirSync(join(backup, "chatgpt/.metadata"), { recursive: true })
+    writeFileSync(join(backup, "chatgpt/.metadata/INSTALL_RECEIPT.json"), "nested partial backup")
+
+    const result = spawnSync("bash", [migrationScript.pathname], { env: temp.env, encoding: "utf8" })
+
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /Existing rollback backup is incomplete/)
+    assert.deepEqual(readFileSync(temp.calls, "utf8").trim().split("\n"), [
+      "--prefix",
+      "fetch --cask joshyorko/tools/chatgpt-linux",
+    ])
+    assert.equal(readFileSync(join(backup, "chatgpt/.metadata/INSTALL_RECEIPT.json"), "utf8"), "nested partial backup")
   } finally {
     rmSync(temp.root, { recursive: true, force: true })
   }
