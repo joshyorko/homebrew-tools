@@ -14,6 +14,8 @@ cask "vscode-insiders-linux" do
     skip "Updated by the tap's GitHub Actions workflow."
   end
 
+  depends_on formula: "jq"
+
   binary "usr/share/code-insiders/bin/code-insiders", target: "code-insiders"
   binary "usr/share/code-insiders/bin/code-tunnel-insiders", target: "code-tunnel-insiders"
   artifact "usr/share/applications/code-insiders.desktop",
@@ -68,6 +70,13 @@ cask "vscode-insiders-linux" do
         exit 1
       fi
       /bin/sed -i -E 's|"desktopName"[[:space:]]*:[[:space:]]*"[^"]+"|"desktopName": "code-insiders.desktop"|' "$package_json_file"
+
+      product_json_file="usr/share/code-insiders/resources/app/product.json"
+      run "{{HOMEBREW_PREFIX}}/bin/jq",
+          args: ["del(.updateUrl) | .configurationDefaults[\"update.mode\"] = \"none\"", product_json_file],
+          stdout_path: "product.json"
+      run "/bin/mv",
+          args: ["{{staged_path}}/product.json", "{{staged_path}}/usr/share/code-insiders/resources/app/product.json"]
     SH
         writable_paths: ["usr/share/applications", "usr/share/code-insiders/resources/app"]
   end

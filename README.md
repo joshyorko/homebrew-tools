@@ -676,9 +676,9 @@ eitype --version
 
 ### VS Code Insiders (Linux Cask)
 
-VS Code Insiders packaged for Linux Homebrew from Microsoft's official Linux RPM.
-The generic Dagger release path checks the upstream Insiders RPM when the matching auto-update slot runs, repackages
-its payload into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
+VS Code Insiders packaged for Linux Homebrew from Microsoft's official commit-pinned Linux archive.
+The generic Dagger release path reads Microsoft's update API version, commit, and published SHA256,
+verifies the downloaded archive before repackaging it, smoke-tests installation through Linuxbrew with Dagger,
 uploads the artifact to this repository's releases, and updates the cask to point at that pinned asset.
 The installed desktop integration intentionally preserves the canonical upstream Linux identities such as
 `code-insiders.desktop`, `code-insiders-url-handler.desktop`, `code-insiders-workspace.xml`, and
@@ -702,8 +702,8 @@ dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
-- resolve the latest upstream VS Code Insiders Linux RPM
-- repackage the RPM payload into the archive the cask consumes
+- resolve Microsoft's latest VS Code Insiders version, commit, archive URL, and SHA256
+- verify and repackage the commit-pinned archive into the layout the cask consumes
 - install the cask through Linuxbrew in-container
 - run `code-insiders --version` and verify canonical desktop integration artifacts
 - verify MIME registration for `vscode-insiders://` and `application/x-code-insiders-workspace`

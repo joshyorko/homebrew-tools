@@ -8,6 +8,43 @@ export type StableReleaseSelection = {
   publishedAt?: string
 }
 
+export type VscodeInsidersUpdate = {
+  archiveSha256: string
+  archiveUrl: string
+  commitSha: string
+  caskVersion: string
+  productVersion: string
+}
+
+export function parseVscodeInsidersUpdate(payload: unknown): VscodeInsidersUpdate {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("VS Code Insiders update response is not an object")
+  }
+
+  const update = payload as Record<string, unknown>
+  const productVersion = update.productVersion
+  const commitSha = update.version
+  const archiveSha256 = update.sha256hash
+
+  if (typeof productVersion !== "string" || !/^\d+(?:\.\d+)+-insider$/.test(productVersion)) {
+    throw new Error("VS Code Insiders update response has an invalid productVersion")
+  }
+  if (typeof commitSha !== "string" || !/^[0-9a-f]{40}$/.test(commitSha)) {
+    throw new Error("VS Code Insiders update response has an invalid commit hash")
+  }
+  if (typeof archiveSha256 !== "string" || !/^[0-9a-f]{64}$/i.test(archiveSha256)) {
+    throw new Error("VS Code Insiders update response has an invalid archive SHA256")
+  }
+
+  return {
+    archiveSha256: archiveSha256.toLowerCase(),
+    archiveUrl: `https://update.code.visualstudio.com/commit:${commitSha}/linux-x64/insider`,
+    commitSha,
+    caskVersion: `${productVersion},${commitSha}`,
+    productVersion,
+  }
+}
+
 export type DictationManifestPackage = {
   id: string
   version: string
@@ -351,15 +388,16 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   },
   {
     id: "vscode-insiders-linux",
-    kind: "rpm_repack_cask",
+    kind: "source_archive_repack_cask",
     homebrewPath: "Casks/vscode-insiders-linux.rb",
     supportsPrCi: true,
     autoUpdate: {
-      kind: "rpm_redirect",
+      kind: "vscode_insiders_api",
+      url: "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest",
     },
     upstream: {
-      kind: "rpm",
-      sourceUrl: "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider",
+      kind: "http_file",
+      url: "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest",
     },
   },
   {

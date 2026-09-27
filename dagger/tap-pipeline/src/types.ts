@@ -1,6 +1,7 @@
 export type PackageKind =
   | "source_build_node_formula"
   | "rpm_repack_cask"
+  | "source_archive_repack_cask"
   | "source_build_rust_formula"
   | "source_build_go_formula"
   | "source_build_node_appimage_cask"
@@ -64,6 +65,10 @@ export type AutoUpdateStrategy =
   | {
       kind: "rpm_redirect"
       sourceUrl?: string
+    }
+  | {
+      kind: "vscode_insiders_api"
+      url: string
     }
   | {
       kind: "http_header_fingerprint"
