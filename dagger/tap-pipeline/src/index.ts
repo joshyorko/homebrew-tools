@@ -3310,27 +3310,41 @@ end
           .stdout()
       }
       case "chatgpt": {
+        const smokeTap = tap.withFile(
+          "scripts/migrate-chatgpt-linux-cask.sh",
+          this.source.file("scripts/migrate-chatgpt-linux-cask.sh"),
+        )
         return dag
           .container()
           .from(BREW_IMAGE)
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", tap)
+          .withDirectory("/tap", smokeTap)
           .withExec([
             "bash",
             "-lc",
             [
               "set -euo pipefail",
               "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("chatgpt"),
-              "brew install --cask test/tap/chatgpt-linux",
-              "test -x \"$(brew --prefix)/bin/chatgpt\"",
+              "brew tap-new --no-git joshyorko/tools",
+              "migration_tap_dir=\"$repo/Library/Taps/joshyorko/homebrew-tools\"",
+              "mkdir -p \"$migration_tap_dir/Casks\"",
+              "cp /tap/Casks/chatgpt-linux.rb \"$migration_tap_dir/Casks/chatgpt-linux.rb\"",
+              `/bin/sed 's/^cask .chatgpt-linux. do$/cask \"chatgpt\" do/' /tap/Casks/chatgpt-linux.rb > \"$migration_tap_dir/Casks/chatgpt.rb\"`,
+              "brew trust joshyorko/tools",
+              "brew install --cask --require-sha joshyorko/tools/chatgpt",
               "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",
+              "mkdir -p \"$user_home/.config/ChatGPT\"",
+              "printf 'preserve-me\\n' > \"$user_home/.config/ChatGPT/migration-sentinel\"",
+              "rm \"$migration_tap_dir/Casks/chatgpt.rb\"",
+              "/bin/bash /tap/scripts/migrate-chatgpt-linux-cask.sh",
+              "test -x \"$(brew --prefix)/bin/chatgpt\"",
+              "test \"$(cat \"$user_home/.config/ChatGPT/migration-sentinel\")\" = preserve-me",
               "test -f \"$user_home/.local/share/applications/chatgpt.desktop\"",
               "grep -qx 'Icon=chatgpt' \"$user_home/.local/share/applications/chatgpt.desktop\"",
               "test -f \"$user_home/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png\"",
+              `jq -e '.source.tap == \"joshyorko/tools\" and (.source.path | endswith(\"/Casks/chatgpt-linux.rb\"))' \"$(brew --caskroom)/chatgpt-linux/.metadata/INSTALL_RECEIPT.json\"`,
             ].join("\n"),
           ])
           .stdout()
