@@ -36,7 +36,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "agy --version",
     "agy --help",
   ]),
-  chatgpt: cask("Casks/chatgpt.rb", "chatgpt", [
+  chatgpt: cask("Casks/chatgpt-linux.rb", "chatgpt-linux", [
     "test -x \"$(brew --prefix)/bin/chatgpt\"",
     "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",
     "test -f \"$user_home/.local/share/applications/chatgpt.desktop\"",

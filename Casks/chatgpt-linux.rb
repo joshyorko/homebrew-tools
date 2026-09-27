@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-cask "chatgpt" do
+cask "chatgpt-linux" do
   arch arm: "aarch64", intel: "x86_64"
   deb_arch = on_arch_conditional arm: "arm64", intel: "amd64"
   os linux: "linux"
@@ -21,7 +21,6 @@ cask "chatgpt" do
     regex(/^Version:\s*(\d+(?:\.\d+)+)$/i)
   end
 
-  auto_updates true
   depends_on formula: "cpio"
   depends_on formula: "rpm2cpio"
 

@@ -26,7 +26,7 @@ const REQUIRED_RELEASE_FIELDS = [
 ] as const
 
 const DEPRECATED_HOOK_CASKS = {
-  "Casks/chatgpt.rb": ["preflight_steps"],
+  "Casks/chatgpt-linux.rb": ["preflight_steps"],
   "Casks/devpod-linux.rb": ["preflight_steps", "postflight_steps"],
   "Casks/devsy-desktop.rb": ["preflight_steps", "postflight_steps"],
   "Casks/t3-code-linux.rb": ["preflight_steps"],
@@ -377,14 +377,15 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
 
   assert.ok(entry)
   assert.equal(entry.kind, "rpm_repack_cask")
-  assert.equal(entry.homebrewPath, "Casks/chatgpt.rb")
+  assert.equal(entry.homebrewPath, "Casks/chatgpt-linux.rb")
   assert.equal(entry.supportsPrCi, true)
   assert.equal(entry.supportsReleaseBundle, true)
   assert.equal(entry.autoUpdate.kind, "deb_packages_version")
 
-  const cask = readFileSync(new URL("../../../Casks/chatgpt.rb", import.meta.url), "utf8")
+  const cask = readFileSync(new URL("../../../Casks/chatgpt-linux.rb", import.meta.url), "utf8")
 
-  assert.match(cask, /cask "chatgpt"/)
+  assert.match(cask, /cask "chatgpt-linux"/)
+  assert.doesNotMatch(cask, /^\s*auto_updates true$/m)
   assert.match(cask, /version "\d+(?:\.\d+)+"/)
   assert.match(cask, /chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
   assert.match(cask, /x86_64_linux: "[0-9a-f]{64}"/)
@@ -400,7 +401,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.doesNotMatch(cask, /dpkg\s+-i|sources\.list\.d|apparmor_parser/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*brew install --cask test\/tap\/chatgpt/,
+    /case "chatgpt"[\s\S]*brew install --cask test\/tap\/chatgpt-linux/,
   )
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
@@ -413,6 +414,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
+  const migrator = readFileSync(new URL("../../../scripts/migrate-chatgpt-linux-cask.sh", import.meta.url), "utf8")
   const uninstaller = readFileSync(new URL("../../../scripts/uninstall-chatgpt.sh", import.meta.url), "utf8")
   assert.match(makefile, /^chatgpt:\n\tscripts\/install-chatgpt-local\.sh$/m)
   assert.match(installer, /dagger -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
@@ -420,8 +422,13 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.match(installer, /brew install --cask/)
   assert.doesNotMatch(installer, /Formula\/chatgpt\.rb|--build-from-source/)
   assert.match(makefile, /^uninstall-chatgpt:\n\tscripts\/uninstall-chatgpt\.sh$/m)
-  assert.match(uninstaller, /brew uninstall --cask chatgpt/)
+  assert.match(uninstaller, /brew uninstall --cask joshyorko\/tools\/chatgpt-linux/)
   assert.match(uninstaller, /chatgpt-local/)
+  assert.match(migrator, /\.source\.tap == "joshyorko\/tools"/)
+  assert.match(migrator, /uname -s\) != Linux/)
+  assert.ok(migrator.indexOf('brew fetch --cask "$new_cask"') < migrator.indexOf('brew uninstall --cask "$old_cask"'))
+  assert.ok(migrator.indexOf('brew uninstall --cask "$old_cask"') < migrator.indexOf('brew install --cask --require-sha "$new_cask"'))
+  assert.doesNotMatch(migrator, /--zap|zap:/)
   assert.doesNotMatch(uninstaller, /\.config\/ChatGPT|\.cache\/ChatGPT|\.local\/share\/ChatGPT/)
 })
 

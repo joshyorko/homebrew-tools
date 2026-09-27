@@ -206,7 +206,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
     id: "chatgpt",
     kind: "rpm_repack_cask",
-    homebrewPath: "Casks/chatgpt.rb",
+    homebrewPath: "Casks/chatgpt-linux.rb",
+    homebrewToken: "chatgpt-linux",
     supportsPrCi: true,
     supportsReleaseBundle: true,
     autoUpdate: {
@@ -467,7 +468,7 @@ export function recoveryPackageSummaries(): PackageRegistryEntry[] {
 export function recoveryBrewfile(entries = recoveryPackageSummaries()): string {
   const lines = entries.map((entry) => {
     const stanza = entry.homebrewPath.startsWith("Casks/") ? "cask" : "brew"
-    return `${stanza} "${RECOVERY_TAP_PREFIX}${entry.id}"`
+    return `${stanza} "${RECOVERY_TAP_PREFIX}${entry.homebrewToken ?? entry.id}"`
   })
 
   return `# Generated from dagger/tap-pipeline/src/library.ts package registry.\n${lines.join("\n")}\n`
@@ -485,7 +486,7 @@ export function parseRecoveryBrewfile(contents: string): PackageRegistryEntry[] 
       throw new Error(`Unsupported recovery Brewfile entry: ${rawLine}`)
     }
 
-    const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === match[1])
+    const entry = PACKAGE_REGISTRY.find((candidate) => (candidate.homebrewToken ?? candidate.id) === match[1])
     if (!entry) {
       throw new Error(`Unknown recovery package: ${match[1]}`)
     }
@@ -530,7 +531,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     ],
   ],
   ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
-  ["chatgpt", ["Casks/chatgpt.rb"]],
+  ["chatgpt", ["Casks/chatgpt-linux.rb"]],
   [
     "codex-desktop-linux",
     ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],

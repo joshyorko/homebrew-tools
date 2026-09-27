@@ -84,7 +84,7 @@ For the desktop and proxy packages covered below:
 
 ```bash
 brew tap joshyorko/tools
-brew install --cask chatgpt
+brew install --cask chatgpt-linux
 brew install --cask codex-desktop
 brew install headroom-self-hosted
 ```
@@ -108,7 +108,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
-| `brew install --cask joshyorko/tools/chatgpt` | Install ChatGPT Desktop from OpenAI's official Linux package |
+| `brew install --cask joshyorko/tools/chatgpt-linux` | Install ChatGPT Desktop from OpenAI's official Linux package |
 | `brew install --cask joshyorko/tools/codex-desktop` | Install the PatchRaptor Codex Desktop Linux build |
 | `brew install joshyorko/tools/headroom-self-hosted` | Install the self-hosted Headroom CLI and proxy |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
@@ -353,7 +353,7 @@ dagger -m ./dagger/buzz-linux-smoke call smoke-test --tap=.
 ### Repair missing Linux desktop icons
 
 The install-hook migration in issue [#101](https://github.com/joshyorko/homebrew-tools/issues/101)
-could write temporary sandbox paths into desktop entries for `chatgpt`,
+could write temporary sandbox paths into desktop entries for `chatgpt-linux`,
 `devpod-linux`, `devsy-desktop`, `t3-code-linux`, and `vscode-insiders-linux`.
 The corrected casks use icon theme names. Existing release assets can be reused;
 the defect was in the tap's installation steps, not the downloaded application.
@@ -362,7 +362,7 @@ Save your work and fully quit the affected applications. Run `brew update`,
 then reinstall only the affected casks you have installed:
 
 ```bash
-brew reinstall --cask joshyorko/tools/chatgpt
+brew reinstall --cask joshyorko/tools/chatgpt-linux
 brew reinstall --cask joshyorko/tools/devpod-linux
 brew reinstall --cask joshyorko/tools/devsy-desktop
 brew reinstall --cask joshyorko/tools/t3-code-linux
@@ -375,7 +375,7 @@ installation steps for an unchanged application version.
 
 ### ChatGPT Desktop (Official Linux Package)
 
-The `chatgpt` cask downloads the official architecture-specific OpenAI Linux
+The `chatgpt-linux` cask downloads the official architecture-specific OpenAI Linux
 RPM. It verifies the pinned release (`26.803.81509`), package architecture, and
 SHA-256 before extracting the complete `/usr/lib/chatgpt` payload locally. The
 payload is not patched, rebuilt, vendored, or published by this tap.
@@ -385,14 +385,20 @@ the user's local application and icon directories. RPM maintainer scripts are
 never run, so no system repository or service configuration is installed.
 
 ```bash
-brew install --cask joshyorko/tools/chatgpt
+brew install --cask joshyorko/tools/chatgpt-linux
 chatgpt
 ```
 
 ```bash
-brew upgrade --cask joshyorko/tools/chatgpt
-brew uninstall --cask joshyorko/tools/chatgpt
+brew upgrade --cask joshyorko/tools/chatgpt-linux
+brew uninstall --cask joshyorko/tools/chatgpt-linux
 ```
+
+To move an existing install from the old `chatgpt` cask token without touching
+ChatGPT or Codex user data, run `make migrate-chatgpt-linux-cask` from this
+repository. It proceeds only when the installed receipt identifies this tap's
+old Linux cask, downloads the new cask before uninstalling the old one, and
+aborts for any other cask source or non-Linux host.
 
 From this repository, `make uninstall-chatgpt` removes only the tap-owned
 launcher and desktop integration. Neither uninstall path removes ChatGPT or
@@ -407,7 +413,7 @@ needs validation on the target Bluefin desktop.
 
 The `codex-desktop` cask is the unofficial ChatGPT Community Linux build from
 [`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux).
-It is a separate stream from the untouched official `chatgpt` cask above.
+It is a separate stream from the official `chatgpt-linux` cask above.
 It starts from OpenAI's checksummed official Linux `.deb`, applies the feature
 profile committed in `config/codex-desktop-linux-features.json`, and omits the
 native updater so Homebrew owns upgrades. CI retains the `.deb`, records source
