@@ -1,6 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   AUTO_UPDATE_SLOTS,
@@ -9,6 +11,7 @@ import {
   formatGitHeadVersion,
   releaseMetadataForPackage,
 } from "../src/library.ts"
+import { applyPnpmPackagePatch } from "../../../scripts/lib/apply-pnpm-package-patch.mjs"
 
 const REQUIRED_RELEASE_FIELDS = [
   "package",
@@ -578,6 +581,44 @@ test("t3code CLI builders do not rewrite the upstream runtime package version", 
     const contents = readFileSync(new URL(builder, import.meta.url), "utf8")
 
     assert.doesNotMatch(contents, /pkg\.version\s*=\s*process\.argv\[1\]/)
+  }
+})
+
+test("T3 runtime packaging applies upstream pnpm patches to npm-installed dependencies", () => {
+  const packager = readFileSync(new URL("../../../scripts/package-t3code-cli-main.mjs", import.meta.url), "utf8")
+  const fixture = mkdtempSync(join(tmpdir(), "t3-pnpm-patch-test-"))
+  const upstreamDir = join(fixture, "upstream")
+  const packageDir = join(fixture, "node_modules", "@ff-labs", "fff-node")
+  const patchPath = join(upstreamDir, "patches", "fff-node.patch")
+
+  try {
+    assert.match(packager, /applyPnpmPackagePatch\(/)
+    mkdirSync(join(upstreamDir, "patches"), { recursive: true })
+    mkdirSync(packageDir, { recursive: true })
+    writeFileSync(
+      join(upstreamDir, "pnpm-workspace.yaml"),
+      'patchedDependencies:\n  "@ff-labs/fff-node@0.9.4": patches/fff-node.patch\n',
+    )
+    writeFileSync(join(packageDir, "package.json"), '{"exports":{".":{"import":"./index.js"}}}\n')
+    writeFileSync(
+      patchPath,
+      [
+        "diff --git a/package.json b/package.json",
+        "--- a/package.json",
+        "+++ b/package.json",
+        "@@ -1 +1 @@",
+        '-{"exports":{".":{"import":"./index.js"}}}',
+        '+{"exports":{".":{"import":"./index.js","require":"./index.js"}}}',
+        "",
+      ].join("\n"),
+    )
+
+    applyPnpmPackagePatch(upstreamDir, join(fixture, "node_modules"), "@ff-labs/fff-node", "0.9.4")
+
+    const installedPackage = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"))
+    assert.equal(installedPackage.exports["."].require, "./index.js")
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
   }
 })
 
