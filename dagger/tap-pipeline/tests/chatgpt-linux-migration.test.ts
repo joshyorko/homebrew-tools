@@ -60,7 +60,28 @@ esac
   return { root, prefix, bin, home, calls, env }
 }
 
-function createOldReceipt(prefix: string, home: string, tap: string, sourcePath: string) {
+function prepareTapHistory(prefix: string) {
+  const tap = join(prefix, "Homebrew/Library/Taps/joshyorko/homebrew-tools")
+  mkdirSync(join(tap, "Casks"), { recursive: true })
+  const currentRecipe = readFileSync(new URL("../../../Casks/chatgpt-linux.rb", import.meta.url), "utf8")
+  const oldRecipe = currentRecipe.replace(/^cask "chatgpt-linux" do$/m, 'cask "chatgpt" do')
+  const oldCaskFile = join(tap, "Casks/chatgpt.rb")
+  writeFileSync(oldCaskFile, oldRecipe)
+  execFileSync("git", ["init", "-q", tap])
+  execFileSync("git", ["-C", tap, "config", "user.email", "migration@example.invalid"])
+  execFileSync("git", ["-C", tap, "config", "user.name", "migration test"])
+  execFileSync("git", ["-C", tap, "add", "Casks/chatgpt.rb"])
+  execFileSync("git", ["-C", tap, "commit", "-qm", "install legacy ChatGPT cask"])
+  const installedHead = execFileSync("git", ["-C", tap, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+  rmSync(oldCaskFile)
+  writeFileSync(join(tap, "Casks/chatgpt-linux.rb"), currentRecipe)
+  execFileSync("git", ["-C", tap, "add", "-A"])
+  execFileSync("git", ["-C", tap, "commit", "-qm", "rename Linux ChatGPT cask"])
+  return { tap, installedHead, oldCaskFile }
+}
+
+function createOldReceipt(prefix: string, home: string, tap: string) {
+  const { tap: tapDirectory, installedHead } = prepareTapHistory(prefix)
   const receipt = join(prefix, "Caskroom/chatgpt/.metadata/INSTALL_RECEIPT.json")
   const versionDir = join(prefix, "Caskroom/chatgpt/26.924.22138")
   mkdirSync(join(versionDir, "usr/lib/chatgpt"), { recursive: true })
@@ -68,15 +89,19 @@ function createOldReceipt(prefix: string, home: string, tap: string, sourcePath:
   mkdirSync(join(versionDir, "usr/share/pixmaps"), { recursive: true })
   mkdirSync(join(prefix, "Caskroom/chatgpt/.metadata"), { recursive: true })
   writeFileSync(receipt, JSON.stringify({
-    source: { tap, path: sourcePath, version: "26.924.22138" },
+    source: {
+      tap,
+      path: join(tapDirectory, "Casks/chatgpt.rb"),
+      tap_git_head: installedHead,
+      version: "26.924.22138",
+    },
   }))
   const installedRecipe = join(
     prefix,
-    "Caskroom/chatgpt/.metadata/26.924.22138/20260926161611.544/Casks/chatgpt.rb",
+    "Caskroom/chatgpt/.metadata/26.924.22138/20260926161611.544/Casks/chatgpt.json",
   )
   mkdirSync(join(installedRecipe, ".."), { recursive: true })
-  const currentRecipe = readFileSync(new URL("../../../Casks/chatgpt-linux.rb", import.meta.url), "utf8")
-  writeFileSync(installedRecipe, currentRecipe.replace(/^cask "chatgpt-linux" do$/m, 'cask "chatgpt" do'))
+  writeFileSync(installedRecipe, "{}")
   const launcher = join(versionDir, "usr/lib/chatgpt/codex-launcher")
   writeFileSync(launcher, "#!/bin/sh\nexit 0\n")
   chmodSync(launcher, 0o755)
@@ -89,16 +114,13 @@ function createOldReceipt(prefix: string, home: string, tap: string, sourcePath:
   writeFileSync(join(home, ".local/share/icons/hicolor/512x512@2/apps/chatgpt.png"), "old icon")
   const launcherLink = join(prefix, "bin/chatgpt")
   symlinkSync(launcher, launcherLink)
-}
-
-function oldCaskSourcePath(prefix: string) {
-  return join(prefix, "Homebrew/Library/Taps/joshyorko/homebrew-tools/Casks/chatgpt.rb")
+  return { oldCaskFile: join(tapDirectory, "Casks/chatgpt.rb") }
 }
 
 test("migration verifies the replacement before uninstalling the tap-owned cask", () => {
   const temp = fixture()
   try {
-    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools", oldCaskSourcePath(temp.prefix))
+    const { oldCaskFile } = createOldReceipt(temp.prefix, temp.home, "joshyorko/tools")
     const userData = join(temp.home, ".config/ChatGPT/user-data.json")
     mkdirSync(join(temp.home, ".config/ChatGPT"), { recursive: true })
     writeFileSync(userData, "preserve me")
@@ -115,7 +137,7 @@ test("migration verifies the replacement before uninstalling the tap-owned cask"
     assert.ok(readFileSync(join(temp.prefix, "Caskroom/chatgpt-linux/.metadata/INSTALL_RECEIPT.json"), "utf8"))
     assert.ok(existsSync(join(temp.home, ".local/share/applications/chatgpt.desktop")))
     assert.equal(readFileSync(userData, "utf8"), "preserve me")
-    assert.equal(existsSync(oldCaskSourcePath(temp.prefix)), false)
+    assert.equal(existsSync(oldCaskFile), false)
     assert.doesNotMatch(readFileSync(migrationScript, "utf8"), /--zap|zap:/)
   } finally {
     rmSync(temp.root, { recursive: true, force: true })
@@ -125,7 +147,7 @@ test("migration verifies the replacement before uninstalling the tap-owned cask"
 test("migration refuses an official or otherwise foreign old cask receipt", () => {
   const temp = fixture()
   try {
-    createOldReceipt(temp.prefix, temp.home, "homebrew/cask", oldCaskSourcePath(temp.prefix))
+    createOldReceipt(temp.prefix, temp.home, "homebrew/cask")
     const result = spawnSync("bash", [migrationScript.pathname], { env: temp.env, encoding: "utf8" })
 
     assert.equal(result.status, 1)
@@ -154,7 +176,7 @@ test("migration refuses to run outside Linux", () => {
 test("migration restores the prior app and user data when the new install fails", () => {
   const temp = fixture()
   try {
-    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools", oldCaskSourcePath(temp.prefix))
+    const { oldCaskFile } = createOldReceipt(temp.prefix, temp.home, "joshyorko/tools")
     const userData = join(temp.home, ".config/ChatGPT/user-data.json")
     mkdirSync(join(temp.home, ".config/ChatGPT"), { recursive: true })
     writeFileSync(userData, "preserve me")
@@ -171,7 +193,7 @@ test("migration restores the prior app and user data when the new install fails"
     assert.equal(readFileSync(join(temp.home, ".local/share/applications/chatgpt.desktop"), "utf8"), "Exec=/brew/bin/chatgpt %U\n")
     assert.equal(readFileSync(join(temp.home, ".local/share/icons/hicolor/512x512@2/apps/chatgpt.png"), "utf8"), "icon")
     assert.match(readFileSync(join(temp.prefix, "bin/chatgpt"), "utf8"), /^#!\/bin\/sh/)
-    assert.equal(existsSync(oldCaskSourcePath(temp.prefix)), false)
+    assert.equal(existsSync(oldCaskFile), false)
   } finally {
     rmSync(temp.root, { recursive: true, force: true })
   }
@@ -180,7 +202,7 @@ test("migration restores the prior app and user data when the new install fails"
 test("migration reuses a completed rollback copy left before the state checkpoint", () => {
   const temp = fixture()
   try {
-    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools", oldCaskSourcePath(temp.prefix))
+    const { oldCaskFile } = createOldReceipt(temp.prefix, temp.home, "joshyorko/tools")
     const migrationDir = join(temp.prefix, "var/homebrew-tools-chatgpt-linux-migration")
     const backup = join(migrationDir, "old-caskroom")
     mkdirSync(migrationDir, { recursive: true })
@@ -199,6 +221,7 @@ test("migration reuses a completed rollback copy left before the state checkpoin
       "install --cask --require-sha joshyorko/tools/chatgpt-linux",
     ])
     assert.equal(existsSync(migrationDir), false)
+    assert.equal(existsSync(oldCaskFile), false)
   } finally {
     rmSync(temp.root, { recursive: true, force: true })
   }
@@ -207,7 +230,7 @@ test("migration reuses a completed rollback copy left before the state checkpoin
 test("migration refuses a partial final backup without nesting another caskroom copy", () => {
   const temp = fixture()
   try {
-    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools", oldCaskSourcePath(temp.prefix))
+    createOldReceipt(temp.prefix, temp.home, "joshyorko/tools")
     const migrationDir = join(temp.prefix, "var/homebrew-tools-chatgpt-linux-migration")
     const backup = join(migrationDir, "old-caskroom")
     mkdirSync(join(backup, "chatgpt/.metadata"), { recursive: true })
