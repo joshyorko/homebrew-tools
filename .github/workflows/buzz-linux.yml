@@ -19,7 +19,7 @@ on:
         description: "Buzz upstream version"
         required: true
         type: string
-        default: "0.5.0"
+        default: "0.5.25"
       package_revision:
         description: "Tap package revision"
         required: true
@@ -34,7 +34,7 @@ on:
         description: "Exact 40-character source commit"
         required: true
         type: string
-        default: "cacebaf5d5fe876b68ec563e68a3b84c60620779"
+        default: "c8f73213089cbd5a0f1e675d3193558280d46e10"
 
 concurrency:
   group: tap-publish
