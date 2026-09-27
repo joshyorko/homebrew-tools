@@ -3292,6 +3292,8 @@ end
             [
               "set -euo pipefail",
               "repo=$(brew --repository)",
+              "git config --global user.name \"ChatGPT migration smoke\"",
+              "git config --global user.email migration@example.invalid",
               "brew tap-new joshyorko/tools",
               "migration_tap_dir=\"$repo/Library/Taps/joshyorko/homebrew-tools\"",
               "mkdir -p \"$migration_tap_dir/Casks\"",
