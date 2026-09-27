@@ -25,6 +25,8 @@ migration_dir="${prefix}/var/homebrew-tools-chatgpt-linux-migration"
 backup_caskroom="${migration_dir}/old-caskroom"
 state_file="${migration_dir}/state.json"
 lock_file="${prefix}/var/homebrew-tools-chatgpt-linux-migration.lock"
+temporary_legacy_cask=0
+legacy_caskfile=''
 
 mkdir -p "${prefix}/var" "$migration_dir"
 exec 9> "$lock_file"
@@ -43,6 +45,50 @@ verify_new_receipt() {
         .source.tap == "joshyorko/tools" and
         (.source.path | type == "string" and endswith("/Casks/chatgpt-linux.rb"))
     ' "$1" >/dev/null
+}
+
+cleanup_legacy_cask() {
+    if [[ "$temporary_legacy_cask" == 1 ]]; then
+        rm -f -- "$legacy_caskfile"
+    fi
+}
+trap cleanup_legacy_cask EXIT
+
+prepare_legacy_cask() {
+    local installed_path tap_repo old_version recipe_dir recipe temporary_path
+    installed_path=$(jq -er '.source.path' "$receipt") || return 1
+    tap_repo=$(brew --repository joshyorko/tools) || return 1
+    legacy_caskfile="${tap_repo}/Casks/chatgpt.rb"
+    if [[ "$installed_path" != "$legacy_caskfile" ]]; then
+        echo "Old receipt does not point at this tap's chatgpt cask path; refusing to migrate." >&2
+        return 1
+    fi
+
+    if [[ -e "$legacy_caskfile" || -L "$legacy_caskfile" ]]; then
+        if [[ ! -f "$legacy_caskfile" || -L "$legacy_caskfile" ]] ||
+            ! grep -Fqx 'cask "chatgpt" do' "$legacy_caskfile"; then
+            echo "The old tap cask path is occupied by an unexpected file; refusing to migrate." >&2
+            return 1
+        fi
+        return 0
+    fi
+
+    old_version=$(jq -er '.source.version' "${backup_caskroom}/.metadata/INSTALL_RECEIPT.json") || return 1
+    recipe_dir="${backup_caskroom}/.metadata/${old_version}"
+    recipe=$(find "$recipe_dir" -type f -path '*/Casks/chatgpt.rb' -print -quit 2>/dev/null)
+    if [[ -z "$recipe" ]] || ! grep -Fqx 'cask "chatgpt" do' "$recipe"; then
+        echo "The saved installation does not contain its exact old cask recipe; refusing to migrate." >&2
+        return 1
+    fi
+
+    mkdir -p "${tap_repo}/Casks" || return 1
+    temporary_path="${legacy_caskfile}.migration.$$"
+    cp -p -- "$recipe" "$temporary_path" || return 1
+    if ! mv -T -- "$temporary_path" "$legacy_caskfile"; then
+        rm -f "$temporary_path"
+        return 1
+    fi
+    temporary_legacy_cask=1
 }
 
 new_install_healthy() {
@@ -88,10 +134,16 @@ restore_old_install() {
     done
 
     if [[ -e "${prefix}/bin/chatgpt" || -L "${prefix}/bin/chatgpt" ]]; then
-        if [[ ! -L "${prefix}/bin/chatgpt" ]] || ! readlink "${prefix}/bin/chatgpt" | rg -q '/Caskroom/chatgpt(-linux)?/'; then
+        if [[ ! -L "${prefix}/bin/chatgpt" ]]; then
             echo "${prefix}/bin/chatgpt is occupied by another file; refusing rollback." >&2
             return 1
         fi
+        local launcher_link
+        launcher_link=$(readlink "${prefix}/bin/chatgpt") || return 1
+        case "$launcher_link" in
+            *Caskroom/chatgpt/*|*Caskroom/chatgpt-linux/*) ;;
+            *) echo "${prefix}/bin/chatgpt is occupied by another file; refusing rollback." >&2; return 1 ;;
+        esac
         rm -f "${prefix}/bin/chatgpt"
     fi
     ln -s "$launcher" "${prefix}/bin/chatgpt" || return 1
@@ -209,6 +261,7 @@ else
 fi
 
 if [[ "$phase" == prepared ]]; then
+    prepare_legacy_cask || exit 1
     uninstall_rc=0
     brew uninstall --cask "$old_cask" || uninstall_rc=$?
     if [[ -f "$receipt" ]]; then
