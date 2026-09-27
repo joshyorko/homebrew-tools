@@ -5,7 +5,7 @@ const DEFAULT_SOURCE_REF = "95154bee4034ca7a40b33095c2ddbde8c9aa1614"
 const DEFAULT_VERSION = "0.5.20"
 const BUILD_IMAGE =
   "ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982"
-const BREW_IMAGE = "homebrew/brew:latest"
+const BREW_IMAGE = "ghcr.io/homebrew/brew:main"
 const CASK_PATH = "Casks/buzz-linux.rb"
 const TAP_REPOSITORY = "joshyorko/homebrew-tools"
 
@@ -103,6 +103,7 @@ export class BuzzLinuxSmoke {
         dag.cacheVolume("buzz-linux-cargo-git-cache"),
       )
       .withEnvVariable("DEBIAN_FRONTEND", "noninteractive")
+      .withEnvVariable("CARGO_BUILD_JOBS", "2")
       .withEnvVariable("APPIMAGE_EXTRACT_AND_RUN", "1")
       .withExec([
         "bash",
@@ -392,6 +393,8 @@ export class BuzzLinuxSmoke {
         [
           "set -euxo pipefail",
           "rm -f /etc/apt/sources.list.d/github-cli.list",
+          "grep '^VERSION_CODENAME=' /etc/os-release",
+          "grep -qx 'VERSION_CODENAME=noble' /etc/os-release",
           "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils libasound2t64 libgtk-3-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 && rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])

@@ -108,13 +108,15 @@ test("selects a fresh versioned AppImage instead of a stale cached candidate", (
 test("removes only the stale GitHub CLI apt source before signed Brew setup", () => {
   assert.match(
     source,
-    /"rm -f \/etc\/apt\/sources\.list\.d\/github-cli\.list",\n\s+"apt-get update &&/,
+    /"rm -f \/etc\/apt\/sources\.list\.d\/github-cli\.list",\n\s+"grep '\^VERSION_CODENAME=' \/etc\/os-release",\n\s+"grep -qx 'VERSION_CODENAME=noble' \/etc\/os-release",\n\s+"apt-get update &&/,
   )
   assert.doesNotMatch(source, /allow-insecure|allow-unauthenticated|trusted=/i)
 })
 
 test("installs the host desktop libraries needed by the real Brew runtime probe", () => {
+  assert.match(source, /const BREW_IMAGE = "ghcr\.io\/homebrew\/brew:main"/)
   const brewSetup = source.slice(source.indexOf(".from(BREW_IMAGE)"), source.indexOf('.withUser("linuxbrew")'))
+  assert.match(brewSetup, /grep -qx 'VERSION_CODENAME=noble' \/etc\/os-release/)
   const packages = brewSetup.match(/apt-get install -y --no-install-recommends ([^&]+) &&/)[1].trim().split(/\s+/)
   for (const dependency of ["libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]) {
     assert.ok(packages.includes(dependency), `Brew runtime is missing ${dependency}`)
@@ -143,6 +145,7 @@ test("uses the upstream post-AppRun GStreamer shim instead of reapplying a stale
 })
 
 test("builds from the release lockfile", () => {
+  assert.match(source, /\.withEnvVariable\("CARGO_BUILD_JOBS", "2"\)/)
   assert.doesNotMatch(source, /cargo update --workspace/)
 })
 
