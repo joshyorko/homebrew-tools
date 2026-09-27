@@ -433,10 +433,10 @@ the checked-in `config/codex-desktop-linux-features.json`, builds the bundle,
 and verifies an offline Homebrew install without installing on the host.
 `make codex-desktop-install` installs the retained bundle through Homebrew.
 
-The checked-in empty profile is the core build. Commit a changed profile when
-the same selection should matriculate into CI and the next tap release. A
-profile-only commit schedules Codex Desktop package CI, and non-empty profiles
-receive a deterministic version fingerprint and release provenance.
+The community build is manual-only. Profile changes do not schedule builds or
+releases, and broad tap CI excludes this package. To publish it explicitly, run
+Tap Manual with `action=release` and `package_id=codex-desktop-linux`.
+Non-empty profiles receive a deterministic version fingerprint and release provenance.
 
 Normal uninstall preserves application and Codex user data. From a checkout,
 `make codex-desktop-uninstall` removes the local package and desktop integration;
@@ -828,3 +828,14 @@ separate cross-repository follow-up tracked in
 [this tap's #103](https://github.com/joshyorko/homebrew-tools/issues/103).
 It must target the workflows/inputs above with authorized cross-repository
 credentials. This tap does not add a `publish.yml` or generic dispatch receiver.
+
+### Update scheduling and release retention
+
+Automatic update slots run independently without canceling each other. Release
+publication queues through the shared `tap-publish` concurrency group. Buzz has
+one daily schedule in Tap Auto Update; its standalone workflow is manual-only.
+Community Codex Desktop builds are also manual-only.
+
+Each package retains its current release plus any older release still referenced
+by a formula or cask, including version-pinned packages. Pruning leaves Git tags
+intact. This keeps downloads available without retaining every previous build.

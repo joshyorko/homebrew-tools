@@ -222,11 +222,11 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     id: "codex-desktop-linux",
     kind: "codex_desktop_linux_cask",
     homebrewPath: "Casks/codex-desktop.rb",
-    supportsPrCi: true,
+    supportsPrCi: false,
     supportsReleaseBundle: true,
     autoUpdate: {
-      kind: "deb_packages_version",
-      url: "https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages",
+      kind: "manual",
+      reason: "Community builds are opt-in through Tap Manual only.",
     },
     upstream: {
       kind: "git",

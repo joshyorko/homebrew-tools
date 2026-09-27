@@ -219,11 +219,6 @@ test("package builders and source inputs use source builds", () => {
       mode: "build",
       reason: "source/build changes: scripts/package-t3code-cli-main.mjs",
     },
-    {
-      package_id: "codex-desktop-linux",
-      mode: "build",
-      reason: "source/build changes: config/codex-desktop-linux-features.json",
-    },
   ])
 })
 
@@ -244,7 +239,7 @@ test("unknown fixtures and test-like paths fail safe to source builds", () => {
     "other/notes.md",
   ])
 
-  assert.equal(plan.length, 18)
+  assert.equal(plan.length, PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).length)
   assert.equal(plan.every((entry) => entry.mode === "build"), true)
   assert.match(plan[0].reason, /unknown\.rb/)
   assert.match(plan[0].reason, /notes\.md/)
@@ -267,7 +262,6 @@ test("unknown production changes fail safe to the full source-build matrix", () 
     "t3code-cli-main",
     "antigravity-cli",
     "chatgpt",
-    "codex-desktop-linux",
     "headroom-self-hosted",
     "devsy",
     "devsy-desktop",
@@ -292,7 +286,7 @@ test("unknown production changes fail safe to the full source-build matrix", () 
 test("tap workflow changes fail safe to the full source-build matrix", () => {
   const plan = ciPlanFromPaths([".github/workflows/tap-ci.yml"])
 
-  assert.equal(plan.length, 18)
+  assert.equal(plan.length, PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).length)
   assert.equal(plan.every((entry) => entry.mode === "build"), true)
 })
 

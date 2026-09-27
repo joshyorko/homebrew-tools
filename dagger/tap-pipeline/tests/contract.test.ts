@@ -82,7 +82,7 @@ test("Devsy Desktop cask URL is versioned for Homebrew audit", () => {
 
   assert.match(
     cask,
-    /url "https:\/\/github\.com\/joshyorko\/homebrew-tools\/releases\/download\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage"/,
+    /url "https:\/\/github\.com\/joshyorko\/homebrew-tools\/releases\/download\/devsy-desktop-(?:#\{version\}|\d+\.\d+\.\d+)\/Devsy_linux_x86_64\.AppImage"/,
   )
 })
 
@@ -164,7 +164,6 @@ test("auto-update slots cover the expected package set", () => {
       "action-server",
     "buzz-linux",
     "chatgpt",
-    "codex-desktop-linux",
       "devpod-linux",
       "devsy",
       "devsy-desktop",
@@ -213,27 +212,14 @@ test("ChatGPT runs through the standard daily release pipeline", () => {
   assert.doesNotMatch(autoUpdateWorkflow, /^  chatgpt:/m)
 })
 
-test("Codex Desktop rebuilds daily from OpenAI version, PatchRaptor commit, and feature profile", () => {
-  const autoUpdateWorkflow = readFileSync(
-    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
-    "utf8",
-  )
-  const slots = readFileSync(new URL("../auto-update-slots.json", import.meta.url), "utf8")
+test("community Codex Desktop is manual-only", () => {
+  const workflow = readFileSync(new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url), "utf8")
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
-
-  assert.equal(entry?.autoUpdate.kind, "deb_packages_version")
-  assert.match(autoUpdateWorkflow, /- cron: "15 10 \* \* \*"/)
-  assert.match(autoUpdateWorkflow, /push:[\s\S]*config\/codex-desktop-linux-features\.json/)
-  assert.match(autoUpdateWorkflow, /- codex-desktop-daily/)
-  assert.match(autoUpdateWorkflow, /EVENT_NAME" = "push"[\s\S]*slot_id="codex-desktop-daily"/)
-  assert.match(autoUpdateWorkflow, /"15 10 \* \* \*"\) slot_id="codex-desktop-daily"/)
-  assert.match(autoUpdateWorkflow, /--codex-desktop-package-source=.*latest/)
-  assert.match(autoUpdateWorkflow, /--codex-desktop-conversion-commit="patchraptor-main"/)
-  assert.match(slots, /"id": "codex-desktop-daily"[\s\S]*"packageIds": \["codex-desktop-linux"\]/)
-  assert.equal(
-    codexDesktopBuildVersion("26.818.21641", "1234567890abcdef", ["ui-tweaks", "agent-workspace"]),
-    "26.818.21641.patchraptor.1234567890ab.features.fd9999f9e051",
-  )
+  assert.equal(entry?.supportsPrCi, false)
+  assert.equal(entry?.supportsReleaseBundle, true)
+  assert.equal(entry?.autoUpdate.kind, "manual")
+  assert.doesNotMatch(workflow, /codex-desktop-daily|push:/)
+  assert.equal(AUTO_UPDATE_SLOTS.some((slot) => slot.packageIds.includes("codex-desktop-linux")), false)
 })
 
 test("Camp sync consumes the published formula without rebuilding Camp", () => {
@@ -477,7 +463,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.doesNotMatch(cask, /arch arm/)
   assert.equal(caskVersion, formulaVersion)
   assert.equal(caskRevision, undefined)
-  assert.match(caskUrl ?? "", /\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage$/)
+  assert.match(caskUrl ?? "", /\/devsy-desktop-(?:#\{version\}|\d+\.\d+\.\d+)\/Devsy_linux_x86_64\.AppImage$/)
   assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
   assert.match(cask, /target: "devsy-desktop"/)
   assert.match(cask, /x-scheme-handler\/devsy/)
@@ -507,7 +493,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.match(readme, /updater alone[\s\S]*latest/)
 })
 
-test("Codex Desktop consumes the scheduled PatchRaptor official-package build", () => {
+test("Codex Desktop retains the manually requested PatchRaptor build", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
   const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
   const buildStart = pipeline.indexOf("private async buildCodexDesktopLinuxOfficialArtifact")
@@ -518,7 +504,7 @@ test("Codex Desktop consumes the scheduled PatchRaptor official-package build", 
   assert.equal(entry.kind, "codex_desktop_linux_cask")
   assert.equal(entry.homebrewPath, "Casks/codex-desktop.rb")
   assert.equal(entry.supportsReleaseBundle, true)
-  assert.equal(entry.autoUpdate.kind, "deb_packages_version")
+  assert.equal(entry.autoUpdate.kind, "manual")
   assert.equal(entry.upstream.kind, "git")
   assert.equal(entry.upstream.repo, "https://github.com/joshyorko/codex-desktop-linux")
   assert.equal(entry.upstream.ref, "patchraptor-main")

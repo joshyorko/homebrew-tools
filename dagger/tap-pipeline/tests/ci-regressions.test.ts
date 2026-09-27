@@ -293,9 +293,11 @@ test("CI workflows forward the existing GitHub token as a Dagger secret referenc
   }
 })
 
-test("superseded auto-update runs are canceled and bundle jobs are time-bounded", () => {
+test("independent auto-update slots queue without canceling builds and publication is serialized", () => {
   const workflow = read(".github/workflows/tap-auto-update.yml")
 
-  assert.match(workflow, /concurrency:\n  group: tap-auto-update-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/)
+  assert.match(workflow, /group: tap-auto-update-.*inputs\.slot_id.*github\.event\.schedule/)
+  assert.doesNotMatch(workflow, /cancel-in-progress: true/)
+  assert.match(workflow, /  publish:[\s\S]*concurrency:\n      group: tap-publish[\s\S]*queue: max/)
   assert.match(workflow, /  build:\n    needs: resolve\n    if: needs\.resolve\.outputs\.has_packages == 'true'\n    name: Build \$\{\{ matrix\.package_id \}\} Bundle\n    runs-on: ubuntu-latest\n    timeout-minutes: 60/)
 })

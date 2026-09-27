@@ -1,8 +1,6 @@
 name: Buzz Linux
 
 on:
-  schedule:
-  - cron: "0 10 * * *"
   workflow_call:
     inputs:
       auto_update:
@@ -37,6 +35,11 @@ on:
         required: true
         type: string
         default: "cacebaf5d5fe876b68ec563e68a3b84c60620779"
+
+concurrency:
+  group: tap-publish
+  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: write
