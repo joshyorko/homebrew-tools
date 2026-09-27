@@ -3289,10 +3289,23 @@ end
           .stdout()
       }
       case "chatgpt": {
-        const smokeTap = tap.withFile(
-          "scripts/migrate-chatgpt-linux-cask.sh",
-          this.source.file("scripts/migrate-chatgpt-linux-cask.sh"),
-        )
+        const build = await this.buildChatgptArtifacts()
+        const caskContents = await tap.file("Casks/chatgpt-linux.rb").contents()
+        const smokeCask = caskContents
+          .replace(/url ".*"/, `url "file:///artifacts/chatgpt-#{version}-1.#{arch}.rpm"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 arm:[\s\S]*?x86_64_linux: ".*"/, [
+            `sha256 arm:          "${build.arm64.sha256}",`,
+            `       intel:        "${build.amd64.sha256}",`,
+            `       arm64_linux:  "${build.arm64.sha256}",`,
+            `       x86_64_linux: "${build.amd64.sha256}"`,
+          ].join("\n"))
+        const smokeTap = tap
+          .withFile("Casks/chatgpt-linux.rb", dag.file("chatgpt-linux.rb", smokeCask))
+          .withFile(
+            "scripts/migrate-chatgpt-linux-cask.sh",
+            this.source.file("scripts/migrate-chatgpt-linux-cask.sh"),
+          )
         return dag
           .container()
           .from(BREW_IMAGE)
@@ -3300,6 +3313,8 @@ end
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
           .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
+          .withFile(`/artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
           .withExec([
             "bash",
             "-lc",
