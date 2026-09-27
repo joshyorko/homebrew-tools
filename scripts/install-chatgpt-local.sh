@@ -15,14 +15,18 @@ export HOMEBREW_NO_INSTALL_FROM_API="${HOMEBREW_NO_INSTALL_FROM_API:-1}"
 echo "Validating ChatGPT packaging through Dagger..."
 dagger -m ./dagger/tap-pipeline call --git-dir="$git_common_dir" ci-check --package-id=chatgpt
 
-temp_tap_name="chatgpt-local/chatgpt-$(date +%s)-$$"
+temp_tap_name="chatgpt-local/chatgpt-linux-$(date +%s)-$$"
 brew tap-new --no-git "$temp_tap_name" >/dev/null
 temp_tap_dir="$(brew --repository "$temp_tap_name")"
 mkdir -p "$temp_tap_dir/Casks"
-cp "$repo_dir/Casks/chatgpt.rb" "$temp_tap_dir/Casks/chatgpt.rb"
+cp "$repo_dir/Casks/chatgpt-linux.rb" "$temp_tap_dir/Casks/chatgpt-linux.rb"
 
-local_cask="$temp_tap_name/chatgpt"
-if brew list --cask chatgpt >/dev/null 2>&1; then
+local_cask="$temp_tap_name/chatgpt-linux"
+if brew list --cask joshyorko/tools/chatgpt >/dev/null 2>&1; then
+    echo "The old ChatGPT cask is installed; run scripts/migrate-chatgpt-linux-cask.sh first." >&2
+    exit 1
+fi
+if brew list --cask chatgpt-linux >/dev/null 2>&1; then
     brew reinstall --cask --force "$local_cask"
 else
     brew install --cask "$local_cask"

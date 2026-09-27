@@ -210,7 +210,7 @@ function tapStagingCommands(packageId: string): string[] {
     case "chatgpt":
       return [
         "mkdir -p \"$tap_dir/Casks\"",
-        "cp /tap/Casks/chatgpt.rb \"$tap_dir/Casks/\"",
+        "cp /tap/Casks/chatgpt-linux.rb \"$tap_dir/Casks/\"",
       ]
     case "devsy":
       return [
@@ -3304,7 +3304,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("chatgpt"),
-              "brew install --cask test/tap/chatgpt",
+              "brew install --cask test/tap/chatgpt-linux",
               "test -x \"$(brew --prefix)/bin/chatgpt\"",
               "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",
               "test -f \"$user_home/.local/share/applications/chatgpt.desktop\"",
@@ -3997,7 +3997,7 @@ end
       case "chatgpt": {
         const build = await this.buildChatgptArtifacts()
         const release = this.chatgptReleaseMetadata(build)
-        const caskContents = await tap.file("Casks/chatgpt.rb").contents()
+        const caskContents = await tap.file("Casks/chatgpt-linux.rb").contents()
         const updatedCask = caskContents
           .replace(
             /url ".*"/,
@@ -4014,7 +4014,7 @@ end
         return dag.directory()
           .withFile(`artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
           .withFile(`artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
-          .withFile("homebrew/chatgpt.rb", dag.file("chatgpt.rb", updatedCask))
+          .withFile("homebrew/chatgpt-linux.rb", dag.file("chatgpt-linux.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }

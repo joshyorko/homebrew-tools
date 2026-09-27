@@ -100,7 +100,7 @@ test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
   const changed = changedCiPackagesFromPaths([
     "Casks/rcc.rb",
     "Formula/antigravity-cli.rb",
-    "Casks/chatgpt.rb",
+    "Casks/chatgpt-linux.rb",
     "Formula/voxtype.rb",
     "Formula/eitype.rb",
     "README.md",
@@ -113,7 +113,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     "antigravity-cli": "Formula/antigravity-cli.rb",
-    chatgpt: "Casks/chatgpt.rb",
+    chatgpt: "Casks/chatgpt-linux.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
     "buzz-linux": "Casks/buzz-linux.rb",
@@ -313,7 +313,7 @@ test("rename and delete diffs preserve both paths and keep deletion visible", ()
     assertPlannerFails(fixture, "missing-ref", base, "push")
     assertPlannerFails(fixture, base, "0".repeat(40), "push")
 
-    renameSync(join(fixture, "Casks/rcc.rb"), join(fixture, "Casks/chatgpt.rb"))
+    renameSync(join(fixture, "Casks/rcc.rb"), join(fixture, "Casks/chatgpt-linux.rb"))
     execFileSync("git", ["add", "-A"], { cwd: fixture })
     execFileSync("git", ["commit", "-qm", "rename"], { cwd: fixture })
     const renamed = runPlanner(fixture, base, "HEAD", "push")
@@ -321,11 +321,11 @@ test("rename and delete diffs preserve both paths and keep deletion visible", ()
       { package_id: "chatgpt", mode: "artifact" },
       { package_id: "rcc", mode: "artifact" },
     ])
-    assert.match(renamed[0].reason, /Casks\/chatgpt\.rb/)
+    assert.match(renamed[0].reason, /Casks\/chatgpt-linux\.rb/)
     assert.match(renamed[1].reason, /Casks\/rcc\.rb/)
 
     const renamedBase = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
-    rmSync(join(fixture, "Casks/chatgpt.rb"))
+    rmSync(join(fixture, "Casks/chatgpt-linux.rb"))
     execFileSync("git", ["add", "-A"], { cwd: fixture })
     execFileSync("git", ["commit", "-qm", "delete"], { cwd: fixture })
     const deleted = runPlanner(fixture, renamedBase, "HEAD", "push")

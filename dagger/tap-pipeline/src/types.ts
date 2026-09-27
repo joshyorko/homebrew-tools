@@ -88,6 +88,7 @@ export type PackageRegistryEntry = {
   id: string
   kind: PackageKind
   homebrewPath: string
+  homebrewToken?: string
   supportsPrCi: boolean
   supportsReleaseBundle?: boolean
   autoUpdate: AutoUpdateStrategy
