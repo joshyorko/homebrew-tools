@@ -105,6 +105,15 @@ test("selects a fresh versioned AppImage instead of a stale cached candidate", (
   assert.doesNotMatch(source, /appimage=\$\(find desktop\/src-tauri\/target\/release\/bundle\/appimage/)
 })
 
+test("repackages a scratch copy so Dagger's Cargo cache keeps the original AppImage", () => {
+  assert.match(source, /const repackInput = `\/tmp\/\$\{assetName\}`/)
+  const copy = source.indexOf("appimage-copy cp")
+  const repack = source.indexOf("appimage-repack bash")
+  assert.ok(copy >= 0 && repack > copy, "copy the cached AppImage before mutating it")
+  assert.match(source, /appimage=\\"\$repackInput\\"/)
+  assert.match(source, /GStreamer shim installed by desktop\/scripts\/fix-appimage\.sh\./)
+})
+
 test("removes only the stale GitHub CLI apt source before signed Brew setup", () => {
   assert.match(
     source,
@@ -118,7 +127,7 @@ test("installs the host desktop libraries needed by the real Brew runtime probe"
   const brewSetup = source.slice(source.indexOf(".from(BREW_IMAGE)"), source.indexOf('.withUser("linuxbrew")'))
   assert.match(brewSetup, /grep -qx 'VERSION_CODENAME=noble' \/etc\/os-release/)
   const packages = brewSetup.match(/apt-get install -y --no-install-recommends ([^&]+) &&/)[1].trim().split(/\s+/)
-  for (const dependency of ["libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]) {
+  for (const dependency of ["libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0", "libwayland-server0"]) {
     assert.ok(packages.includes(dependency), `Brew runtime is missing ${dependency}`)
   }
   assert.ok(!packages.includes("libasound2"), "Brew runtime must use the Ubuntu 24.04 package name")

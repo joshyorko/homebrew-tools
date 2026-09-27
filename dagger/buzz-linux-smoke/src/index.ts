@@ -64,6 +64,8 @@ export class BuzzLinuxSmoke {
     const assetName = `buzz-linux-${version}-${revision}-x86_64.AppImage`
     const artifactPath = `/out/${assetName}`
     const appimagePath = `desktop/src-tauri/target/release/bundle/appimage/Buzz_${version}_amd64.AppImage`
+    const repackInput = `/tmp/${assetName}`
+    const repackProbeDir = `/tmp/${assetName}.probe`
     const source = Object.freeze({ repository: sourceRepository, ref: sourceRef })
     const dependencies = [
       "build-essential",
@@ -246,7 +248,22 @@ export class BuzzLinuxSmoke {
           `appimage="${appimagePath}"`,
           "run_post_repack_check appimage-present test -s \"$appimage\"",
           "appimage=$(run_post_repack_check appimage-realpath realpath \"$appimage\")",
-          "run_post_repack_check appimage-repack bash desktop/scripts/fix-appimage.sh \"$appimage\"",
+          `repackInput="${repackInput}"`,
+          `repackProbeDir="${repackProbeDir}"`,
+          "run_post_repack_check appimage-copy cp \"$appimage\" \"$repackInput\"",
+          "appimage=\"$repackInput\"",
+          "mkdir -p \"$repackProbeDir\"",
+          "if (cd \"$repackProbeDir\" && APPIMAGE_EXTRACT_AND_RUN=1 \"$appimage\" --appimage-extract >/dev/null); then",
+          "  if test -x \"$repackProbeDir/squashfs-root/usr/bin/buzz-desktop.bin\" && grep -q 'GStreamer shim installed by desktop/scripts/fix-appimage.sh.' \"$repackProbeDir/squashfs-root/usr/bin/buzz-desktop\"; then",
+          "    echo 'AppImage already has the verified repack marker; skipping cached transformation'",
+          "  else",
+          "    rm -rf \"$repackProbeDir/squashfs-root\"",
+          "    run_post_repack_check appimage-repack bash desktop/scripts/fix-appimage.sh \"$appimage\"",
+          "  fi",
+          "else",
+          "  run_post_repack_check appimage-repack bash desktop/scripts/fix-appimage.sh \"$appimage\"",
+          "fi",
+          "rm -rf \"$repackProbeDir\"",
           "rm -rf /tmp/buzz-verify && mkdir -p /tmp/buzz-verify && cd /tmp/buzz-verify",
           "run_post_repack_check appimage-extract \"$appimage\" --appimage-extract >/dev/null",
           "run_post_repack_check webkit-rendering-binary test -x squashfs-root/usr/bin/buzz-desktop.bin",
@@ -395,7 +412,7 @@ export class BuzzLinuxSmoke {
           "rm -f /etc/apt/sources.list.d/github-cli.list",
           "grep '^VERSION_CODENAME=' /etc/os-release",
           "grep -qx 'VERSION_CODENAME=noble' /etc/os-release",
-          "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils libasound2t64 libgtk-3-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 && rm -rf /var/lib/apt/lists/*",
+          "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends desktop-file-utils xdg-utils libasound2t64 libgtk-3-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 libwayland-server0 && rm -rf /var/lib/apt/lists/*",
         ].join("\n"),
       ])
       .withUser("linuxbrew")
