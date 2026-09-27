@@ -1,8 +1,8 @@
 import { dag, Container, Directory, File, object, func } from "@dagger.io/dagger"
 
 const DEFAULT_SOURCE_REPOSITORY = "https://github.com/block/buzz.git"
-const DEFAULT_SOURCE_REF = "95154bee4034ca7a40b33095c2ddbde8c9aa1614"
-const DEFAULT_VERSION = "0.5.20"
+const DEFAULT_SOURCE_REF = "c8f73213089cbd5a0f1e675d3193558280d46e10"
+const DEFAULT_VERSION = "0.5.25"
 const BUILD_IMAGE =
   "ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982"
 const BREW_IMAGE = "ghcr.io/homebrew/brew:main"
