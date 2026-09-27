@@ -226,21 +226,6 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
-    id: "antigravity-cli",
-    kind: "http_binary_formula",
-    homebrewPath: "Formula/antigravity-cli.rb",
-    supportsPrCi: true,
-    supportsReleaseBundle: false,
-    autoUpdate: {
-      kind: "manual",
-      reason: "Google publishes Antigravity CLI through a platform manifest; update after verifying checksums.",
-    },
-    upstream: {
-      kind: "http_file",
-      url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.0.6-6458082025406464/linux-x64/cli_linux_x64.tar.gz",
-    },
-  },
-  {
     id: "chatgpt",
     kind: "rpm_repack_cask",
     homebrewPath: "Casks/chatgpt-linux.rb",
@@ -569,7 +554,6 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "dagger/t3code-cli-main-smoke/",
     ],
   ],
-  ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
   ["chatgpt", ["Casks/chatgpt-linux.rb"]],
   [
     "codex-desktop-linux",

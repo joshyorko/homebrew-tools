@@ -31,11 +31,6 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "brew test test/tap/t3code-cli-main",
     "t3 --help",
   ]),
-  "antigravity-cli": formula("Formula/antigravity-cli.rb", "antigravity-cli", [
-    "brew test test/tap/antigravity-cli",
-    "agy --version",
-    "agy --help",
-  ]),
   chatgpt: cask("Casks/chatgpt-linux.rb", "chatgpt-linux", [
     "test -x \"$(brew --prefix)/bin/chatgpt\"",
     "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",

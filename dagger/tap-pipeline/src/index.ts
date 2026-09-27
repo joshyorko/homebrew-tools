@@ -202,11 +202,6 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
       ]
-    case "antigravity-cli":
-      return [
-        "mkdir -p \"$tap_dir/Formula\"",
-        "cp /tap/Formula/antigravity-cli.rb \"$tap_dir/Formula/\"",
-      ]
     case "chatgpt":
       return [
         "mkdir -p \"$tap_dir/Casks\"",
@@ -3260,30 +3255,6 @@ end
               "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
               "brew test test/tap/t3code-cli-main",
               "t3 --help",
-            ].join("\n"),
-          ])
-          .stdout()
-      }
-      case "antigravity-cli": {
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", tap)
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("antigravity-cli"),
-              "brew install test/tap/antigravity-cli",
-              "brew test test/tap/antigravity-cli",
-              "agy --version",
-              "agy --help",
             ].join("\n"),
           ])
           .stdout()

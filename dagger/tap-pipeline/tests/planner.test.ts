@@ -38,10 +38,10 @@ test("recovery inventory and Brewfile are derived from release-capable registry 
   assert.equal(packages.some((entry) => entry.id === "buzz-linux"), true)
 })
 
-test("recovery Brewfile rejects packages without a standard release bundle", () => {
+test("recovery Brewfile rejects removed and foreign packages", () => {
   assert.throws(
     () => parseRecoveryBrewfile('brew "joshyorko/tools/antigravity-cli"\n'),
-    /does not have a standard release bundle/,
+    /Unknown recovery package: antigravity-cli/,
   )
   assert.throws(() => parseRecoveryBrewfile('brew "homebrew/core/wget"\n'), /Unsupported recovery Brewfile entry/)
 })
@@ -99,20 +99,18 @@ test("packagesForAutoUpdateSlot rejects unknown slots", () => {
 test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
   const changed = changedCiPackagesFromPaths([
     "Casks/rcc.rb",
-    "Formula/antigravity-cli.rb",
     "Casks/chatgpt-linux.rb",
     "Formula/voxtype.rb",
     "Formula/eitype.rb",
     "README.md",
   ])
 
-  assert.deepEqual([...changed].sort(), ["antigravity-cli", "chatgpt", "eitype", "rcc", "voxtype"])
+  assert.deepEqual([...changed].sort(), ["chatgpt", "eitype", "rcc", "voxtype"])
 })
 
 test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
-    "antigravity-cli": "Formula/antigravity-cli.rb",
     chatgpt: "Casks/chatgpt-linux.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
@@ -264,7 +262,6 @@ test("unknown production changes fail safe to the full source-build matrix", () 
   const plan = ciPlanFromPaths(["dagger/tap-pipeline/src/install-checks.ts"])
   const expectedPackageIds = [
     "t3code-cli-main",
-    "antigravity-cli",
     "chatgpt",
     "headroom-self-hosted",
     "devsy",

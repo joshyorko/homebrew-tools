@@ -345,21 +345,8 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(readme, /T3 Code[\s\S]*launches its extracted `AppRun`[\s\S]*does not require FUSE at runtime/)
 })
 
-test("antigravity CLI is a manual closed-source binary formula", () => {
-  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "antigravity-cli")
-
-  assert.ok(entry)
-  assert.equal(entry.kind, "http_binary_formula")
-  assert.equal(entry.homebrewPath, "Formula/antigravity-cli.rb")
-  assert.equal(entry.supportsPrCi, true)
-  assert.equal(entry.autoUpdate.kind, "manual")
-  assert.equal(entry.upstream.kind, "http_file")
-
-  const formula = readFileSync(new URL("../../../Formula/antigravity-cli.rb", import.meta.url), "utf8")
-
-  assert.match(formula, /class AntigravityCli < Formula/)
-  assert.match(formula, /bin\/"agy"/)
-  assert.match(formula, /license :cannot_represent/)
+test("Antigravity is not a supported or buildable tap package", () => {
+  assert.equal(PACKAGE_REGISTRY.some((entry) => entry.id === "antigravity-cli"), false)
 })
 
 test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () => {
