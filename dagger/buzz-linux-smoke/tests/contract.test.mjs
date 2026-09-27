@@ -5,8 +5,8 @@ import test from "node:test"
 const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
 
 test("defaults to the verified package-compatible Buzz release", () => {
-  assert.match(source, /DEFAULT_SOURCE_REF = "95154bee4034ca7a40b33095c2ddbde8c9aa1614"/)
-  assert.match(source, /DEFAULT_VERSION = "0\.5\.20"/)
+  assert.match(source, /DEFAULT_SOURCE_REF = "c8f73213089cbd5a0f1e675d3193558280d46e10"/)
+  assert.match(source, /DEFAULT_VERSION = "0\.5\.25"/)
   assert.match(source, /for package in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-credential-nostr buzz-cli/)
   assert.match(source, /test -f .*crates\/\$package\/Cargo\.toml/)
   assert.match(source, /BUZZ_SOURCE_PACKAGE_CHECK name=%s status=present/)
