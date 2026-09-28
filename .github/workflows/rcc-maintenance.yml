@@ -60,9 +60,10 @@ jobs:
         rcc_bin="${rcc_dir}/rcc"
         if [ ! -x "$rcc_bin" ]; then
           mkdir -p "$rcc_dir"
-          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
+          curl -fsSL "https://github.com/joshyorko/rcc/releases/download/v${RCC_VERSION}/rcc-linux64" -o "$rcc_bin"
           chmod +x "$rcc_bin"
         fi
+        echo "1a617ad7c736fa67c605e20e5ebe3c7d54b02cd548f733e05c809cf49a48db1e  $rcc_bin" | sha256sum --check
         echo "$rcc_dir" >> "$GITHUB_PATH"
         "$rcc_bin" version
 
