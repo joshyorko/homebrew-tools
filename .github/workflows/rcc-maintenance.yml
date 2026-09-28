@@ -24,12 +24,12 @@ jobs:
     steps:
     - name: Validate maintenance token configuration
       env:
-        GH_PAT: ${{ secrets.GH_PAT }}
+        HOMEBREW_TOOLS_PAT: ${{ secrets.HOMEBREW_TOOLS_PAT }}
       run: |
         set -euo pipefail
-        if [ -z "$GH_PAT" ]; then
-          echo "Missing GH_PAT secret." >&2
-          echo "Configure GH_PAT with permission to push workflow-file changes and open pull requests for this repository." >&2
+        if [ -z "$HOMEBREW_TOOLS_PAT" ]; then
+          echo "Missing HOMEBREW_TOOLS_PAT secret." >&2
+          echo "Configure HOMEBREW_TOOLS_PAT with permission to push workflow-file changes and open pull requests for this repository." >&2
           echo "Classic PATs need at least repo + workflow scopes; fine-grained tokens need Contents, Pull requests, and Workflows write access." >&2
           exit 1
         fi
@@ -37,7 +37,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
       with:
-        token: ${{ secrets.GH_PAT }}
+        token: ${{ secrets.HOMEBREW_TOOLS_PAT }}
         persist-credentials: true
 
     - name: Set maintenance defaults
@@ -77,7 +77,7 @@ jobs:
 
     - name: Run maintenance robot
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        GITHUB_TOKEN: ${{ secrets.HOMEBREW_TOOLS_PAT }}
       run: rcc run -r automation/maintenance-robot/robot.yaml -t maintenance --silent
 
     - name: Configure git
@@ -110,7 +110,7 @@ jobs:
     - name: Push branch and create PR
       if: steps.commit.outputs.committed == 'true' && env.MAINTENANCE_PUSH == 'true'
       env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
+        GH_TOKEN: ${{ secrets.HOMEBREW_TOOLS_PAT }}
       run: |
         set -euo pipefail
         git push origin "${{ steps.commit.outputs.branch_name }}"
