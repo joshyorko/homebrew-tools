@@ -23,7 +23,7 @@ cask "buzz-linux" do
   artifact "buzz.png",
            target: "#{Dir.home}/.local/share/icons/hicolor/128x128/apps/buzz.png"
 
-  preflight do
+  preflight_steps do
     appimage = "#{staged_path}/buzz-linux-#{version.csv.first}-#{version.csv.second}-#{arch}.AppImage"
     FileUtils.chmod 0755, appimage
     system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
@@ -97,7 +97,7 @@ cask "buzz-linux" do
     FileUtils.chmod 0755, wrapper
   end
 
-  postflight do
+  postflight_steps do
     applications_dir = "#{Dir.home}/.local/share/applications"
     xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"]
                .find { |candidate| File.executable?(candidate) }
