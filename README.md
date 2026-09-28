@@ -84,7 +84,7 @@ For the desktop and proxy packages covered below:
 
 ```bash
 brew tap joshyorko/tools
-brew install --cask chatgpt
+brew install --cask chatgpt-linux
 brew install --cask codex-desktop
 brew install headroom-self-hosted
 ```
@@ -108,11 +108,10 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
 | `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
-| `brew install --cask joshyorko/tools/chatgpt` | Install ChatGPT Desktop from OpenAI's official Linux package |
+| `brew install --cask joshyorko/tools/chatgpt-linux` | Install ChatGPT Desktop from OpenAI's official Linux package |
 | `brew install --cask joshyorko/tools/codex-desktop` | Install the PatchRaptor Codex Desktop Linux build |
 | `brew install joshyorko/tools/headroom-self-hosted` | Install the self-hosted Headroom CLI and proxy |
 | `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
-| `brew install joshyorko/tools/antigravity-cli` | Install Google Antigravity CLI for Linux x64; executable is `agy` |
 | `brew install joshyorko/tools/camp` | Install the latest verified Camp Linux release |
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
 | `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
@@ -230,23 +229,6 @@ That smoke test is the real end-to-end path:
 - install the formula through Linuxbrew in-container
 - run `brew test` and `t3 --help`
 
-### Antigravity CLI
-
-Google Antigravity CLI packaged from the upstream Linux x64 binary artifact.
-The upstream installer downloads a manifest, verifies SHA512, copies the binary
-as `agy`, and then runs first-run shell setup. This formula keeps the Homebrew
-install path explicit: it pins the verified tarball and installs only the `agy`
-launcher.
-
-> [!NOTE]
-> This is closed-source binary packaging, not a source build.
-> ```bash
-> brew install joshyorko/tools/antigravity-cli
-> agy --help
-> ```
-
-Run `agy install` after installation if you want Antigravity's own shell setup.
-
 ### Devsy CLI and Desktop
 
 Devsy is packaged as two required, co-installable Homebrew identities from the same
@@ -353,7 +335,7 @@ dagger -m ./dagger/buzz-linux-smoke call smoke-test --tap=.
 ### Repair missing Linux desktop icons
 
 The install-hook migration in issue [#101](https://github.com/joshyorko/homebrew-tools/issues/101)
-could write temporary sandbox paths into desktop entries for `chatgpt`,
+could write temporary sandbox paths into desktop entries for `chatgpt-linux`,
 `devpod-linux`, `devsy-desktop`, `t3-code-linux`, and `vscode-insiders-linux`.
 The corrected casks use icon theme names. Existing release assets can be reused;
 the defect was in the tap's installation steps, not the downloaded application.
@@ -362,7 +344,7 @@ Save your work and fully quit the affected applications. Run `brew update`,
 then reinstall only the affected casks you have installed:
 
 ```bash
-brew reinstall --cask joshyorko/tools/chatgpt
+brew reinstall --cask joshyorko/tools/chatgpt-linux
 brew reinstall --cask joshyorko/tools/devpod-linux
 brew reinstall --cask joshyorko/tools/devsy-desktop
 brew reinstall --cask joshyorko/tools/t3-code-linux
@@ -375,7 +357,7 @@ installation steps for an unchanged application version.
 
 ### ChatGPT Desktop (Official Linux Package)
 
-The `chatgpt` cask downloads the official architecture-specific OpenAI Linux
+The `chatgpt-linux` cask downloads the official architecture-specific OpenAI Linux
 RPM. It verifies the pinned release (`26.803.81509`), package architecture, and
 SHA-256 before extracting the complete `/usr/lib/chatgpt` payload locally. The
 payload is not patched, rebuilt, vendored, or published by this tap.
@@ -385,14 +367,20 @@ the user's local application and icon directories. RPM maintainer scripts are
 never run, so no system repository or service configuration is installed.
 
 ```bash
-brew install --cask joshyorko/tools/chatgpt
+brew install --cask joshyorko/tools/chatgpt-linux
 chatgpt
 ```
 
 ```bash
-brew upgrade --cask joshyorko/tools/chatgpt
-brew uninstall --cask joshyorko/tools/chatgpt
+brew upgrade --cask joshyorko/tools/chatgpt-linux
+brew uninstall --cask joshyorko/tools/chatgpt-linux
 ```
+
+To move an existing install from the old `chatgpt` cask token without touching
+ChatGPT or Codex user data, run `make migrate-chatgpt-linux-cask` from this
+repository. It proceeds only when the installed receipt identifies this tap's
+old Linux cask, downloads the new cask before uninstalling the old one, and
+aborts for any other cask source or non-Linux host.
 
 From this repository, `make uninstall-chatgpt` removes only the tap-owned
 launcher and desktop integration. Neither uninstall path removes ChatGPT or
@@ -407,7 +395,7 @@ needs validation on the target Bluefin desktop.
 
 The `codex-desktop` cask is the unofficial ChatGPT Community Linux build from
 [`ilysenko/codex-desktop-linux`](https://github.com/ilysenko/codex-desktop-linux).
-It is a separate stream from the untouched official `chatgpt` cask above.
+It is a separate stream from the official `chatgpt-linux` cask above.
 It starts from OpenAI's checksummed official Linux `.deb`, applies the feature
 profile committed in `config/codex-desktop-linux-features.json`, and omits the
 native updater so Homebrew owns upgrades. CI retains the `.deb`, records source
@@ -433,10 +421,10 @@ the checked-in `config/codex-desktop-linux-features.json`, builds the bundle,
 and verifies an offline Homebrew install without installing on the host.
 `make codex-desktop-install` installs the retained bundle through Homebrew.
 
-The checked-in empty profile is the core build. Commit a changed profile when
-the same selection should matriculate into CI and the next tap release. A
-profile-only commit schedules Codex Desktop package CI, and non-empty profiles
-receive a deterministic version fingerprint and release provenance.
+The community build is manual-only. Profile changes do not schedule builds or
+releases, and broad tap CI excludes this package. To publish it explicitly, run
+Tap Manual with `action=release` and `package_id=codex-desktop-linux`.
+Non-empty profiles receive a deterministic version fingerprint and release provenance.
 
 Normal uninstall preserves application and Codex user data. From a checkout,
 `make codex-desktop-uninstall` removes the local package and desktop integration;
@@ -676,9 +664,9 @@ eitype --version
 
 ### VS Code Insiders (Linux Cask)
 
-VS Code Insiders packaged for Linux Homebrew from Microsoft's official Linux RPM.
-The generic Dagger release path checks the upstream Insiders RPM when the matching auto-update slot runs, repackages
-its payload into a Homebrew-friendly archive, smoke-tests installation through Linuxbrew with Dagger,
+VS Code Insiders packaged for Linux Homebrew from Microsoft's official commit-pinned Linux archive.
+The generic Dagger release path reads Microsoft's update API version, commit, and published SHA256,
+verifies the downloaded archive before repackaging it, smoke-tests installation through Linuxbrew with Dagger,
 uploads the artifact to this repository's releases, and updates the cask to point at that pinned asset.
 The installed desktop integration intentionally preserves the canonical upstream Linux identities such as
 `code-insiders.desktop`, `code-insiders-url-handler.desktop`, `code-insiders-workspace.xml`, and
@@ -702,8 +690,8 @@ dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
-- resolve the latest upstream VS Code Insiders Linux RPM
-- repackage the RPM payload into the archive the cask consumes
+- resolve Microsoft's latest VS Code Insiders version, commit, archive URL, and SHA256
+- verify and repackage the commit-pinned archive into the layout the cask consumes
 - install the cask through Linuxbrew in-container
 - run `code-insiders --version` and verify canonical desktop integration artifacts
 - verify MIME registration for `vscode-insiders://` and `application/x-code-insiders-workspace`
@@ -828,3 +816,14 @@ separate cross-repository follow-up tracked in
 [this tap's #103](https://github.com/joshyorko/homebrew-tools/issues/103).
 It must target the workflows/inputs above with authorized cross-repository
 credentials. This tap does not add a `publish.yml` or generic dispatch receiver.
+
+### Update scheduling and release retention
+
+Automatic update slots run independently without canceling each other. Release
+publication queues through the shared `tap-publish` concurrency group. Buzz has
+one daily schedule in Tap Auto Update; its standalone workflow is manual-only.
+Community Codex Desktop builds are also manual-only.
+
+Each package retains its current release plus any older release still referenced
+by a formula or cask, including version-pinned packages. Pruning leaves Git tags
+intact. This keeps downloads available without retaining every previous build.

@@ -14,7 +14,6 @@ on:
   - cron: "41 0,12,18 * * *"
   - cron: "13 10 * * *"
   - cron: "0 10 * * *"
-  - cron: "15 10 * * *"
   - cron: "31 10 * * *"
   - cron: "23 10 * * *"
   workflow_dispatch:
@@ -35,35 +34,28 @@ on:
         - fizzy-daily
         - buzz-daily
         - chatgpt-daily
-        - codex-desktop-daily
         - headroom-daily
         - camp-daily
-  push:
-    branches:
-    - main
-    paths:
-    - config/codex-desktop-linux-features.json
-    - codex-desktop-conversion.ref
 
 permissions:
   contents: write
 
 concurrency:
-  group: tap-auto-update-${{ github.ref }}
-  cancel-in-progress: true
+  group: tap-auto-update-${{ github.ref }}-${{ inputs.slot_id || github.event.schedule }}
+  cancel-in-progress: false
+  queue: max
 
 env:
   DAGGER_VERSION: "0.21.9"
   GH_TOKEN: ${{ github.token }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  RELEASE_RETENTION_PER_PACKAGE: "3"
+  RELEASE_RETENTION_PER_PACKAGE: "1"
 
 jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily') ||
-      github.event_name == 'push' ||
       (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *')
     runs-on: ubuntu-latest
     outputs:
@@ -88,9 +80,6 @@ jobs:
         if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
           slot_id="$INPUT_SLOT_ID"
           trigger_source="workflow_dispatch"
-        elif [ "$EVENT_NAME" = "push" ]; then
-          slot_id="codex-desktop-daily"
-          trigger_source="push:codex-desktop-input"
         else
           case "$EVENT_SCHEDULE" in
             "0 6 * * *") slot_id="rcc-daily" ;;
@@ -104,7 +93,6 @@ jobs:
             "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
             "13 10 * * *") slot_id="buzz-daily" ;;
             "0 10 * * *") slot_id="chatgpt-daily" ;;
-            "15 10 * * *") slot_id="codex-desktop-daily" ;;
             "31 10 * * *") slot_id="headroom-daily" ;;
             *)
               echo "Unknown scheduled slot for Tap Auto Update: $EVENT_SCHEDULE" >&2
@@ -164,6 +152,10 @@ jobs:
         } >> "$GITHUB_OUTPUT"
 
   camp:
+    concurrency:
+      group: tap-publish
+      cancel-in-progress: false
+      queue: max
     name: Sync Camp Formula
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'camp-daily') ||
@@ -265,6 +257,10 @@ jobs:
         path: ${{ runner.temp }}/bundle
 
   publish:
+    concurrency:
+      group: tap-publish
+      cancel-in-progress: false
+      queue: max
     needs:
     - resolve
     - build

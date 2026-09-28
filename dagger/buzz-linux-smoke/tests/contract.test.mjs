@@ -5,8 +5,8 @@ import test from "node:test"
 const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
 
 test("defaults to the verified package-compatible Buzz release", () => {
-  assert.match(source, /DEFAULT_SOURCE_REF = "95154bee4034ca7a40b33095c2ddbde8c9aa1614"/)
-  assert.match(source, /DEFAULT_VERSION = "0\.5\.20"/)
+  assert.match(source, /DEFAULT_SOURCE_REF = "c8f73213089cbd5a0f1e675d3193558280d46e10"/)
+  assert.match(source, /DEFAULT_VERSION = "0\.5\.25"/)
   assert.match(source, /for package in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-credential-nostr buzz-cli/)
   assert.match(source, /test -f .*crates\/\$package\/Cargo\.toml/)
   assert.match(source, /BUZZ_SOURCE_PACKAGE_CHECK name=%s status=present/)
@@ -105,18 +105,29 @@ test("selects a fresh versioned AppImage instead of a stale cached candidate", (
   assert.doesNotMatch(source, /appimage=\$\(find desktop\/src-tauri\/target\/release\/bundle\/appimage/)
 })
 
+test("repackages a scratch copy so Dagger's Cargo cache keeps the original AppImage", () => {
+  assert.match(source, /const repackInput = `\/tmp\/\$\{assetName\}`/)
+  const copy = source.indexOf("appimage-copy cp")
+  const repack = source.indexOf("appimage-repack bash")
+  assert.ok(copy >= 0 && repack > copy, "copy the cached AppImage before mutating it")
+  assert.match(source, /appimage=\\"\$repackInput\\"/)
+  assert.match(source, /GStreamer shim installed by desktop\/scripts\/fix-appimage\.sh\./)
+})
+
 test("removes only the stale GitHub CLI apt source before signed Brew setup", () => {
   assert.match(
     source,
-    /"rm -f \/etc\/apt\/sources\.list\.d\/github-cli\.list",\n\s+"apt-get update &&/,
+    /"rm -f \/etc\/apt\/sources\.list\.d\/github-cli\.list",\n\s+"grep '\^VERSION_CODENAME=' \/etc\/os-release",\n\s+"grep -qx 'VERSION_CODENAME=noble' \/etc\/os-release",\n\s+"apt-get update &&/,
   )
   assert.doesNotMatch(source, /allow-insecure|allow-unauthenticated|trusted=/i)
 })
 
 test("installs the host desktop libraries needed by the real Brew runtime probe", () => {
+  assert.match(source, /const BREW_IMAGE = "ghcr\.io\/homebrew\/brew:main"/)
   const brewSetup = source.slice(source.indexOf(".from(BREW_IMAGE)"), source.indexOf('.withUser("linuxbrew")'))
+  assert.match(brewSetup, /grep -qx 'VERSION_CODENAME=noble' \/etc\/os-release/)
   const packages = brewSetup.match(/apt-get install -y --no-install-recommends ([^&]+) &&/)[1].trim().split(/\s+/)
-  for (const dependency of ["libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]) {
+  for (const dependency of ["libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0", "libwayland-server0"]) {
     assert.ok(packages.includes(dependency), `Brew runtime is missing ${dependency}`)
   }
   assert.ok(!packages.includes("libasound2"), "Brew runtime must use the Ubuntu 24.04 package name")
@@ -143,6 +154,7 @@ test("uses the upstream post-AppRun GStreamer shim instead of reapplying a stale
 })
 
 test("builds from the release lockfile", () => {
+  assert.match(source, /\.withEnvVariable\("CARGO_BUILD_JOBS", "2"\)/)
   assert.doesNotMatch(source, /cargo update --workspace/)
 })
 

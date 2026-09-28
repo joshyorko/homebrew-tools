@@ -1,6 +1,7 @@
 export type PackageKind =
   | "source_build_node_formula"
   | "rpm_repack_cask"
+  | "source_archive_repack_cask"
   | "source_build_rust_formula"
   | "source_build_go_formula"
   | "source_build_node_appimage_cask"
@@ -25,7 +26,6 @@ export type AutoUpdateSlotId =
   | "fizzy-daily"
   | "buzz-daily"
   | "chatgpt-daily"
-  | "codex-desktop-daily"
   | "headroom-daily"
 
 export type UpstreamSource =
@@ -67,6 +67,10 @@ export type AutoUpdateStrategy =
       sourceUrl?: string
     }
   | {
+      kind: "vscode_insiders_api"
+      url: string
+    }
+  | {
       kind: "http_header_fingerprint"
       prefix?: string
       shaLength?: number
@@ -84,6 +88,7 @@ export type PackageRegistryEntry = {
   id: string
   kind: PackageKind
   homebrewPath: string
+  homebrewToken?: string
   supportsPrCi: boolean
   supportsReleaseBundle?: boolean
   autoUpdate: AutoUpdateStrategy

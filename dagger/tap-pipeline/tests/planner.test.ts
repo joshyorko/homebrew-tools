@@ -38,10 +38,10 @@ test("recovery inventory and Brewfile are derived from release-capable registry 
   assert.equal(packages.some((entry) => entry.id === "buzz-linux"), true)
 })
 
-test("recovery Brewfile rejects packages without a standard release bundle", () => {
+test("recovery Brewfile rejects removed and foreign packages", () => {
   assert.throws(
     () => parseRecoveryBrewfile('brew "joshyorko/tools/antigravity-cli"\n'),
-    /does not have a standard release bundle/,
+    /Unknown recovery package: antigravity-cli/,
   )
   assert.throws(() => parseRecoveryBrewfile('brew "homebrew/core/wget"\n'), /Unsupported recovery Brewfile entry/)
 })
@@ -99,21 +99,19 @@ test("packagesForAutoUpdateSlot rejects unknown slots", () => {
 test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
   const changed = changedCiPackagesFromPaths([
     "Casks/rcc.rb",
-    "Formula/antigravity-cli.rb",
-    "Casks/chatgpt.rb",
+    "Casks/chatgpt-linux.rb",
     "Formula/voxtype.rb",
     "Formula/eitype.rb",
     "README.md",
   ])
 
-  assert.deepEqual([...changed].sort(), ["antigravity-cli", "chatgpt", "eitype", "rcc", "voxtype"])
+  assert.deepEqual([...changed].sort(), ["chatgpt", "eitype", "rcc", "voxtype"])
 })
 
 test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
-    "antigravity-cli": "Formula/antigravity-cli.rb",
-    chatgpt: "Casks/chatgpt.rb",
+    chatgpt: "Casks/chatgpt-linux.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
     "buzz-linux": "Casks/buzz-linux.rb",
@@ -162,6 +160,10 @@ test("shared pipeline changes schedule every PR-enabled package", () => {
 
 test("resource monitor build helper schedules t3code CLI CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
+})
+
+test("T3 pnpm patch helper schedules t3code CLI CI", () => {
+  assert.deepEqual(changedCiPackagesFromPaths(["scripts/lib/apply-pnpm-package-patch.mjs"]), ["t3code-cli-main"])
 })
 
 test("package formula and cask edits use artifact checks", () => {
@@ -219,11 +221,6 @@ test("package builders and source inputs use source builds", () => {
       mode: "build",
       reason: "source/build changes: scripts/package-t3code-cli-main.mjs",
     },
-    {
-      package_id: "codex-desktop-linux",
-      mode: "build",
-      reason: "source/build changes: config/codex-desktop-linux-features.json",
-    },
   ])
 })
 
@@ -244,7 +241,7 @@ test("unknown fixtures and test-like paths fail safe to source builds", () => {
     "other/notes.md",
   ])
 
-  assert.equal(plan.length, 18)
+  assert.equal(plan.length, PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).length)
   assert.equal(plan.every((entry) => entry.mode === "build"), true)
   assert.match(plan[0].reason, /unknown\.rb/)
   assert.match(plan[0].reason, /notes\.md/)
@@ -265,9 +262,7 @@ test("unknown production changes fail safe to the full source-build matrix", () 
   const plan = ciPlanFromPaths(["dagger/tap-pipeline/src/install-checks.ts"])
   const expectedPackageIds = [
     "t3code-cli-main",
-    "antigravity-cli",
     "chatgpt",
-    "codex-desktop-linux",
     "headroom-self-hosted",
     "devsy",
     "devsy-desktop",
@@ -292,7 +287,7 @@ test("unknown production changes fail safe to the full source-build matrix", () 
 test("tap workflow changes fail safe to the full source-build matrix", () => {
   const plan = ciPlanFromPaths([".github/workflows/tap-ci.yml"])
 
-  assert.equal(plan.length, 18)
+  assert.equal(plan.length, PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).length)
   assert.equal(plan.every((entry) => entry.mode === "build"), true)
 })
 
@@ -315,7 +310,7 @@ test("rename and delete diffs preserve both paths and keep deletion visible", ()
     assertPlannerFails(fixture, "missing-ref", base, "push")
     assertPlannerFails(fixture, base, "0".repeat(40), "push")
 
-    renameSync(join(fixture, "Casks/rcc.rb"), join(fixture, "Casks/chatgpt.rb"))
+    renameSync(join(fixture, "Casks/rcc.rb"), join(fixture, "Casks/chatgpt-linux.rb"))
     execFileSync("git", ["add", "-A"], { cwd: fixture })
     execFileSync("git", ["commit", "-qm", "rename"], { cwd: fixture })
     const renamed = runPlanner(fixture, base, "HEAD", "push")
@@ -323,11 +318,11 @@ test("rename and delete diffs preserve both paths and keep deletion visible", ()
       { package_id: "chatgpt", mode: "artifact" },
       { package_id: "rcc", mode: "artifact" },
     ])
-    assert.match(renamed[0].reason, /Casks\/chatgpt\.rb/)
+    assert.match(renamed[0].reason, /Casks\/chatgpt-linux\.rb/)
     assert.match(renamed[1].reason, /Casks\/rcc\.rb/)
 
     const renamedBase = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
-    rmSync(join(fixture, "Casks/chatgpt.rb"))
+    rmSync(join(fixture, "Casks/chatgpt-linux.rb"))
     execFileSync("git", ["add", "-A"], { cwd: fixture })
     execFileSync("git", ["commit", "-qm", "delete"], { cwd: fixture })
     const deleted = runPlanner(fixture, renamedBase, "HEAD", "push")

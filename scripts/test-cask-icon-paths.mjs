@@ -6,7 +6,7 @@ import { join } from "node:path"
 import test from "node:test"
 
 const icons = {
-  chatgpt: "chatgpt",
+  "chatgpt-linux": "chatgpt",
   "t3-code-linux": "t3-code-linux",
   "vscode-insiders-linux": "vscode-insiders",
   "devsy-desktop": "devsy-desktop",

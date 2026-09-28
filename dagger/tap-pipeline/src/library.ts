@@ -8,6 +8,43 @@ export type StableReleaseSelection = {
   publishedAt?: string
 }
 
+export type VscodeInsidersUpdate = {
+  archiveSha256: string
+  archiveUrl: string
+  commitSha: string
+  caskVersion: string
+  productVersion: string
+}
+
+export function parseVscodeInsidersUpdate(payload: unknown): VscodeInsidersUpdate {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("VS Code Insiders update response is not an object")
+  }
+
+  const update = payload as Record<string, unknown>
+  const productVersion = update.productVersion
+  const commitSha = update.version
+  const archiveSha256 = update.sha256hash
+
+  if (typeof productVersion !== "string" || !/^\d+(?:\.\d+)+-insider$/.test(productVersion)) {
+    throw new Error("VS Code Insiders update response has an invalid productVersion")
+  }
+  if (typeof commitSha !== "string" || !/^[0-9a-f]{40}$/.test(commitSha)) {
+    throw new Error("VS Code Insiders update response has an invalid commit hash")
+  }
+  if (typeof archiveSha256 !== "string" || !/^[0-9a-f]{64}$/i.test(archiveSha256)) {
+    throw new Error("VS Code Insiders update response has an invalid archive SHA256")
+  }
+
+  return {
+    archiveSha256: archiveSha256.toLowerCase(),
+    archiveUrl: `https://update.code.visualstudio.com/commit:${commitSha}/linux-x64/insider`,
+    commitSha,
+    caskVersion: `${productVersion},${commitSha}`,
+    productVersion,
+  }
+}
+
 export type DictationManifestPackage = {
   id: string
   version: string
@@ -189,24 +226,10 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
-    id: "antigravity-cli",
-    kind: "http_binary_formula",
-    homebrewPath: "Formula/antigravity-cli.rb",
-    supportsPrCi: true,
-    supportsReleaseBundle: false,
-    autoUpdate: {
-      kind: "manual",
-      reason: "Google publishes Antigravity CLI through a platform manifest; update after verifying checksums.",
-    },
-    upstream: {
-      kind: "http_file",
-      url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.0.6-6458082025406464/linux-x64/cli_linux_x64.tar.gz",
-    },
-  },
-  {
     id: "chatgpt",
     kind: "rpm_repack_cask",
-    homebrewPath: "Casks/chatgpt.rb",
+    homebrewPath: "Casks/chatgpt-linux.rb",
+    homebrewToken: "chatgpt-linux",
     supportsPrCi: true,
     supportsReleaseBundle: true,
     autoUpdate: {
@@ -222,11 +245,11 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     id: "codex-desktop-linux",
     kind: "codex_desktop_linux_cask",
     homebrewPath: "Casks/codex-desktop.rb",
-    supportsPrCi: true,
+    supportsPrCi: false,
     supportsReleaseBundle: true,
     autoUpdate: {
-      kind: "deb_packages_version",
-      url: "https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages",
+      kind: "manual",
+      reason: "Community builds are opt-in through Tap Manual only.",
     },
     upstream: {
       kind: "git",
@@ -351,15 +374,16 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   },
   {
     id: "vscode-insiders-linux",
-    kind: "rpm_repack_cask",
+    kind: "source_archive_repack_cask",
     homebrewPath: "Casks/vscode-insiders-linux.rb",
     supportsPrCi: true,
     autoUpdate: {
-      kind: "rpm_redirect",
+      kind: "vscode_insiders_api",
+      url: "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest",
     },
     upstream: {
-      kind: "rpm",
-      sourceUrl: "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider",
+      kind: "http_file",
+      url: "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest",
     },
   },
   {
@@ -467,7 +491,7 @@ export function recoveryPackageSummaries(): PackageRegistryEntry[] {
 export function recoveryBrewfile(entries = recoveryPackageSummaries()): string {
   const lines = entries.map((entry) => {
     const stanza = entry.homebrewPath.startsWith("Casks/") ? "cask" : "brew"
-    return `${stanza} "${RECOVERY_TAP_PREFIX}${entry.id}"`
+    return `${stanza} "${RECOVERY_TAP_PREFIX}${entry.homebrewToken ?? entry.id}"`
   })
 
   return `# Generated from dagger/tap-pipeline/src/library.ts package registry.\n${lines.join("\n")}\n`
@@ -485,7 +509,7 @@ export function parseRecoveryBrewfile(contents: string): PackageRegistryEntry[] 
       throw new Error(`Unsupported recovery Brewfile entry: ${rawLine}`)
     }
 
-    const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === match[1])
+    const entry = PACKAGE_REGISTRY.find((candidate) => (candidate.homebrewToken ?? candidate.id) === match[1])
     if (!entry) {
       throw new Error(`Unknown recovery package: ${match[1]}`)
     }
@@ -525,12 +549,12 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     [
       "Formula/t3code-cli-main.rb",
       "scripts/package-t3code-cli-main.mjs",
+      "scripts/lib/apply-pnpm-package-patch.mjs",
       "scripts/build-t3code-resource-monitor.sh",
       "dagger/t3code-cli-main-smoke/",
     ],
   ],
-  ["antigravity-cli", ["Formula/antigravity-cli.rb"]],
-  ["chatgpt", ["Casks/chatgpt.rb"]],
+  ["chatgpt", ["Casks/chatgpt-linux.rb"]],
   [
     "codex-desktop-linux",
     ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],

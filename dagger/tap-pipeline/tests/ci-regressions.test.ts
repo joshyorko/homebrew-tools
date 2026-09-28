@@ -183,6 +183,22 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
         "  \"@effect/sql-sqlite-bun\": 4.0.0-rc.112",
         "  effect: 4.0.0-rc.112",
         "",
+        "patchedDependencies:",
+        '  "@ff-labs/fff-node@0.9.4": patches/fff-node.patch',
+        "",
+      ].join("\n"),
+    )
+    mkdirSync(join(upstream, "patches"), { recursive: true })
+    writeFileSync(
+      join(upstream, "patches/fff-node.patch"),
+      [
+        "diff --git a/package.json b/package.json",
+        "--- a/package.json",
+        "+++ b/package.json",
+        "@@ -1 +1 @@",
+        '-{"exports":{".":{"import":"./index.js"}}}',
+        '+{"exports":{".":{"import":"./index.js","require":"./index.js"}}}',
+        "",
       ].join("\n"),
     )
     writeFileSync(
@@ -205,6 +221,7 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
           "@effect/platform-bun": "catalog:",
           "@effect/platform-node": "catalog:",
           "@effect/sql-sqlite-bun": "catalog:",
+          "@ff-labs/fff-node": "0.9.4",
           effect: "catalog:",
         },
       }),
@@ -216,12 +233,17 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
       npmStub,
       [
         "#!/usr/bin/env node",
-        "const { readFileSync, writeFileSync } = require('node:fs')",
+        "const { mkdirSync, readFileSync, writeFileSync } = require('node:fs')",
         "const { join } = require('node:path')",
         "const manifest = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))",
         "if (process.argv.includes('--package-lock-only')) {",
         "  writeFileSync(process.env.OBSERVED_MANIFEST, JSON.stringify(manifest))",
         "  writeFileSync(join(process.cwd(), 'package-lock.json'), '{}\\n')",
+        "}",
+        "if (process.argv.includes('ci')) {",
+        "  const dependency = join(process.cwd(), 'node_modules/@ff-labs/fff-node')",
+        "  mkdirSync(dependency, { recursive: true })",
+        "  writeFileSync(join(dependency, 'package.json'), '{\\\"exports\\\":{\\\".\\\":{\\\"import\\\":\\\"./index.js\\\"}}}\\n')",
         "}",
         "",
       ].join("\n"),
@@ -278,7 +300,7 @@ test("Codex ci-check defaults to PatchRaptor while preserving the scheduled late
 })
 
 test("CI workflows forward the existing GitHub token as a Dagger secret reference", () => {
-  for (const path of [".github/workflows/tap-ci.yml", ".github/workflows/tap-manual.yml"]) {
+  for (const path of [".github/workflows/tap-ci.yml"]) {
     const workflow = read(path)
     assert.match(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}/)
     const ciCommands = [...workflow.matchAll(/call: >-\n(          ci-check\n(?:          [^\n]+\n)*)/g)]
@@ -293,9 +315,19 @@ test("CI workflows forward the existing GitHub token as a Dagger secret referenc
   }
 })
 
-test("superseded auto-update runs are canceled and bundle jobs are time-bounded", () => {
+test("manual runs select one package module without showing Buzz-only steps", () => {
+  const workflow = read(".github/workflows/tap-manual.yml")
+  assert.doesNotMatch(workflow, /- name: .*Buzz/)
+  assert.match(workflow, /name: \$\{\{ inputs\.package_id \}\} \(\$\{\{ inputs\.action \}\}\)/)
+  assert.match(workflow, /inputs\.package_id == 'buzz-linux' && '\.\/dagger\/buzz-linux-smoke' \|\| '\.\/dagger\/tap-pipeline'/)
+  assert.match(workflow, /'smoke-test --tap=\.' \|\| format\('ci-check --package-id="\{0\}" --github-token=env:\/\/GH_TOKEN'/)
+})
+
+test("independent auto-update slots queue without canceling builds and publication is serialized", () => {
   const workflow = read(".github/workflows/tap-auto-update.yml")
 
-  assert.match(workflow, /concurrency:\n  group: tap-auto-update-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/)
+  assert.match(workflow, /group: tap-auto-update-.*inputs\.slot_id.*github\.event\.schedule/)
+  assert.doesNotMatch(workflow, /cancel-in-progress: true/)
+  assert.match(workflow, /  publish:[\s\S]*concurrency:\n      group: tap-publish[\s\S]*queue: max/)
   assert.match(workflow, /  build:\n    needs: resolve\n    if: needs\.resolve\.outputs\.has_packages == 'true'\n    name: Build \$\{\{ matrix\.package_id \}\} Bundle\n    runs-on: ubuntu-latest\n    timeout-minutes: 60/)
 })

@@ -8,6 +8,7 @@ import {
   packageSummaries,
   packagedVersionForUpstreamComparison,
   parseDebianPackageVersion,
+  parseVscodeInsidersUpdate,
   parseAutoUpdateSlotId,
   parseRecoveryBrewfile,
   packagesForAutoUpdateSlot as slotPackages,
@@ -201,15 +202,10 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
       ]
-    case "antigravity-cli":
-      return [
-        "mkdir -p \"$tap_dir/Formula\"",
-        "cp /tap/Formula/antigravity-cli.rb \"$tap_dir/Formula/\"",
-      ]
     case "chatgpt":
       return [
         "mkdir -p \"$tap_dir/Casks\"",
-        "cp /tap/Casks/chatgpt.rb \"$tap_dir/Casks/\"",
+        "cp /tap/Casks/chatgpt-linux.rb \"$tap_dir/Casks/\"",
       ]
     case "devsy":
       return [
@@ -357,7 +353,7 @@ type VscodeBuild = {
   commitSha: string
   container: Container
   packageVersion: string
-  releaseBuild: string
+  sourceArchiveSha256: string
   resolvedUrl: string
 }
 
@@ -1254,11 +1250,11 @@ end
       artifactSha256: sha256,
       downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/vscode-insiders-linux-${build.caskVersion.replace(/,/g, "-")}/${build.assetName}`,
       releaseTitle: `VS Code Insiders Linux ${build.caskVersion}`,
-      releaseNotes: `Packaged from official RPM ${build.resolvedUrl} (${build.packageVersion}-${build.releaseBuild})`,
+      releaseNotes: `Packaged from Microsoft's immutable Linux archive ${build.resolvedUrl} (SHA256 ${build.sourceArchiveSha256})`,
       commitMessage: `Update vscode-insiders-linux cask to ${build.caskVersion}`,
       upstream: {
-        kind: "rpm",
-        sourceUrl: build.resolvedUrl,
+        kind: "http_file",
+        url: build.resolvedUrl,
         version: build.caskVersion,
         commit: build.commitSha,
       },
@@ -1684,8 +1680,8 @@ end
     const metadata = await this.resolveVscodeMetadata(sourceUrl)
     const resolvedUrl = metadata.resolvedUrl
     const packageVersion = metadata.packageVersion
-    const releaseBuild = metadata.releaseBuild
     const commitSha = metadata.commitSha
+    const sourceArchiveSha256 = metadata.sourceArchiveSha256
     const caskVersion = version && version.length > 0 ? version : metadata.caskVersion
     const assetName = `vscode-insiders-linux-${caskVersion.replace(/,/g, "-")}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
@@ -1696,15 +1692,17 @@ end
       .withExec([
         "bash",
         "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates cpio curl jq rpm tar && rm -rf /var/lib/apt/lists/*",
+        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl tar && rm -rf /var/lib/apt/lists/*",
       ])
       .withDirectory("/tap", tap)
-      .withExec(["bash", "-lc", `curl -fsSL "${resolvedUrl}" -o /tmp/vscode-insiders-source.rpm`])
+      .withExec(["bash", "-lc", `curl -fsSL "${resolvedUrl}" -o /tmp/vscode-insiders-source.tar.gz`])
       .withExec([
         "node",
         "/tap/scripts/package-vscode-insiders-linux.mjs",
-        "--source-rpm",
-        "/tmp/vscode-insiders-source.rpm",
+        "--source-archive",
+        "/tmp/vscode-insiders-source.tar.gz",
+        "--source-sha256",
+        sourceArchiveSha256,
         "--output",
         artifactPath,
       ])
@@ -1716,7 +1714,7 @@ end
       commitSha,
       container,
       packageVersion,
-      releaseBuild,
+      sourceArchiveSha256,
       resolvedUrl,
     }
   }
@@ -2243,45 +2241,19 @@ end
   private async resolveVscodeMetadata(sourceUrl?: string): Promise<{
     resolvedUrl: string
     packageVersion: string
-    releaseBuild: string
+    sourceArchiveSha256: string
     commitSha: string
     caskVersion: string
   }> {
-    const resolvedSourceUrl = sourceUrl ?? "https://update.code.visualstudio.com/latest/linux-rpm-x64/insider"
-    const resolvedUrl = (await dag
-      .container()
-      .from(NODE_IMAGE)
-      .withExec([
-        "node",
-        "--input-type=module",
-        "-e",
-        [
-          "const url = process.argv[1]",
-          "const response = await fetch(url, { method: 'HEAD', redirect: 'follow' })",
-          "if (!response.ok) {",
-          "  throw new Error(`Failed to resolve ${url}: ${response.status}`)",
-          "}",
-          "process.stdout.write(response.url)",
-        ].join("\n"),
-        resolvedSourceUrl,
-      ])
-      .stdout()).trim()
-
-    const match = resolvedUrl.match(/\/download\/insider\/([0-9a-f]+)\/code-insiders-([0-9.]+)-(.+)\.x86_64\.rpm$/)
-
-    if (!match) {
-      throw new Error(`Failed to parse VS Code Insiders metadata from ${resolvedUrl}`)
-    }
-
-    const [, commitSha, packageVersion, releaseBuild] = match
-    const commitShort = commitSha.slice(0, 12)
+    const apiUrl = sourceUrl ?? "https://update.code.visualstudio.com/api/update/linux-x64/insider/latest"
+    const update = parseVscodeInsidersUpdate(await this.fetchJson(apiUrl))
 
     return {
-      resolvedUrl,
-      packageVersion,
-      releaseBuild,
-      commitSha,
-      caskVersion: `${packageVersion},${releaseBuild},${commitShort}`,
+      resolvedUrl: update.archiveUrl,
+      packageVersion: update.productVersion,
+      sourceArchiveSha256: update.archiveSha256,
+      commitSha: update.commitSha,
+      caskVersion: update.caskVersion,
     }
   }
 
@@ -2326,6 +2298,8 @@ end
 
         return (await this.resolveVscodeMetadata(sourceUrl)).caskVersion
       }
+      case "vscode_insiders_api":
+        return (await this.resolveVscodeMetadata(entry.autoUpdate.url)).caskVersion
       case "deb_packages_version":
         return packageId === "codex-desktop-linux"
           ? this.resolveCodexDesktopVersion(codexDesktopConversionCommit)
@@ -3285,52 +3259,65 @@ end
           ])
           .stdout()
       }
-      case "antigravity-cli": {
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", tap)
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("antigravity-cli"),
-              "brew install test/tap/antigravity-cli",
-              "brew test test/tap/antigravity-cli",
-              "agy --version",
-              "agy --help",
-            ].join("\n"),
-          ])
-          .stdout()
-      }
       case "chatgpt": {
+        const build = await this.buildChatgptArtifacts()
+        const caskContents = await tap.file("Casks/chatgpt-linux.rb").contents()
+        const smokeCask = caskContents
+          .replace(/url ".*"/, `url "file:///artifacts/chatgpt-#{version}-1.#{arch}.rpm"`)
+          .replace(/version ".*"/, `version "${build.version}"`)
+          .replace(/sha256 arm:[\s\S]*?x86_64_linux: ".*"/, [
+            `sha256 arm:          "${build.arm64.sha256}",`,
+            `       intel:        "${build.amd64.sha256}",`,
+            `       arm64_linux:  "${build.arm64.sha256}",`,
+            `       x86_64_linux: "${build.amd64.sha256}"`,
+          ].join("\n"))
+        const smokeTap = tap
+          .withFile("Casks/chatgpt-linux.rb", dag.file("chatgpt-linux.rb", smokeCask))
+          .withFile(
+            "scripts/migrate-chatgpt-linux-cask.sh",
+            this.source.file("scripts/migrate-chatgpt-linux-cask.sh"),
+          )
         return dag
           .container()
           .from(BREW_IMAGE)
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", tap)
+          .withDirectory("/tap", smokeTap)
+          .withFile(`/artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
+          .withFile(`/artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
           .withExec([
             "bash",
             "-lc",
             [
               "set -euo pipefail",
               "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("chatgpt"),
-              "brew install --cask test/tap/chatgpt",
-              "test -x \"$(brew --prefix)/bin/chatgpt\"",
+              "git config --global user.name \"ChatGPT migration smoke\"",
+              "git config --global user.email migration@example.invalid",
+              "brew tap-new joshyorko/tools",
+              "migration_tap_dir=\"$repo/Library/Taps/joshyorko/homebrew-tools\"",
+              "mkdir -p \"$migration_tap_dir/Casks\"",
+              "cp /tap/Casks/chatgpt-linux.rb \"$migration_tap_dir/Casks/chatgpt-linux.rb\"",
+              `/bin/sed 's/^cask .chatgpt-linux. do$/cask \"chatgpt\" do/' /tap/Casks/chatgpt-linux.rb > \"$migration_tap_dir/Casks/chatgpt.rb\"`,
+              "git -C \"$migration_tap_dir\" config user.name \"ChatGPT migration smoke\"",
+              "git -C \"$migration_tap_dir\" config user.email migration@example.invalid",
+              "git -C \"$migration_tap_dir\" add Casks/chatgpt.rb Casks/chatgpt-linux.rb",
+              "git -C \"$migration_tap_dir\" commit -m \"Install legacy ChatGPT cask\"",
+              "brew trust joshyorko/tools",
+              "brew install --cask --require-sha joshyorko/tools/chatgpt",
               "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",
+              "mkdir -p \"$user_home/.config/ChatGPT\"",
+              "printf 'preserve-me\\n' > \"$user_home/.config/ChatGPT/migration-sentinel\"",
+              "rm \"$migration_tap_dir/Casks/chatgpt.rb\"",
+              "git -C \"$migration_tap_dir\" add -A",
+              "git -C \"$migration_tap_dir\" commit -m \"Rename ChatGPT Linux cask\"",
+              "/bin/bash /tap/scripts/migrate-chatgpt-linux-cask.sh",
+              "test -x \"$(brew --prefix)/bin/chatgpt\"",
+              "test \"$(cat \"$user_home/.config/ChatGPT/migration-sentinel\")\" = preserve-me",
               "test -f \"$user_home/.local/share/applications/chatgpt.desktop\"",
               "grep -qx 'Icon=chatgpt' \"$user_home/.local/share/applications/chatgpt.desktop\"",
               "test -f \"$user_home/.local/share/icons/hicolor/512x512@2/apps/chatgpt.png\"",
+              `jq -e '.source.tap == \"joshyorko/tools\" and (.source.path | endswith(\"/Casks/chatgpt-linux.rb\"))' \"$(brew --caskroom)/chatgpt-linux/.metadata/INSTALL_RECEIPT.json\"`,
             ].join("\n"),
           ])
           .stdout()
@@ -4018,7 +4005,7 @@ end
       case "chatgpt": {
         const build = await this.buildChatgptArtifacts()
         const release = this.chatgptReleaseMetadata(build)
-        const caskContents = await tap.file("Casks/chatgpt.rb").contents()
+        const caskContents = await tap.file("Casks/chatgpt-linux.rb").contents()
         const updatedCask = caskContents
           .replace(
             /url ".*"/,
@@ -4035,7 +4022,7 @@ end
         return dag.directory()
           .withFile(`artifacts/${build.amd64.assetName}`, build.container.file(build.amd64.artifactPath))
           .withFile(`artifacts/${build.arm64.assetName}`, build.container.file(build.arm64.artifactPath))
-          .withFile("homebrew/chatgpt.rb", dag.file("chatgpt.rb", updatedCask))
+          .withFile("homebrew/chatgpt-linux.rb", dag.file("chatgpt-linux.rb", updatedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }

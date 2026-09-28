@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { applyPnpmPackagePatch } from "./lib/apply-pnpm-package-patch.mjs";
 
 function parseArgs(argv) {
   const args = {};
@@ -168,6 +169,12 @@ function main() {
     cwd: packageDir,
     stdio: "inherit",
   });
+
+  const fffNodeVersion = serverPackageJson.dependencies?.["@ff-labs/fff-node"];
+  if (!fffNodeVersion || !/^\d+\.\d+\.\d+$/.test(fffNodeVersion)) {
+    throw new Error(`Expected apps/server to pin @ff-labs/fff-node; got ${JSON.stringify(fffNodeVersion)}`);
+  }
+  applyPnpmPackagePatch(upstreamDir, join(packageDir, "node_modules"), "@ff-labs/fff-node", fffNodeVersion);
 
   mkdirSync(dirname(outputPath), { recursive: true });
   execFileSync("tar", ["-czf", outputPath, "-C", packageDir, "."], {

@@ -77,6 +77,7 @@ test("Buzz Brew runtime bootstrap uses the Ubuntu 24.04 runtime package name", (
   const buzzSource = readFileSync(new URL("../../buzz-linux-smoke/src/index.ts", import.meta.url), "utf8")
   assert.match(buzzSource, /desktop-file-utils xdg-utils libasound2t64 libgtk-3-0/)
   assert.doesNotMatch(buzzSource, /apt-get install[^\n]*desktop-file-utils[^\n]*\blibasound2\b/)
+  assert.ok(artifactCheckPlan("buzz-linux").systemPackages.includes("libwayland-server0"))
 })
 
 test("dictation artifact checks provision the same runtime libraries as source CI", () => {

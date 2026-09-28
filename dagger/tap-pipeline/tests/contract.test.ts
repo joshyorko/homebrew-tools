@@ -1,6 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   AUTO_UPDATE_SLOTS,
@@ -9,6 +11,7 @@ import {
   formatGitHeadVersion,
   releaseMetadataForPackage,
 } from "../src/library.ts"
+import { applyPnpmPackagePatch } from "../../../scripts/lib/apply-pnpm-package-patch.mjs"
 
 const REQUIRED_RELEASE_FIELDS = [
   "package",
@@ -26,7 +29,7 @@ const REQUIRED_RELEASE_FIELDS = [
 ] as const
 
 const DEPRECATED_HOOK_CASKS = {
-  "Casks/chatgpt.rb": ["preflight_steps"],
+  "Casks/chatgpt-linux.rb": ["preflight_steps"],
   "Casks/devpod-linux.rb": ["preflight_steps", "postflight_steps"],
   "Casks/devsy-desktop.rb": ["preflight_steps", "postflight_steps"],
   "Casks/t3-code-linux.rb": ["preflight_steps"],
@@ -82,7 +85,7 @@ test("Devsy Desktop cask URL is versioned for Homebrew audit", () => {
 
   assert.match(
     cask,
-    /url "https:\/\/github\.com\/joshyorko\/homebrew-tools\/releases\/download\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage"/,
+    /url "https:\/\/github\.com\/joshyorko\/homebrew-tools\/releases\/download\/devsy-desktop-(?:#\{version\}|\d+\.\d+\.\d+)\/Devsy_linux_x86_64\.AppImage"/,
   )
 })
 
@@ -98,7 +101,8 @@ test("package registry covers every planned adapter kind", () => {
       "github_release_deb_cask",
       "headroom_self_hosted_formula",
       "http_binary_formula",
-    "rpm_repack_cask",
+      "rpm_repack_cask",
+      "source_archive_repack_cask",
       "source_build_go_formula",
       "source_build_node_appimage_cask",
       "source_build_node_formula",
@@ -164,7 +168,6 @@ test("auto-update slots cover the expected package set", () => {
       "action-server",
     "buzz-linux",
     "chatgpt",
-    "codex-desktop-linux",
       "devpod-linux",
       "devsy",
       "devsy-desktop",
@@ -213,27 +216,14 @@ test("ChatGPT runs through the standard daily release pipeline", () => {
   assert.doesNotMatch(autoUpdateWorkflow, /^  chatgpt:/m)
 })
 
-test("Codex Desktop rebuilds daily from OpenAI version, PatchRaptor commit, and feature profile", () => {
-  const autoUpdateWorkflow = readFileSync(
-    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
-    "utf8",
-  )
-  const slots = readFileSync(new URL("../auto-update-slots.json", import.meta.url), "utf8")
+test("community Codex Desktop is manual-only", () => {
+  const workflow = readFileSync(new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url), "utf8")
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
-
-  assert.equal(entry?.autoUpdate.kind, "deb_packages_version")
-  assert.match(autoUpdateWorkflow, /- cron: "15 10 \* \* \*"/)
-  assert.match(autoUpdateWorkflow, /push:[\s\S]*config\/codex-desktop-linux-features\.json/)
-  assert.match(autoUpdateWorkflow, /- codex-desktop-daily/)
-  assert.match(autoUpdateWorkflow, /EVENT_NAME" = "push"[\s\S]*slot_id="codex-desktop-daily"/)
-  assert.match(autoUpdateWorkflow, /"15 10 \* \* \*"\) slot_id="codex-desktop-daily"/)
-  assert.match(autoUpdateWorkflow, /--codex-desktop-package-source=.*latest/)
-  assert.match(autoUpdateWorkflow, /--codex-desktop-conversion-commit="patchraptor-main"/)
-  assert.match(slots, /"id": "codex-desktop-daily"[\s\S]*"packageIds": \["codex-desktop-linux"\]/)
-  assert.equal(
-    codexDesktopBuildVersion("26.818.21641", "1234567890abcdef", ["ui-tweaks", "agent-workspace"]),
-    "26.818.21641.patchraptor.1234567890ab.features.fd9999f9e051",
-  )
+  assert.equal(entry?.supportsPrCi, false)
+  assert.equal(entry?.supportsReleaseBundle, true)
+  assert.equal(entry?.autoUpdate.kind, "manual")
+  assert.doesNotMatch(workflow, /codex-desktop-daily|push:/)
+  assert.equal(AUTO_UPDATE_SLOTS.some((slot) => slot.packageIds.includes("codex-desktop-linux")), false)
 })
 
 test("Camp sync consumes the published formula without rebuilding Camp", () => {
@@ -355,21 +345,8 @@ test("t3-code-linux builds the desktop AppImage from upstream main", () => {
   assert.match(readme, /T3 Code[\s\S]*launches its extracted `AppRun`[\s\S]*does not require FUSE at runtime/)
 })
 
-test("antigravity CLI is a manual closed-source binary formula", () => {
-  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "antigravity-cli")
-
-  assert.ok(entry)
-  assert.equal(entry.kind, "http_binary_formula")
-  assert.equal(entry.homebrewPath, "Formula/antigravity-cli.rb")
-  assert.equal(entry.supportsPrCi, true)
-  assert.equal(entry.autoUpdate.kind, "manual")
-  assert.equal(entry.upstream.kind, "http_file")
-
-  const formula = readFileSync(new URL("../../../Formula/antigravity-cli.rb", import.meta.url), "utf8")
-
-  assert.match(formula, /class AntigravityCli < Formula/)
-  assert.match(formula, /bin\/"agy"/)
-  assert.match(formula, /license :cannot_represent/)
+test("Antigravity is not a supported or buildable tap package", () => {
+  assert.equal(PACKAGE_REGISTRY.some((entry) => entry.id === "antigravity-cli"), false)
 })
 
 test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () => {
@@ -377,14 +354,15 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
 
   assert.ok(entry)
   assert.equal(entry.kind, "rpm_repack_cask")
-  assert.equal(entry.homebrewPath, "Casks/chatgpt.rb")
+  assert.equal(entry.homebrewPath, "Casks/chatgpt-linux.rb")
   assert.equal(entry.supportsPrCi, true)
   assert.equal(entry.supportsReleaseBundle, true)
   assert.equal(entry.autoUpdate.kind, "deb_packages_version")
 
-  const cask = readFileSync(new URL("../../../Casks/chatgpt.rb", import.meta.url), "utf8")
+  const cask = readFileSync(new URL("../../../Casks/chatgpt-linux.rb", import.meta.url), "utf8")
 
-  assert.match(cask, /cask "chatgpt"/)
+  assert.match(cask, /cask "chatgpt-linux"/)
+  assert.doesNotMatch(cask, /^\s*auto_updates true$/m)
   assert.match(cask, /version "\d+(?:\.\d+)+"/)
   assert.match(cask, /chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
   assert.match(cask, /x86_64_linux: "[0-9a-f]{64}"/)
@@ -400,7 +378,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.doesNotMatch(cask, /dpkg\s+-i|sources\.list\.d|apparmor_parser/)
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
-    /case "chatgpt"[\s\S]*brew install --cask test\/tap\/chatgpt/,
+    /case "chatgpt"[\s\S]*git config --global user\.name[\s\S]*brew tap-new joshyorko\/tools[\s\S]*brew install --cask --require-sha joshyorko\/tools\/chatgpt[\s\S]*migrate-chatgpt-linux-cask\.sh[\s\S]*migration-sentinel/,
   )
   assert.match(
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
@@ -410,9 +388,17 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
     readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"),
     /case "chatgpt"[\s\S]*buildChatgptArtifacts[\s\S]*artifacts\/\$\{build\.amd64\.assetName\}[\s\S]*artifacts\/\$\{build\.arm64\.assetName\}/,
   )
+  const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
+  assert.match(pipeline, /const smokeCask = caskContents[\s\S]*file:\/\/\/artifacts\/chatgpt-#\{version\}-1\.#\{arch\}\.rpm/)
+  assert.match(pipeline, /withFile\(`\/artifacts\/\$\{build\.amd64\.assetName\}`, build\.container\.file\(build\.amd64\.artifactPath\)\)/)
+  const tapNewIndex = pipeline.indexOf('"brew tap-new joshyorko/tools"')
+  assert.ok(tapNewIndex >= 0)
+  assert.ok(pipeline.lastIndexOf('"git config --global user.name', tapNewIndex) >= 0)
+  assert.ok(pipeline.lastIndexOf('"git config --global user.email', tapNewIndex) >= 0)
 
   const makefile = readFileSync(new URL("../../../Makefile", import.meta.url), "utf8")
   const installer = readFileSync(new URL("../../../scripts/install-chatgpt-local.sh", import.meta.url), "utf8")
+  const migrator = readFileSync(new URL("../../../scripts/migrate-chatgpt-linux-cask.sh", import.meta.url), "utf8")
   const uninstaller = readFileSync(new URL("../../../scripts/uninstall-chatgpt.sh", import.meta.url), "utf8")
   assert.match(makefile, /^chatgpt:\n\tscripts\/install-chatgpt-local\.sh$/m)
   assert.match(installer, /dagger -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
@@ -420,9 +406,40 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   assert.match(installer, /brew install --cask/)
   assert.doesNotMatch(installer, /Formula\/chatgpt\.rb|--build-from-source/)
   assert.match(makefile, /^uninstall-chatgpt:\n\tscripts\/uninstall-chatgpt\.sh$/m)
-  assert.match(uninstaller, /brew uninstall --cask chatgpt/)
+  assert.match(uninstaller, /brew uninstall --cask joshyorko\/tools\/chatgpt-linux/)
   assert.match(uninstaller, /chatgpt-local/)
+  assert.match(migrator, /\.source\.tap == "joshyorko\/tools"/)
+  assert.match(migrator, /uname -s\) != Linux/)
+  assert.ok(migrator.indexOf('brew fetch --cask "$new_cask"') < migrator.indexOf('brew uninstall --cask "$old_cask"'))
+  assert.ok(migrator.indexOf('brew uninstall --cask "$old_cask"') < migrator.indexOf('brew install --cask --require-sha "$new_cask"'))
+  assert.doesNotMatch(migrator, /--zap|zap:/)
   assert.doesNotMatch(uninstaller, /\.config\/ChatGPT|\.cache\/ChatGPT|\.local\/share\/ChatGPT/)
+})
+
+test("VS Code Insiders uses Microsoft's commit-pinned archive metadata", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "vscode-insiders-linux")
+
+  assert.ok(entry)
+  assert.equal(entry.kind, "source_archive_repack_cask")
+  assert.ok(entry.autoUpdate.kind === "vscode_insiders_api")
+  assert.ok(entry.upstream.kind === "http_file")
+  assert.match(entry.autoUpdate.url, /api\/update\/linux-x64\/insider\/latest$/)
+
+  const cask = readFileSync(new URL("../../../Casks/vscode-insiders-linux.rb", import.meta.url), "utf8")
+  assert.match(cask, /code-insiders\.desktop/)
+  assert.match(cask, /code-insiders-workspace\.xml/)
+  assert.match(cask, /x-scheme-handler\/vscode-insiders/)
+  assert.match(cask, /CHROME_DESKTOP=code-insiders\.desktop/)
+  assert.match(cask, /del\(\.updateUrl\).*update\.mode.*none/)
+  assert.match(cask, /depends_on formula: "jq"/)
+
+  const smokeModule = readFileSync(
+    new URL("../../../dagger/vscode-insiders-linux-smoke/src/index.ts", import.meta.url),
+    "utf8",
+  )
+  assert.match(smokeModule, /api\/update\/linux-x64\/insider\/latest/)
+  assert.match(smokeModule, /--source-sha256/)
+  assert.doesNotMatch(smokeModule, /source-rpm|rpm -qp/)
 })
 
 test("Devsy packages pin stable release assets and keep CLI and Desktop identities separate", () => {
@@ -477,7 +494,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.doesNotMatch(cask, /arch arm/)
   assert.equal(caskVersion, formulaVersion)
   assert.equal(caskRevision, undefined)
-  assert.match(caskUrl ?? "", /\/devsy-desktop-#\{version\}\/Devsy_linux_x86_64\.AppImage$/)
+  assert.match(caskUrl ?? "", /\/devsy-desktop-(?:#\{version\}|\d+\.\d+\.\d+)\/Devsy_linux_x86_64\.AppImage$/)
   assert.match(caskDigest ?? "", /^[a-f0-9]{64}$/)
   assert.match(cask, /target: "devsy-desktop"/)
   assert.match(cask, /x-scheme-handler\/devsy/)
@@ -507,7 +524,7 @@ test("Devsy packages pin stable release assets and keep CLI and Desktop identiti
   assert.match(readme, /updater alone[\s\S]*latest/)
 })
 
-test("Codex Desktop consumes the scheduled PatchRaptor official-package build", () => {
+test("Codex Desktop retains the manually requested PatchRaptor build", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-desktop-linux")
   const pipeline = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
   const buildStart = pipeline.indexOf("private async buildCodexDesktopLinuxOfficialArtifact")
@@ -518,7 +535,7 @@ test("Codex Desktop consumes the scheduled PatchRaptor official-package build", 
   assert.equal(entry.kind, "codex_desktop_linux_cask")
   assert.equal(entry.homebrewPath, "Casks/codex-desktop.rb")
   assert.equal(entry.supportsReleaseBundle, true)
-  assert.equal(entry.autoUpdate.kind, "deb_packages_version")
+  assert.equal(entry.autoUpdate.kind, "manual")
   assert.equal(entry.upstream.kind, "git")
   assert.equal(entry.upstream.repo, "https://github.com/joshyorko/codex-desktop-linux")
   assert.equal(entry.upstream.ref, "patchraptor-main")
@@ -592,6 +609,44 @@ test("t3code CLI builders do not rewrite the upstream runtime package version", 
     const contents = readFileSync(new URL(builder, import.meta.url), "utf8")
 
     assert.doesNotMatch(contents, /pkg\.version\s*=\s*process\.argv\[1\]/)
+  }
+})
+
+test("T3 runtime packaging applies upstream pnpm patches to npm-installed dependencies", () => {
+  const packager = readFileSync(new URL("../../../scripts/package-t3code-cli-main.mjs", import.meta.url), "utf8")
+  const fixture = mkdtempSync(join(tmpdir(), "t3-pnpm-patch-test-"))
+  const upstreamDir = join(fixture, "upstream")
+  const packageDir = join(fixture, "node_modules", "@ff-labs", "fff-node")
+  const patchPath = join(upstreamDir, "patches", "fff-node.patch")
+
+  try {
+    assert.match(packager, /applyPnpmPackagePatch\(/)
+    mkdirSync(join(upstreamDir, "patches"), { recursive: true })
+    mkdirSync(packageDir, { recursive: true })
+    writeFileSync(
+      join(upstreamDir, "pnpm-workspace.yaml"),
+      'patchedDependencies:\n  "@ff-labs/fff-node@0.9.4": patches/fff-node.patch\n',
+    )
+    writeFileSync(join(packageDir, "package.json"), '{"exports":{".":{"import":"./index.js"}}}\n')
+    writeFileSync(
+      patchPath,
+      [
+        "diff --git a/package.json b/package.json",
+        "--- a/package.json",
+        "+++ b/package.json",
+        "@@ -1 +1 @@",
+        '-{"exports":{".":{"import":"./index.js"}}}',
+        '+{"exports":{".":{"import":"./index.js","require":"./index.js"}}}',
+        "",
+      ].join("\n"),
+    )
+
+    applyPnpmPackagePatch(upstreamDir, join(fixture, "node_modules"), "@ff-labs/fff-node", "0.9.4")
+
+    const installedPackage = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"))
+    assert.equal(installedPackage.exports["."].require, "./index.js")
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
   }
 })
 

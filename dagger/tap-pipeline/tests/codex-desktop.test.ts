@@ -53,10 +53,10 @@ test("Codex Desktop official cask remains release-backed", () => {
 })
 
 test("official and community streams have distinct identities", () => {
-  const official = read("Casks/chatgpt.rb")
+  const official = read("Casks/chatgpt-linux.rb")
   const community = read("Casks/codex-desktop.rb")
 
-  assert.match(official, /cask "chatgpt"/)
+  assert.match(official, /cask "chatgpt-linux"/)
   assert.match(official, /name "ChatGPT"/)
   assert.match(official, /homepage "https:\/\/chatgpt\.com\//)
   assert.match(community, /name "ChatGPT Community"/)

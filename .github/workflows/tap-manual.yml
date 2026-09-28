@@ -17,6 +17,11 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: tap-publish
+  cancel-in-progress: false
+  queue: max
+
 permissions:
   contents: write
 
@@ -24,10 +29,11 @@ env:
   DAGGER_VERSION: "0.21.9"
   GH_TOKEN: ${{ github.token }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  RELEASE_RETENTION_PER_PACKAGE: "3"
+  RELEASE_RETENTION_PER_PACKAGE: "1"
 
 jobs:
   run:
+    name: ${{ inputs.package_id }} (${{ inputs.action }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -44,32 +50,18 @@ jobs:
         call: >-
           artifact-check
           --package-id="${{ inputs.package_id }}"
-    - name: Run package CI through Dagger
-      if: inputs.action == 'ci' && inputs.package_id != 'buzz-linux'
+    - name: Run selected package CI through Dagger
+      if: inputs.action == 'ci'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
+        module: ${{ inputs.package_id == 'buzz-linux' && './dagger/buzz-linux-smoke' || './dagger/tap-pipeline' }}
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         enable-github-summary: "true"
         call: >-
-          ci-check
-          --package-id="${{ inputs.package_id }}"
-          --github-token=env://GH_TOKEN
+          ${{ inputs.package_id == 'buzz-linux' && 'smoke-test --tap=.' || format('ci-check --package-id="{0}" --github-token=env://GH_TOKEN', inputs.package_id) }}
 
-    - name: Run Buzz Linux CI through Dagger
-      if: inputs.action == 'ci' && inputs.package_id == 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/buzz-linux-smoke
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          smoke-test
-          --tap=.
-
-    - name: Resolve immutable Buzz Linux source
+    - name: Resolve selected package source
       if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
       id: buzz_source
       run: |
@@ -84,33 +76,18 @@ jobs:
           echo "commit=$commit"
         } >> "$GITHUB_OUTPUT"
 
-    - name: Export release bundle
-      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id != 'buzz-linux'
+    - name: Export selected package release bundle
+      if: inputs.action == 'release' || inputs.action == 'force-release'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
+        module: ${{ inputs.package_id == 'buzz-linux' && './dagger/buzz-linux-smoke' || './dagger/tap-pipeline' }}
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         enable-github-summary: "true"
         call: >-
           -o "$RUNNER_TEMP/bundle"
           release-bundle
-          --package-id="${{ inputs.package_id }}"
-
-    - name: Export Buzz Linux release bundle
-      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/buzz-linux-smoke
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          -o "$RUNNER_TEMP/bundle"
-          release-bundle
-          --tap=.
-          --source-ref="${{ steps.buzz_source.outputs.commit }}"
-          --version="${{ steps.buzz_source.outputs.version }}"
+          ${{ inputs.package_id == 'buzz-linux' && format('--tap=. --source-ref="{0}" --version="{1}"', steps.buzz_source.outputs.commit, steps.buzz_source.outputs.version) || format('--package-id="{0}"', inputs.package_id) }}
 
     - name: Publish manual release output
       if: inputs.action == 'release' || inputs.action == 'force-release'

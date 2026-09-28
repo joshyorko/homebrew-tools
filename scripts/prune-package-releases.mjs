@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process"
+import { readdirSync, readFileSync } from "node:fs"
+import { join, resolve } from "node:path"
+import { pathToFileURL } from "node:url"
 
 function parseArgs(argv) {
   const args = {}
@@ -50,32 +53,46 @@ function main() {
     "--slurp",
   ]).flat()
 
-  const prefix = `${packageId}-`
-  const matching = releases
-    .filter((release) => typeof release.tag_name === "string" && release.tag_name.startsWith(prefix))
-    .sort((left, right) => {
-      const leftDate = Date.parse(left.published_at ?? left.created_at ?? 0)
-      const rightDate = Date.parse(right.published_at ?? right.created_at ?? 0)
-      return rightDate - leftDate
-    })
-
-  const keepTags = new Set(matching.slice(0, keep).map((release) => release.tag_name))
-  keepTags.add(currentTag)
-
-  const prune = matching.filter((release) => !keepTags.has(release.tag_name))
+  const protectedTags = referencedReleaseTags(process.cwd(), repo)
+  const prune = releaseTagsToPrune(releases, packageId, currentTag, keep, protectedTags)
 
   if (prune.length === 0) {
-    console.log(`No old ${packageId} releases to prune. Keeping ${keepTags.size} release(s).`)
+    console.log(`No old ${packageId} releases to prune. Keeping the current and referenced release(s).`)
     return
   }
 
-  for (const release of prune) {
+  for (const tag of prune) {
     execFileSync(
       "gh",
-      ["release", "delete", release.tag_name, "--repo", repo, "--cleanup-tag", "--yes"],
+      ["release", "delete", tag, "--repo", repo, "--yes"],
       { stdio: "inherit" },
     )
   }
 }
 
-main()
+export function referencedReleaseTags(repoRoot, repo) {
+  const tags = new Set()
+  for (const directory of ["Casks", "Formula"]) {
+    for (const file of readdirSync(join(repoRoot, directory)).filter((name) => name.endsWith(".rb"))) {
+      const source = readFileSync(join(repoRoot, directory, file), "utf8")
+      const version = source.match(/^\s*version "([^"]+)"/m)?.[1]
+      for (const match of source.matchAll(/https:\/\/github\.com\/([^/]+\/[^/]+)\/releases\/download\/([^/]+)\//g)) {
+        if (match[1] !== repo) continue
+        const tag = match[2].replaceAll("#{version}", version ?? "#{version}")
+        if (tag.includes("#{")) throw new Error(`Cannot safely resolve release reference in ${file}: ${tag}`)
+        tags.add(tag)
+      }
+    }
+  }
+  return tags
+}
+
+export function releaseTagsToPrune(releases, packageId, currentTag, keep, protectedTags = new Set()) {
+  const matching = releases
+    .filter((release) => typeof release.tag_name === "string" && release.tag_name.startsWith(`${packageId}-`))
+    .sort((left, right) => Date.parse(right.published_at ?? right.created_at ?? 0) - Date.parse(left.published_at ?? left.created_at ?? 0))
+  const keepTags = new Set([...matching.slice(0, keep).map((release) => release.tag_name), currentTag, ...protectedTags])
+  return matching.filter((release) => !keepTags.has(release.tag_name)).map((release) => release.tag_name)
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main()

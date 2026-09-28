@@ -31,12 +31,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "brew test test/tap/t3code-cli-main",
     "t3 --help",
   ]),
-  "antigravity-cli": formula("Formula/antigravity-cli.rb", "antigravity-cli", [
-    "brew test test/tap/antigravity-cli",
-    "agy --version",
-    "agy --help",
-  ]),
-  chatgpt: cask("Casks/chatgpt.rb", "chatgpt", [
+  chatgpt: cask("Casks/chatgpt-linux.rb", "chatgpt-linux", [
     "test -x \"$(brew --prefix)/bin/chatgpt\"",
     "user_home=$(getent passwd \"$(id -un)\" | cut -d: -f6)",
     "test -f \"$user_home/.local/share/applications/chatgpt.desktop\"",
@@ -126,7 +121,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "test -f \"$HOME/.local/share/icons/hicolor/128x128/apps/buzz.png\"",
     "grep -q \"Exec=$(brew --prefix)/bin/buzz %U\" \"$HOME/.local/share/applications/buzz.desktop\"",
     "grep -q 'x-scheme-handler/buzz' \"$HOME/.local/share/applications/buzz.desktop\"",
-  ], ["desktop-file-utils", "xdg-utils", "libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0"]),
+  ], ["desktop-file-utils", "xdg-utils", "libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0", "libwayland-server0"]),
   "fizzy-cli-master": formula("Formula/fizzy-cli-master.rb", "fizzy-cli-master", [
     "brew test test/tap/fizzy-cli-master",
     "fizzy --version",
