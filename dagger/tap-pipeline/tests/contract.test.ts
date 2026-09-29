@@ -38,7 +38,6 @@ const DEPRECATED_HOOK_CASKS = {
 
 const OUT_OF_SCOPE_HOOK_CASKS = [
   "Casks/codex-desktop.rb",
-  "Casks/buzz-linux.rb",
 ] as const
 
 test("affected Josh-owned casks use structured flight steps", () => {
