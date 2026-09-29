@@ -17,17 +17,45 @@ brew tap-new --no-git joshyorko/tools >/dev/null
 mkdir -p "$tap_dir/Formula"
 cp "$formula_path" "$tap_dir/Formula/codex-memoryd.rb"
 
-cleanup() {
-  codex-memoryd down >/dev/null 2>&1 || true
+stop_daemon() {
+  local stop_output pid state
+  stop_output="$(mktemp)"
+  if codex-memoryd down >"$stop_output" 2>&1; then
+    cat "$stop_output"
+    rm -f "$stop_output"
+    return 0
+  fi
+
+  pid="$(jq -r '.pid // empty' < <(codex-memoryd status 2>/dev/null) || true)"
+  state=""
+  if [[ -n "$pid" && -r "/proc/$pid/stat" ]]; then
+    state="$(awk '{print $3}' "/proc/$pid/stat")"
+  fi
+  if [[ "$state" != Z ]]; then
+    cat "$stop_output" >&2
+    rm -f "$stop_output"
+    return 1
+  fi
+
+  rm -f "$HOME/.codex-memoryd/codex-memoryd.pid"
+  rm -f "$stop_output"
 }
-trap cleanup EXIT
+
+assert_stopped() {
+  local status
+  status="$(codex-memoryd status)"
+  jq -e '.process == "stopped" and .pid == null' <<<"$status" >/dev/null
+}
+
+trap 'stop_daemon || true' EXIT
 
 brew install joshyorko/tools/codex-memoryd
 codex-memoryd --version
 codex-memoryd init --bind 127.0.0.1:8989
 codex-memoryd up
 codex-memoryd status
-codex-memoryd down
+stop_daemon
+assert_stopped
 
 db="$HOME/.codex-memoryd/memory.db"
 test -s "$db"
