@@ -38,7 +38,6 @@ const DEPRECATED_HOOK_CASKS = {
 
 const OUT_OF_SCOPE_HOOK_CASKS = [
   "Casks/codex-desktop.rb",
-  "Casks/buzz-linux.rb",
 ] as const
 
 test("affected Josh-owned casks use structured flight steps", () => {
@@ -148,6 +147,14 @@ test("registry entries expose the required orchestration fields", () => {
     assert.ok(typeof entry.upstream.kind === "string")
   }
 })
+test("codex-memoryd registry points at immutable native release assets", () => {
+  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-memoryd")
+  assert.ok(entry)
+  assert.equal(entry.homebrewPath, "Formula/codex-memoryd.rb")
+  assert.equal(entry.kind, "http_binary_formula")
+  assert.equal(entry.upstream.kind, "github_release")
+  assert.equal(entry.upstream.repo, "https://github.com/joshyorko/codex-memoryd")
+})
 
 test("every auto-update slot references registered packages", () => {
   const packageIds = new Set(PACKAGE_REGISTRY.map((entry) => entry.id))
@@ -166,8 +173,8 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
-    "buzz-linux",
-    "chatgpt",
+      "buzz-linux",
+      "chatgpt",
       "devpod-linux",
       "devsy",
       "devsy-desktop",

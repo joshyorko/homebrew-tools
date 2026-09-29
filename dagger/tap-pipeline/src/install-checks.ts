@@ -51,6 +51,15 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "grep -Fq \"Exec=$(brew --prefix)/bin/codex-desktop %u\" \"$HOME/.local/share/applications/codex-desktop.desktop\"",
     "test -f \"$HOME/.local/share/icons/hicolor/256x256/apps/codex-desktop.png\"",
   ], ["desktop-file-utils", "xdg-utils"]),
+  "codex-memoryd": formula("Formula/codex-memoryd.rb", "codex-memoryd", [
+    "brew test test/tap/codex-memoryd",
+    "codex-memoryd --version",
+    "codex-memoryd init --port 8989",
+    "codex-memoryd up",
+    "codex-memoryd status",
+    "codex-memoryd down",
+    "test -s \"$HOME/.codex-memoryd/memory.db\"",
+  ]),
   "headroom-self-hosted": formula("Formula/headroom-self-hosted.rb", "headroom-self-hosted", [
     "brew test test/tap/headroom-self-hosted",
     "test -x \"$(brew --prefix)/bin/headroom\"",

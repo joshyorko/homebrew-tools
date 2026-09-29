@@ -1,0 +1,34 @@
+name: Codex MemoryD Homebrew Consumer
+
+on:
+  pull_request:
+    paths:
+    - Formula/codex-memoryd.rb
+    - scripts/smoke-codex-memoryd-homebrew.sh
+    - .github/workflows/codex-memoryd-homebrew.yml
+  push:
+    branches:
+    - main
+    paths:
+    - Formula/codex-memoryd.rb
+    - scripts/smoke-codex-memoryd-homebrew.sh
+    - .github/workflows/codex-memoryd-homebrew.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wolfi-linuxbrew:
+    name: Work-JATT Wolfi Linuxbrew smoke
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/joshyorko/room-of-requirement:wolfi
+      options: --user root
+    steps:
+    - name: Checkout formula from PR branch
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Exercise immutable Homebrew release consumer path
+      env:
+        FORMULA_PATH: ${{ github.workspace }}/Formula/codex-memoryd.rb
+      run: su -p -s /bin/bash vscode -c 'scripts/smoke-codex-memoryd-homebrew.sh'

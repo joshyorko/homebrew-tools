@@ -127,6 +127,7 @@ test("every PR-enabled package has a changed-path trigger", () => {
     "t3-code-linux": "Casks/t3-code-linux.rb",
     "codex-desktop-linux": "Casks/codex-desktop.rb",
     "headroom-self-hosted": "Formula/headroom-self-hosted.rb",
+    "codex-memoryd": "Formula/codex-memoryd.rb",
   }
 
   for (const entry of PACKAGE_REGISTRY.filter((candidate) => candidate.supportsPrCi)) {
@@ -177,6 +178,16 @@ test("package formula and cask edits use artifact checks", () => {
       package_id: "rcc",
       mode: "artifact",
       reason: "packaging changes: Casks/rcc.rb",
+    },
+  ])
+})
+test("codex-memoryd formula changes use its artifact check", () => {
+  assert.deepEqual(changedCiPackagesFromPaths(["Formula/codex-memoryd.rb"]), ["codex-memoryd"])
+  assert.deepEqual(ciPlanFromPaths(["Formula/codex-memoryd.rb"]), [
+    {
+      package_id: "codex-memoryd",
+      mode: "artifact",
+      reason: "packaging changes: Formula/codex-memoryd.rb",
     },
   ])
 })
@@ -277,6 +288,7 @@ test("unknown production changes fail safe to the full source-build matrix", () 
     "action-server",
     "devpod-linux",
     "t3-code-linux",
+    "codex-memoryd",
   ]
 
   assert.deepEqual(plan.map(({ package_id, mode }) => ({ package_id, mode })), expectedPackageIds
