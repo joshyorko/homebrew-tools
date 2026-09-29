@@ -64,7 +64,7 @@ function prepareTapHistory(prefix: string) {
   const tap = join(prefix, "Homebrew/Library/Taps/joshyorko/homebrew-tools")
   mkdirSync(join(tap, "Casks"), { recursive: true })
   const currentRecipe = readFileSync(new URL("../../../Casks/chatgpt-linux.rb", import.meta.url), "utf8")
-  const oldVersion = currentRecipe.match(/^version "([^"]+)"/m)?.[1]
+  const oldVersion = currentRecipe.match(/^[ \t]*version "([^"]+)"/m)?.[1]
   assert.ok(oldVersion, "ChatGPT Linux cask fixture must declare a version")
   const oldRecipe = currentRecipe.replace(/^cask "chatgpt-linux" do$/m, 'cask "chatgpt" do')
   const oldCaskFile = join(tap, "Casks/chatgpt.rb")
