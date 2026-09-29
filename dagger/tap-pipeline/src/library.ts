@@ -479,6 +479,22 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
       ref: "main",
     },
   },
+  {
+    id: "codex-memoryd",
+    kind: "http_binary_formula",
+    homebrewPath: "Formula/codex-memoryd.rb",
+    supportsPrCi: true,
+    supportsReleaseBundle: false,
+    autoUpdate: {
+      kind: "manual",
+      reason: "Updated only after a verified immutable codex-memoryd release.",
+    },
+    upstream: {
+      kind: "github_release",
+      repo: "https://github.com/joshyorko/codex-memoryd",
+      assetPrefix: "codex-memoryd-v",
+    },
+  },
 ]
 
 const TAP_RELEASE_URL_PREFIX = "https://github.com/joshyorko/homebrew-tools/releases/download/"
@@ -559,6 +575,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     "codex-desktop-linux",
     ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],
   ],
+  ["codex-memoryd", ["Formula/codex-memoryd.rb", "scripts/fill-codex-memoryd-checksums.mjs"]],
   ["headroom-self-hosted", ["Formula/headroom-self-hosted.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb", "Formula/devsy.rb"]],

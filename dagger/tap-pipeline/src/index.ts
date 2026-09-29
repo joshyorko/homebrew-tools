@@ -248,6 +248,11 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Casks\"",
         "cp /tap/Casks/codex-desktop.rb \"$tap_dir/Casks/\"",
       ]
+    case "codex-memoryd":
+      return [
+        "mkdir -p \"$tap_dir/Formula\"",
+        "cp /tap/Formula/codex-memoryd.rb \"$tap_dir/Formula/\"",
+      ]
     case "headroom-self-hosted":
       return [
         "mkdir -p \"$tap_dir/Formula\"",
@@ -3077,6 +3082,8 @@ end
     const ciConversionCommit = codexDesktopConversionCommit || "patchraptor-main"
 
     switch (packageId) {
+      case "codex-memoryd":
+        return this.artifactCheck("codex-memoryd")
       case "rcc": {
         const build = await this.buildRccArtifacts()
         const smokeTap = tap.withFile(
