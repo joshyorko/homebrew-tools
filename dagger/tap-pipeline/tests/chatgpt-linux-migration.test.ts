@@ -64,6 +64,8 @@ function prepareTapHistory(prefix: string) {
   const tap = join(prefix, "Homebrew/Library/Taps/joshyorko/homebrew-tools")
   mkdirSync(join(tap, "Casks"), { recursive: true })
   const currentRecipe = readFileSync(new URL("../../../Casks/chatgpt-linux.rb", import.meta.url), "utf8")
+  const oldVersion = currentRecipe.match(/^version "([^"]+)"/m)?.[1]
+  assert.ok(oldVersion, "ChatGPT Linux cask fixture must declare a version")
   const oldRecipe = currentRecipe.replace(/^cask "chatgpt-linux" do$/m, 'cask "chatgpt" do')
   const oldCaskFile = join(tap, "Casks/chatgpt.rb")
   writeFileSync(oldCaskFile, oldRecipe)
@@ -77,13 +79,13 @@ function prepareTapHistory(prefix: string) {
   writeFileSync(join(tap, "Casks/chatgpt-linux.rb"), currentRecipe)
   execFileSync("git", ["-C", tap, "add", "-A"])
   execFileSync("git", ["-C", tap, "commit", "-qm", "rename Linux ChatGPT cask"])
-  return { tap, installedHead, oldCaskFile }
+  return { tap, installedHead, oldCaskFile, oldVersion }
 }
 
 function createOldReceipt(prefix: string, home: string, tap: string) {
-  const { tap: tapDirectory, installedHead } = prepareTapHistory(prefix)
+  const { tap: tapDirectory, installedHead, oldVersion } = prepareTapHistory(prefix)
   const receipt = join(prefix, "Caskroom/chatgpt/.metadata/INSTALL_RECEIPT.json")
-  const versionDir = join(prefix, "Caskroom/chatgpt/26.924.22138")
+  const versionDir = join(prefix, `Caskroom/chatgpt/${oldVersion}`)
   mkdirSync(join(versionDir, "usr/lib/chatgpt"), { recursive: true })
   mkdirSync(join(versionDir, "usr/share/applications"), { recursive: true })
   mkdirSync(join(versionDir, "usr/share/pixmaps"), { recursive: true })
@@ -93,12 +95,12 @@ function createOldReceipt(prefix: string, home: string, tap: string) {
       tap,
       path: join(tapDirectory, "Casks/chatgpt.rb"),
       tap_git_head: installedHead,
-      version: "26.924.22138",
+      version: oldVersion,
     },
   }))
   const installedRecipe = join(
     prefix,
-    "Caskroom/chatgpt/.metadata/26.924.22138/20260926161611.544/Casks/chatgpt.json",
+    `Caskroom/chatgpt/.metadata/${oldVersion}/20260926161611.544/Casks/chatgpt.json`,
   )
   mkdirSync(join(installedRecipe, ".."), { recursive: true })
   writeFileSync(installedRecipe, "{}")
@@ -116,6 +118,7 @@ function createOldReceipt(prefix: string, home: string, tap: string) {
   symlinkSync(launcher, launcherLink)
   return { oldCaskFile: join(tapDirectory, "Casks/chatgpt.rb") }
 }
+
 
 test("migration verifies the replacement before uninstalling the tap-owned cask", () => {
   const temp = fixture()
