@@ -2,10 +2,10 @@ cask "vscode-insiders-linux" do
   arch intel: "x64"
   os linux: "linux"
 
-  version "1.141.0-insider,9666ca8ea7a0ac0d0ce4e661c19f8a05d5d7ad79"
-  sha256 x86_64_linux: "78393f57b67957b5a553e1064317c06fa04ffd1c92ce6ffd8a96a35702c37d89"
+  version "1.141.0-insider,0d30d69c8e18b8413dd7292edb51a30cda1403fb"
+  sha256 x86_64_linux: "f291c9042c0aa1fb0559c88ff4eeb65dcc1c50a129cb66e988746285f0b06ae1"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/vscode-insiders-linux-1.141.0-insider-9666ca8ea7a0ac0d0ce4e661c19f8a05d5d7ad79/vscode-insiders-linux-1.141.0-insider-9666ca8ea7a0ac0d0ce4e661c19f8a05d5d7ad79.tar.gz"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/vscode-insiders-linux-1.141.0-insider-0d30d69c8e18b8413dd7292edb51a30cda1403fb/vscode-insiders-linux-1.141.0-insider-0d30d69c8e18b8413dd7292edb51a30cda1403fb.tar.gz"
   name "Visual Studio Code - Insiders"
   desc "Insiders build of Visual Studio Code packaged for Linux Homebrew"
   homepage "https://code.visualstudio.com/insiders/"
