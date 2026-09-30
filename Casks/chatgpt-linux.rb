@@ -5,11 +5,11 @@ cask "chatgpt-linux" do
   deb_arch = on_arch_conditional arm: "arm64", intel: "amd64"
   os linux: "linux"
 
-  version "26.924.51851"
-  sha256 arm:          "0c6969d2965cd2fdb10cbce871f9d123ca8e1305cfc85189a22a83de97f26e81",
-       intel:        "8e19092b3f0e24609fc438a99c66863023f056181f2f5339cdac07b71f4f4bed",
-       arm64_linux:  "0c6969d2965cd2fdb10cbce871f9d123ca8e1305cfc85189a22a83de97f26e81",
-       x86_64_linux: "8e19092b3f0e24609fc438a99c66863023f056181f2f5339cdac07b71f4f4bed"
+  version "26.928.21956"
+  sha256 arm:          "de306bce2437eff1539059b3f7dcd501fb204c824147fa86df176a4471b0f075",
+       intel:        "6b74f5f01b18c055aaea6b34767f2eed4f9bd3b05a3aec3882d8abaf1e1ad8ba",
+       arm64_linux:  "de306bce2437eff1539059b3f7dcd501fb204c824147fa86df176a4471b0f075",
+       x86_64_linux: "6b74f5f01b18c055aaea6b34767f2eed4f9bd3b05a3aec3882d8abaf1e1ad8ba"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/chatgpt-#{version}/chatgpt-#{version}-1.#{arch}.rpm"
   name "ChatGPT"
