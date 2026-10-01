@@ -73,6 +73,16 @@ test("Buzz artifact verification keeps the existing portable runtime assertions"
   }
 })
 
+test("Buzz cask uses the structured flight-step DSL", () => {
+  const cask = readFileSync(new URL("../../../Casks/buzz-linux.rb", import.meta.url), "utf8")
+  const flightSteps = cask.match(/  preflight_steps do[\\s\\S]*?\\n  end\\n\\n  postflight_steps do[\\s\\S]*?\\n  end/)?.[0]
+
+  assert.ok(flightSteps, "Buzz cask flight steps are missing")
+  assert.match(flightSteps, /{{staged_path}}/)
+  assert.doesNotMatch(flightSteps, /#\\{staged_path\\}/)
+  assert.doesNotMatch(flightSteps, /\\bFileUtils\\b|\\bFile\\.(?:read|write|file\\?)|^\\s*system\\b/m)
+})
+
 test("Buzz Brew runtime bootstrap uses the Ubuntu 24.04 runtime package name", () => {
   const buzzSource = readFileSync(new URL("../../buzz-linux-smoke/src/index.ts", import.meta.url), "utf8")
   assert.match(buzzSource, /desktop-file-utils xdg-utils libasound2t64 libgtk-3-0/)
