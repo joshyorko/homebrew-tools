@@ -40,7 +40,7 @@ cask "buzz-linux" do
 
           sed \
             -e 's|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/buzz %U|' \
-            -e 's|^Icon=.*|Icon={{user}}/.local/share/icons/hicolor/128x128/apps/buzz.png|' \
+            -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/hicolor/128x128/apps/buzz.png|" \
             "$desktop_source" > buzz.desktop
           cp "$icon_source" buzz.png
         SH
@@ -108,7 +108,7 @@ cask "buzz-linux" do
       run "/usr/bin/xdg-mime", args: ["default", "buzz.desktop", "x-scheme-handler/buzz"]
     end
     if_path_exists "/usr/bin/update-desktop-database" do
-      run "/usr/bin/update-desktop-database", args: ["{{user}}/.local/share/applications"]
+      run "/bin/bash", args: ["-c", 'exec /usr/bin/update-desktop-database "$HOME/.local/share/applications"']
     end
   end
 
