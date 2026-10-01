@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import test from "node:test"
 
 import { PACKAGE_REGISTRY } from "../src/library.ts"
@@ -71,6 +72,26 @@ test("Buzz artifact verification keeps the existing portable runtime assertions"
     assert.ok(script.includes(marker), marker)
     assert.ok(marker.startsWith("unset") ? buzzSource.includes("unset") : buzzSource.includes(marker), `Buzz source lost ${marker}`)
   }
+})
+
+test("Buzz cask uses the structured flight-step DSL", () => {
+  const caskUrl = new URL("../../../Casks/buzz-linux.rb", import.meta.url)
+  const caskPath = fileURLToPath(caskUrl)
+  execFileSync("ruby", ["-c", caskPath], { stdio: "pipe" })
+  const cask = readFileSync(caskUrl, "utf8")
+  const preflightStart = cask.indexOf("  preflight_steps do")
+  const zapStart = cask.indexOf("\n  zap trash:", preflightStart)
+
+  assert.notEqual(preflightStart, -1, "Buzz cask preflight steps are missing")
+  assert.notEqual(zapStart, -1, "Buzz cask flight-step boundary is missing")
+  const flightSteps = cask.slice(preflightStart, zapStart)
+
+  assert.match(flightSteps, /{{staged_path}}/)
+  assert.doesNotMatch(flightSteps, /#\{staged_path\}/)
+  assert.doesNotMatch(flightSteps, /\bFileUtils\b|\bFile\.(?:read|write|file\?)|^\s*system\b/m)
+  assert.match(flightSteps, /writable_paths: \["\.config", "\.local\/share\/applications"\]/)
+  assert.match(flightSteps, /{{HOMEBREW_PREFIX}}\/bin\/xdg-mime/)
+  assert.match(flightSteps, /{{HOMEBREW_PREFIX}}\/bin\/update-desktop-database/)
 })
 
 test("Buzz Brew runtime bootstrap uses the Ubuntu 24.04 runtime package name", () => {
