@@ -24,26 +24,31 @@ cask "buzz-linux" do
            target: "#{Dir.home}/.local/share/icons/hicolor/128x128/apps/buzz.png"
 
   preflight_steps do
-    appimage = "#{staged_path}/buzz-linux-#{version.csv.first}-#{version.csv.second}-#{arch}.AppImage"
-    FileUtils.chmod 0755, appimage
-    system appimage, "--appimage-extract", chdir: staged_path, out: File::NULL
+    set_permissions "buzz-linux-*.AppImage", "0755"
 
-    desktop_source = "#{staged_path}/squashfs-root/usr/share/applications/Buzz.desktop"
-    icon_source = "#{staged_path}/squashfs-root/usr/share/icons/hicolor/128x128/apps/buzz-desktop.png"
-    raise "Buzz desktop entry is missing" unless File.file?(desktop_source)
-    raise "Buzz icon is missing" unless File.file?(icon_source)
+    run "/bin/bash",
+        chdir: "{{staged_path}}",
+        args:  ["-euo", "pipefail", "-c", <<~'SH']
+          appimages=(buzz-linux-*.AppImage)
+          test -f "${appimages[0]}"
+          "./${appimages[0]}" --appimage-extract >/dev/null
 
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/applications"
-    FileUtils.mkdir_p "#{Dir.home}/.local/share/icons/hicolor/128x128/apps"
+          desktop_source="squashfs-root/usr/share/applications/Buzz.desktop"
+          icon_source="squashfs-root/usr/share/icons/hicolor/128x128/apps/buzz-desktop.png"
+          test -f "$desktop_source"
+          test -f "$icon_source"
 
-    desktop_contents = File.read(desktop_source)
-    desktop_contents.gsub!(/^Exec=.*/, "Exec=#{HOMEBREW_PREFIX}/bin/buzz %U")
-    desktop_contents.gsub!(/^Icon=.*/, "Icon=#{Dir.home}/.local/share/icons/hicolor/128x128/apps/buzz.png")
-    File.write("#{staged_path}/buzz.desktop", desktop_contents)
-    FileUtils.cp(icon_source, "#{staged_path}/buzz.png")
+          sed \
+            -e 's|^Exec=.*|Exec={{HOMEBREW_PREFIX}}/bin/buzz %U|' \
+            -e 's|^Icon=.*|Icon={{user}}/.local/share/icons/hicolor/128x128/apps/buzz.png|' \
+            "$desktop_source" > buzz.desktop
+          cp "$icon_source" buzz.png
+        SH
 
-    wrapper = "#{staged_path}/buzz-linux-wrapper"
-    File.write(wrapper, <<~SH)
+    mkdir_p ".local/share/applications", base: :home
+    mkdir_p ".local/share/icons/hicolor/128x128/apps", base: :home
+
+    write_file "buzz-linux-wrapper", <<~'SH'
       #!/bin/bash
       buzz_data_root="${XDG_DATA_HOME:-$HOME/.local/share}/Buzz"
       buzz_runtime_path="$buzz_data_root/node-tools/bin"
@@ -70,7 +75,7 @@ cask "buzz-linux" do
           "/usr/libexec/gstreamer-1.0/gst-plugin-scanner" \
           "/usr/lib/gstreamer-1.0/gst-plugin-scanner" \
           "/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner" \
-          "/usr/lib/aarch64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner"; do
+          "/usr/lib/aarch64-linux-gnu/gstreamer1.0/gst-plugin-scanner"; do
           if [[ -n "$candidate" && -x "$candidate" ]]; then
             export GST_PLUGIN_SCANNER_1_0="$candidate"
             export GST_PLUGIN_SCANNER="$candidate"
@@ -92,23 +97,19 @@ cask "buzz-linux" do
         exit 0
       fi
 
-      exec "#{appimage}" "$@"
+      appimages=("{{staged_path}}"/buzz-linux-*.AppImage)
+      exec "${appimages[0]}" "$@"
     SH
-    FileUtils.chmod 0755, wrapper
+    set_permissions "buzz-linux-wrapper", "0755"
   end
 
   postflight_steps do
-    applications_dir = "#{Dir.home}/.local/share/applications"
-    xdg_mime = ["/usr/bin/xdg-mime", "/bin/xdg-mime", "#{HOMEBREW_PREFIX}/bin/xdg-mime"]
-               .find { |candidate| File.executable?(candidate) }
-    update_desktop_database = [
-      "/usr/bin/update-desktop-database",
-      "/bin/update-desktop-database",
-      "#{HOMEBREW_PREFIX}/bin/update-desktop-database",
-    ].find { |candidate| File.executable?(candidate) }
-
-    system xdg_mime, "default", "buzz.desktop", "x-scheme-handler/buzz" if xdg_mime
-    system update_desktop_database, applications_dir if update_desktop_database
+    if_path_exists "/usr/bin/xdg-mime" do
+      run "/usr/bin/xdg-mime", args: ["default", "buzz.desktop", "x-scheme-handler/buzz"]
+    end
+    if_path_exists "/usr/bin/update-desktop-database" do
+      run "/usr/bin/update-desktop-database", args: ["{{user}}/.local/share/applications"]
+    end
   end
 
   zap trash: [
