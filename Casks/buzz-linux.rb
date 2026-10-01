@@ -29,8 +29,9 @@ cask "buzz-linux" do
     run "/bin/bash",
         chdir: "{{staged_path}}",
         args:  ["-euo", "pipefail", "-c", <<~'SH']
+          shopt -s nullglob
           appimages=(buzz-linux-*.AppImage)
-          test -f "${appimages[0]}"
+          (( ${#appimages[@]} == 1 ))
           "./${appimages[0]}" --appimage-extract >/dev/null
 
           desktop_source="squashfs-root/usr/share/applications/Buzz.desktop"
@@ -97,19 +98,50 @@ cask "buzz-linux" do
         exit 0
       fi
 
+      shopt -s nullglob
       appimages=("{{staged_path}}"/buzz-linux-*.AppImage)
+      if (( ${#appimages[@]} != 1 )); then
+        printf 'expected exactly one staged Buzz AppImage, found %d\n' "${#appimages[@]}" >&2
+        exit 1
+      fi
       exec "${appimages[0]}" "$@"
     SH
     set_permissions "buzz-linux-wrapper", "0755"
   end
 
   postflight_steps do
-    if_path_exists "/usr/bin/xdg-mime" do
-      run "/usr/bin/xdg-mime", args: ["default", "buzz.desktop", "x-scheme-handler/buzz"]
-    end
-    if_path_exists "/usr/bin/update-desktop-database" do
-      run "/bin/bash", args: ["-c", 'exec /usr/bin/update-desktop-database "$HOME/.local/share/applications"']
-    end
+    run "/bin/bash",
+        args:           ["-euo", "pipefail", "-c", <<~'SH'],
+        writable_paths: [".config", ".local/share/applications"],
+        writable_base:  :home
+          xdg_mime=""
+          for candidate in \
+            /usr/bin/xdg-mime \
+            /bin/xdg-mime \
+            "{{HOMEBREW_PREFIX}}/bin/xdg-mime"; do
+            if [[ -x "$candidate" ]]; then
+              xdg_mime="$candidate"
+              break
+            fi
+          done
+          if [[ -n "$xdg_mime" ]]; then
+            "$xdg_mime" default buzz.desktop x-scheme-handler/buzz
+          fi
+
+          update_desktop_database=""
+          for candidate in \
+            /usr/bin/update-desktop-database \
+            /bin/update-desktop-database \
+            "{{HOMEBREW_PREFIX}}/bin/update-desktop-database"; do
+            if [[ -x "$candidate" ]]; then
+              update_desktop_database="$candidate"
+              break
+            fi
+          done
+          if [[ -n "$update_desktop_database" ]]; then
+            "$update_desktop_database" "$HOME/.local/share/applications"
+          fi
+        SH
   end
 
   zap trash: [
