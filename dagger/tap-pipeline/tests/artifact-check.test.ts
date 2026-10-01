@@ -75,12 +75,19 @@ test("Buzz artifact verification keeps the existing portable runtime assertions"
 
 test("Buzz cask uses the structured flight-step DSL", () => {
   const cask = readFileSync(new URL("../../../Casks/buzz-linux.rb", import.meta.url), "utf8")
-  const flightSteps = cask.match(/  preflight_steps do[\\s\\S]*?\\n  end\\n\\n  postflight_steps do[\\s\\S]*?\\n  end/)?.[0]
+  const preflightStart = cask.indexOf("  preflight_steps do")
+  const zapStart = cask.indexOf("\n  zap trash:", preflightStart)
 
-  assert.ok(flightSteps, "Buzz cask flight steps are missing")
+  assert.notEqual(preflightStart, -1, "Buzz cask preflight steps are missing")
+  assert.notEqual(zapStart, -1, "Buzz cask flight-step boundary is missing")
+  const flightSteps = cask.slice(preflightStart, zapStart)
+
   assert.match(flightSteps, /{{staged_path}}/)
-  assert.doesNotMatch(flightSteps, /#\\{staged_path\\}/)
-  assert.doesNotMatch(flightSteps, /\\bFileUtils\\b|\\bFile\\.(?:read|write|file\\?)|^\\s*system\\b/m)
+  assert.doesNotMatch(flightSteps, /#\{staged_path\}/)
+  assert.doesNotMatch(flightSteps, /\bFileUtils\b|\bFile\.(?:read|write|file\?)|^\s*system\b/m)
+  assert.match(flightSteps, /writable_paths: \["\.config", "\.local\/share\/applications"\]/)
+  assert.match(flightSteps, /{{HOMEBREW_PREFIX}}\/bin\/xdg-mime/)
+  assert.match(flightSteps, /{{HOMEBREW_PREFIX}}\/bin\/update-desktop-database/)
 })
 
 test("Buzz Brew runtime bootstrap uses the Ubuntu 24.04 runtime package name", () => {
