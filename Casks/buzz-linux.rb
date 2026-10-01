@@ -111,9 +111,9 @@ cask "buzz-linux" do
 
   postflight_steps do
     run "/bin/bash",
-        args:           ["-euo", "pipefail", "-c", <<~'SH'],
         writable_paths: [".config", ".local/share/applications"],
-        writable_base:  :home
+        writable_base:  :home,
+        args:           ["-euo", "pipefail", "-c", <<~'SH']
           xdg_mime=""
           for candidate in \
             /usr/bin/xdg-mime \
