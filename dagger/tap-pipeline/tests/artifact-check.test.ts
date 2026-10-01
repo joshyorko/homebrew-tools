@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import test from "node:test"
 
 import { PACKAGE_REGISTRY } from "../src/library.ts"
@@ -74,7 +75,10 @@ test("Buzz artifact verification keeps the existing portable runtime assertions"
 })
 
 test("Buzz cask uses the structured flight-step DSL", () => {
-  const cask = readFileSync(new URL("../../../Casks/buzz-linux.rb", import.meta.url), "utf8")
+  const caskUrl = new URL("../../../Casks/buzz-linux.rb", import.meta.url)
+  const caskPath = fileURLToPath(caskUrl)
+  execFileSync("ruby", ["-c", caskPath], { stdio: "pipe" })
+  const cask = readFileSync(caskUrl, "utf8")
   const preflightStart = cask.indexOf("  preflight_steps do")
   const zapStart = cask.indexOf("\n  zap trash:", preflightStart)
 
