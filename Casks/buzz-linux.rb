@@ -125,7 +125,7 @@ cask "buzz-linux" do
             fi
           done
           if [[ -n "$xdg_mime" ]]; then
-            "$xdg_mime" default buzz.desktop x-scheme-handler/buzz
+            "$xdg_mime" default buzz.desktop x-scheme-handler/buzz || true
           fi
 
           update_desktop_database=""
@@ -139,7 +139,7 @@ cask "buzz-linux" do
             fi
           done
           if [[ -n "$update_desktop_database" ]]; then
-            "$update_desktop_database" "$HOME/.local/share/applications"
+            "$update_desktop_database" "$HOME/.local/share/applications" || true
           fi
         SH
   end
