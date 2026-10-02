@@ -572,7 +572,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "dagger/t3code-cli-main-smoke/",
     ],
   ],
-  ["chatgpt", ["Casks/chatgpt-linux.rb"]],
+  ["chatgpt", ["Casks/chatgpt-linux.rb", "scripts/install-chatgpt-local.sh", "scripts/migrate-chatgpt-linux-cask.sh", "scripts/uninstall-chatgpt.sh"]],
   [
     "codex-desktop-linux",
     ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],
@@ -648,6 +648,11 @@ function isTestOrDocumentationPath(path: string): boolean {
     path === "AGENTS.md"
     || path === "README.md"
     || path.startsWith("docs/")
+    || ["scripts/test-cask-icon-paths.mjs", "scripts/test-prune-package-releases.mjs", "scripts/package-vscode-insiders-linux.test.mjs", "scripts/codex-memoryd-update.test.mjs"].includes(path)
+    || path === "scripts/plan-tap-ci.mjs"
+    || path === "scripts/tap-ci-impact.mjs"
+    || path === "dagger/tap-pipeline/auto-update-slots.json"
+    || /^\.github\/workflows\/(?:tap-auto-update|tap-manual|rcc-maintenance|codex-memoryd-homebrew)\.yml$/.test(path)
     || KNOWN_REGRESSION_TEST_PATHS.some((pattern) => pattern.test(path))
   )
 }
@@ -702,7 +707,10 @@ export function changedCiPackagesFromPaths(paths: string[]): string[] {
  * | Package builder, source, or runtime fixture | Affected package dependents, build mode |
  * | Tests or documentation | Regression suite only |
  * | Unsupported versioned cask leaf | Planning error; leaf checks are not implemented |
- * | Unknown production source/config, or tap-ci.yml | Every PR package, build mode |
+ * | Unknown production source/config, or tap-ci.yml without diff evidence | Every PR package, build mode |
+ *
+ * scripts/plan-tap-ci.mjs refines this conservative path-only fallback using
+ * native Git source/dependency comparisons; see docs/ci-performance.md.
  *
  * The package registry remains the single source of repository-specific
  * routing. GitHub Actions only resolves the native Git diff and fans out the

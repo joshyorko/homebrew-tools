@@ -3,7 +3,9 @@
 import { spawnSync } from "node:child_process"
 import { pathToFileURL } from "node:url"
 
-import { ciPlanFromPaths } from "../dagger/tap-pipeline/src/library.ts"
+import { nonsemanticScriptChange, packageFingerprint, regressionOnlyWorkflowChange } from "./tap-ci-impact.mjs"
+
+import { PACKAGE_REGISTRY, changedPackagesFromPaths, ciPlanFromPaths } from "../dagger/tap-pipeline/src/library.ts"
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 const ZERO_SHA = /^0{40}$/
@@ -51,7 +53,7 @@ function changedPaths(baseRef, headRef, eventName) {
     comparisonBase,
     head,
   ])
-  return output.split("\0").filter((path) => path.length > 0)
+  return { base: comparisonBase, head, paths: output.split("\0").filter((path) => path.length > 0) }
 }
 
 function option(args, name) {
@@ -67,7 +69,42 @@ export function planTapCi({ baseRef, headRef, eventName } = {}) {
     throw new Error("BASE_REF and HEAD_REF must be provided")
   }
 
-  return ciPlanFromPaths(changedPaths(resolvedBaseRef, resolvedHeadRef, resolvedEventName))
+  const { base, head, paths } = changedPaths(resolvedBaseRef, resolvedHeadRef, resolvedEventName)
+  const cache = new Map()
+  const read = (ref, path) => {
+    const key = `${ref}:${path}`
+    if (!cache.has(key)) {
+      const result = spawnSync("git", ["show", key], { encoding: "utf8" })
+      cache.set(key, result.status === 0 ? result.stdout : undefined)
+    }
+    return cache.get(key)
+  }
+  const sourcePaths = paths.filter((path) => /^dagger\/tap-pipeline\/src\/[^/]+\.ts$/.test(path))
+  const remaining = paths.filter((path) => !sourcePaths.includes(path)
+    && !nonsemanticScriptChange(path, read(base, path), read(head, path))
+    && !(path === ".github/workflows/tap-ci.yml" && regressionOnlyWorkflowChange(read(base, path), read(head, path))))
+  const plan = ciPlanFromPaths(remaining)
+  if (sourcePaths.length) {
+    try {
+      for (const entry of PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi)) {
+        const registryIds = [...new Set([entry.id, ...PACKAGE_REGISTRY.filter((dependency) =>
+          changedPackagesFromPaths([dependency.homebrewPath]).includes(entry.id)).map((dependency) => dependency.id)])]
+        if (packageFingerprint((path) => read(base, path), entry.id, registryIds, sourcePaths)
+          !== packageFingerprint((path) => read(head, path), entry.id, registryIds, sourcePaths)) {
+          const existing = plan.find((item) => item.package_id === entry.id)
+          const reason = `changed CI dependency: ${sourcePaths.join(", ")}`
+          if (existing) { existing.mode = "build"; existing.reason += `; ${reason}` }
+          else plan.push({ package_id: entry.id, mode: "build", reason })
+        }
+      }
+    } catch (error) {
+      const fallback = ciPlanFromPaths(paths)
+      const detail = error instanceof Error ? error.message : String(error)
+      return fallback.map((entry) => ({ ...entry, reason: `${entry.reason}; impact unproved: ${detail}` }))
+    }
+  }
+  return plan.sort((a, b) => PACKAGE_REGISTRY.findIndex((entry) => entry.id === a.package_id)
+    - PACKAGE_REGISTRY.findIndex((entry) => entry.id === b.package_id))
 }
 
 function main() {

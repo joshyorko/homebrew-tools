@@ -31,6 +31,9 @@ jobs:
       with:
         node-version: "24"
 
+    - name: Install planner compiler
+      run: npm install --prefix dagger/tap-pipeline --ignore-scripts --package-lock=false
+
     - name: Run pipeline and Buzz regression suites
       run: |
         set -euo pipefail
@@ -55,6 +58,9 @@ jobs:
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
       with:
         node-version: "24"
+
+    - name: Install planner compiler
+      run: npm install --prefix dagger/tap-pipeline --ignore-scripts --package-lock=false
 
     - name: Build package matrix
       id: plan
