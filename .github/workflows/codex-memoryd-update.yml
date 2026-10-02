@@ -1,0 +1,201 @@
+name: Build Codex MemoryD for Homebrew
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-memoryd-master-build
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      version: ${{ steps.source.outputs.version }}
+      needs_update: ${{ steps.source.outputs.needs_update }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "24"
+    - name: Pin the latest merged source
+      id: source
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        gh api repos/joshyorko/codex-memoryd/commits/master > "$RUNNER_TEMP/source.json"
+        commit="$(jq -er .sha "$RUNNER_TEMP/source.json")"
+        version="$(node scripts/codex-memoryd-update.mjs version "$RUNNER_TEMP/source.json")"
+        gh api 'repos/joshyorko/homebrew-tools/contents/Formula/codex-memoryd.rb?ref=main' --jq .content | base64 -d > "$RUNNER_TEMP/current.rb"
+        current="$(sed -n 's/^  version "\([^"]*\)"$/\1/p' "$RUNNER_TEMP/current.rb")"
+        {
+          echo "commit=$commit"
+          echo "version=$version"
+          echo "needs_update=$([ "$current" != "$version" ] && echo true || echo false)"
+        } >> "$GITHUB_OUTPUT"
+        echo "Codex MemoryD master $commit: installed formula $current, build $version" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.needs_update == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - target: x86_64-unknown-linux-gnu
+          runner: ubuntu-22.04
+        - target: aarch64-unknown-linux-gnu
+          runner: ubuntu-22.04-arm
+        - target: x86_64-apple-darwin
+          runner: macos-15-intel
+        - target: aarch64-apple-darwin
+          runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      SOURCE_COMMIT: ${{ needs.resolve.outputs.commit }}
+      BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: joshyorko/codex-memoryd
+        ref: ${{ needs.resolve.outputs.commit }}
+    - name: Build the locked native binary
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+        rustup toolchain install 1.88.0 --profile minimal --no-self-update
+        rustup default 1.88.0
+        rustup target add "$TARGET"
+        cargo build --locked --release --target "$TARGET" --bin codex-memoryd
+    - name: Run source regressions
+      if: matrix.target == 'x86_64-unknown-linux-gnu'
+      shell: bash
+      run: cargo test --locked
+    - name: Verify native lifecycle with isolated state
+      shell: bash
+      run: |
+        set -euo pipefail
+        bin="$PWD/target/$TARGET/release/codex-memoryd"
+        export CODEX_MEMORYD_HOME="$RUNNER_TEMP/codex-memoryd-state"
+        export CODEX_MEMORYD_BIND=127.0.0.1:18787
+        trap '"$bin" down >/dev/null 2>&1 || true' EXIT
+        "$bin" --version
+        "$bin" init --bind "$CODEX_MEMORYD_BIND"
+        "$bin" up
+        "$bin" status | jq -e '.ok == true and .data.status == "local_only"'
+        "$bin" down
+        "$bin" status | jq -e '.process == "stopped"'
+        test -s "$CODEX_MEMORYD_HOME/memory.db"
+    - name: Package binary and source identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir dist
+        asset="codex-memoryd-$BUILD_VERSION-$TARGET.tar.gz"
+        python3 - "target/$TARGET/release/codex-memoryd" "dist/$asset" <<'PY'
+        import gzip, sys, tarfile
+        with open(sys.argv[2], "wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w") as bundle:
+                info = bundle.gettarinfo(sys.argv[1], arcname="codex-memoryd")
+                info.mtime = info.uid = info.gid = 0
+                info.uname = info.gname = ""
+                with open(sys.argv[1], "rb") as binary:
+                    bundle.addfile(info, binary)
+        PY
+        jq -n --arg commit "$SOURCE_COMMIT" --arg version "$BUILD_VERSION" --arg target "$TARGET" \
+          '{repository:"joshyorko/codex-memoryd",ref:"master",commit:$commit,version:$version,target:$target}' > "dist/provenance-$TARGET.json"
+    - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      with:
+        name: codex-memoryd-${{ matrix.target }}
+        path: dist/*
+        if-no-files-found: error
+
+  publish:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    concurrency:
+      group: tap-publish
+      cancel-in-progress: false
+      queue: max
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_COMMIT: ${{ needs.resolve.outputs.commit }}
+      BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "24"
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        pattern: codex-memoryd-*
+        merge-multiple: true
+        path: dist
+    - name: Verify the candidate formula through Wolfi Linuxbrew
+      run: |
+        set -euo pipefail
+        for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin; do
+          jq -e --arg commit "$SOURCE_COMMIT" --arg version "$BUILD_VERSION" --arg target "$target" \
+            '.repository == "joshyorko/codex-memoryd" and .ref == "master" and .commit == $commit and .version == $version and .target == $target' \
+            "dist/provenance-$target.json"
+          test "$(tar -tzf "dist/codex-memoryd-$BUILD_VERSION-$target.tar.gz")" = codex-memoryd
+        done
+        (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+        node scripts/codex-memoryd-update.mjs formula Formula/codex-memoryd.rb "$BUILD_VERSION" dist/SHA256SUMS
+        mkdir -p "$RUNNER_TEMP/smoke"
+        sed 's|https://github.com/joshyorko/homebrew-tools/releases/download/codex-memoryd-#{version}/|file:///artifacts/|' \
+          Formula/codex-memoryd.rb > "$RUNNER_TEMP/smoke/codex-memoryd.rb"
+        docker run --rm --user root --entrypoint su \
+          -v "$PWD/dist:/artifacts:ro" -v "$PWD/scripts:/scripts:ro" -v "$RUNNER_TEMP/smoke:/candidate:ro" \
+          -e FORMULA_PATH=/candidate/codex-memoryd.rb \
+          ghcr.io/joshyorko/room-of-requirement:wolfi@sha256:15e656361bf937a9af2a706ea9863c4375c1b47fdefa407d877bbfcc1ee841e4 \
+          -p -s /bin/bash vscode -c '/scripts/smoke-codex-memoryd-homebrew.sh'
+    - name: Publish retained artifacts and advance the main formula
+      run: |
+        set -euo pipefail
+        # Save workflow helpers before switching to main, including first rollout.
+        cp scripts/codex-memoryd-update.mjs "$RUNNER_TEMP/update.mjs"
+        git checkout -- Formula/codex-memoryd.rb
+        git fetch origin main
+        git checkout -B publish-codex-memoryd origin/main
+        test "$(gh api repos/joshyorko/codex-memoryd/commits/master --jq .sha)" = "$SOURCE_COMMIT"
+        tag="codex-memoryd-$BUILD_VERSION"
+        if gh release view "$tag" --json tagName >/dev/null 2>&1; then
+          mkdir "$RUNNER_TEMP/retained"
+          gh release download "$tag" --dir "$RUNNER_TEMP/retained"
+          for artifact in dist/*; do
+            cmp "$artifact" "$RUNNER_TEMP/retained/$(basename "$artifact")"
+          done
+        else
+          gh release create "$tag" dist/* --target "$(git rev-parse HEAD)" \
+            --title "Codex MemoryD master $BUILD_VERSION" --latest=false \
+            --notes "Native binaries built from joshyorko/codex-memoryd master commit $SOURCE_COMMIT. All four native lifecycle checks, source regressions, and Wolfi Homebrew install/upgrade/data-persistence checks passed."
+          mkdir "$RUNNER_TEMP/retained"
+          gh release download "$tag" --dir "$RUNNER_TEMP/retained"
+          for artifact in dist/*; do
+            cmp "$artifact" "$RUNNER_TEMP/retained/$(basename "$artifact")"
+          done
+        fi
+        node "$RUNNER_TEMP/update.mjs" formula Formula/codex-memoryd.rb "$BUILD_VERSION" dist/SHA256SUMS
+        if ! git diff --quiet -- Formula/codex-memoryd.rb; then
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/codex-memoryd.rb
+          git commit -m "Update codex-memoryd to master $BUILD_VERSION"
+          gh auth setup-git
+          git pull --rebase origin main
+          git push origin HEAD:main
+        fi
+        echo "Published $tag from $SOURCE_COMMIT. Run brew update && brew upgrade joshyorko/tools/codex-memoryd." >> "$GITHUB_STEP_SUMMARY"

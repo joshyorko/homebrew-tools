@@ -147,13 +147,17 @@ test("registry entries expose the required orchestration fields", () => {
     assert.ok(typeof entry.upstream.kind === "string")
   }
 })
-test("codex-memoryd registry points at immutable native release assets", () => {
+test("codex-memoryd registry tracks merged master through its native builder", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "codex-memoryd")
   assert.ok(entry)
   assert.equal(entry.homebrewPath, "Formula/codex-memoryd.rb")
   assert.equal(entry.kind, "http_binary_formula")
-  assert.equal(entry.upstream.kind, "github_release")
+  assert.equal(entry.upstream.kind, "git")
   assert.equal(entry.upstream.repo, "https://github.com/joshyorko/codex-memoryd")
+  assert.equal(entry.upstream.ref, "master")
+  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+  assert.equal(entry.supportsReleaseBundle, false)
+  assert.deepEqual(AUTO_UPDATE_SLOTS.find((slot) => slot.id === "codex-memoryd-daily")?.packageIds, ["codex-memoryd"])
 })
 
 test("every auto-update slot references registered packages", () => {
@@ -175,6 +179,7 @@ test("auto-update slots cover the expected package set", () => {
       "action-server",
       "buzz-linux",
       "chatgpt",
+      "codex-memoryd",
       "devpod-linux",
       "devsy",
       "devsy-desktop",

@@ -61,25 +61,11 @@ db="$HOME/.codex-memoryd/memory.db"
 test -s "$db"
 db_sha="$(sha256sum "$db" | awk '{print $1}')"
 
-# Exercise an actual Homebrew upgrade using the same verified immutable release
-# archive under a newer test version. The user database is outside the formula
+# Exercise an actual Homebrew upgrade using the same verified archive under
+# a higher Homebrew revision. This also works with timestamped master builds.
+# The user database is outside the formula
 # prefix and MUST survive the replacement.
-source_url="$(brew info --json=v2 --formula joshyorko/tools/codex-memoryd | jq -er '.formulae[0].urls.stable.url')"
-source_sha="$(brew info --json=v2 --formula joshyorko/tools/codex-memoryd | jq -er '.formulae[0].urls.stable.checksum')"
-cat > "$tap_dir/Formula/codex-memoryd.rb" <<RUBY
-class CodexMemoryd < Formula
-  desc "Local-first memory daemon for coding agents"
-  homepage "https://github.com/joshyorko/codex-memoryd"
-  version "0.1.1"
-  license "MIT"
-  url "$source_url"
-  sha256 "$source_sha"
-
-  def install
-    bin.install "codex-memoryd"
-  end
-end
-RUBY
+awk '{ print } /^  version / { print "  revision 1" }' "$formula_path" > "$tap_dir/Formula/codex-memoryd.rb"
 brew upgrade joshyorko/tools/codex-memoryd
 test -s "$db"
 test "$(sha256sum "$db" | awk '{print $1}')" = "$db_sha"

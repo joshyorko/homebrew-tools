@@ -331,3 +331,20 @@ test("independent auto-update slots queue without canceling builds and publicati
   assert.match(workflow, /  publish:[\s\S]*concurrency:\n      group: tap-publish[\s\S]*queue: max/)
   assert.match(workflow, /  build:\n    needs: resolve\n    if: needs\.resolve\.outputs\.has_packages == 'true'\n    name: Build \$\{\{ matrix\.package_id \}\} Bundle\n    runs-on: ubuntu-latest\n    timeout-minutes: 60/)
 })
+
+test("Codex MemoryD slot uses the four-platform native builder instead of Dagger release bundles", () => {
+  const scheduler = read(".github/workflows/tap-auto-update.yml")
+  const builder = read(".github/workflows/codex-memoryd-update.yml")
+  assert.match(scheduler, /- codex-memoryd-daily/)
+  assert.match(scheduler, /inputs\.slot_id != 'codex-memoryd-daily'/)
+  assert.match(scheduler, /uses: \.\/\.github\/workflows\/codex-memoryd-update\.yml/)
+  for (const target of ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]) {
+    assert.ok(builder.includes(`target: ${target}`))
+  }
+  assert.match(builder, /ref: \$\{\{ needs\.resolve\.outputs\.commit \}\}/)
+  assert.match(builder, /cargo test --locked/)
+  assert.match(builder, /group: tap-publish/)
+  assert.match(builder, /commits\/master --jq \.sha\)" = "\$SOURCE_COMMIT"/)
+  assert.match(builder, /cmp "\$artifact"/)
+  assert.doesNotMatch(builder, /--clobber/)
+})
