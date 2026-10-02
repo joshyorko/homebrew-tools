@@ -303,6 +303,50 @@ test("tap workflow changes fail safe to the full source-build matrix", () => {
   assert.equal(plan.every((entry) => entry.mode === "build"), true)
 })
 
+test("real Git workflow control edits retain the full source-build matrix", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "tap-ci-workflow-git-"))
+  const workflowPath = ".github/workflows/tap-ci.yml"
+  const workflow = readFileSync(new URL(`../../../${workflowPath}`, import.meta.url), "utf8")
+  const edits = [
+    ["job-level write permission", "  tap-pipeline-tests:\n", "  tap-pipeline-tests:\n    permissions:\n      contents: write\n"],
+    ["disabled regression job", "  tap-pipeline-tests:\n", "  tap-pipeline-tests:\n    if: false\n"],
+    ["soft-failing regression job", "  tap-pipeline-tests:\n", "  tap-pipeline-tests:\n    continue-on-error: true\n"],
+    ["no-op regression command", "npm test --prefix dagger/tap-pipeline", 'echo "regression checks disabled"'],
+    ["planner output gating", "      has_packages: ${{ steps.plan.outputs.has_packages }}", "      has_packages: 'false'"],
+    ["package job gating", "    if: needs.plan.outputs.has_packages == 'true'", "    if: false"],
+    ["job environment", '  DAGGER_VERSION: "0.21.9"', '  DAGGER_VERSION: "0.22.0"'],
+    ["tool setup", '        node-version: "24"', '        node-version: "20"'],
+    ["regression reporting option", "npm test --prefix dagger/tap-pipeline", "npm test --prefix dagger/tap-pipeline -- --test-reporter=spec"],
+  ]
+
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: fixture })
+    execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })
+    execFileSync("git", ["config", "user.name", "planner"], { cwd: fixture })
+    mkdirSync(join(fixture, ".github/workflows"), { recursive: true })
+    writeFileSync(join(fixture, workflowPath), workflow)
+    execFileSync("git", ["add", workflowPath], { cwd: fixture })
+    execFileSync("git", ["commit", "-qm", "workflow base"], { cwd: fixture })
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+    const expected = PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).map((entry) => entry.id)
+
+    for (const [name, from, to] of edits) {
+      assert.ok(workflow.includes(from), `fixture must contain ${name} target`)
+      writeFileSync(join(fixture, workflowPath), workflow.replace(from, to))
+      execFileSync("git", ["add", workflowPath], { cwd: fixture })
+      execFileSync("git", ["commit", "-qm", name], { cwd: fixture })
+      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+      const plan = runPlanner(fixture, base, head)
+
+      assert.deepEqual(plan.map(({ package_id }) => package_id), expected, name)
+      assert.equal(plan.every(({ mode }) => mode === "build"), true, name)
+      execFileSync("git", ["reset", "--hard", "-q", base], { cwd: fixture })
+    }
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+})
+
 test("rename and delete diffs preserve both paths and keep deletion visible", () => {
   const fixture = mkdtempSync(join(tmpdir(), "tap-ci-planner-"))
 
@@ -412,4 +456,48 @@ test("transient upstream probe errors are explicitly marked", () => {
     true,
   )
   assert.equal(isTransientUpstreamProbeError(new Error("ordinary failure")), false)
+})
+
+test("real Git monolith and registry diffs retain scoped routing", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "tap-ci-impact-git-"))
+  const repo = new URL("../../..", import.meta.url)
+  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", ".github/workflows/tap-ci.yml"]
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: fixture })
+    execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })
+    execFileSync("git", ["config", "user.name", "planner"], { cwd: fixture })
+    for (const path of paths) {
+      mkdirSync(join(fixture, path, ".."), { recursive: true })
+      writeFileSync(join(fixture, path), readFileSync(new URL(path, repo), "utf8"))
+    }
+    const commit = () => {
+      execFileSync("git", ["add", "-A"], { cwd: fixture })
+      execFileSync("git", ["commit", "-qm", "fixture"], { cwd: fixture })
+      return execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).trim()
+    }
+    let base = commit()
+    const edit = (path: string, from: string, to: string) => {
+      const before = readFileSync(join(fixture, path), "utf8")
+      assert.ok(before.includes(from), from)
+      writeFileSync(join(fixture, path), before.replace(from, to))
+    }
+    edit(paths[0], 'return this.artifactCheck("codex-memoryd")', 'return this.artifactCheck("codex-memoryd").then((value) => value.trim())')
+    edit(paths[1], "https://github.com/joshyorko/rcc", "https://github.com/example/rcc")
+    let head = commit()
+    assert.deepEqual(runPlanner(fixture, base, head).map(({ package_id }) => package_id), ["rcc", "codex-memoryd"])
+    base = head
+    edit(paths[0], "private async buildRccArtifacts()", "// comment only\n  private   async   buildRccArtifacts()")
+    head = commit()
+    assert.deepEqual(runPlanner(fixture, base, head), [])
+    base = head
+    writeFileSync(join(fixture, "dagger/tap-pipeline/src/new-runtime.ts"), "runUnknownSideEffect()\n")
+    head = commit()
+    assert.equal(runPlanner(fixture, base, head).length, PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).length)
+    base = head
+    rmSync(join(fixture, paths[5]))
+    head = commit()
+    assert.equal(runPlanner(fixture, base, head).length, PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).length)
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
 })

@@ -9,7 +9,11 @@ package has a visible reason and one of two modes:
 | --- | --- |
 | Documentation or known regression-test edits | Regression suites; no package rebuild |
 | Cask or formula edits | Install the committed, checksum-verified artifact and exercise package checks |
-| Builder, packaging helper, or shared production pipeline edits | Full source build and package checks |
+| Builder or packaging helper edits | Full source build and checks for registered consumers |
+| Dagger function, constant, registry entry, or artifact-plan edits | Full checks for consumers whose reachable TypeScript declarations changed |
+| Comment/formatting-only JavaScript or TypeScript edits | Regression suites only, after equal parsed/printer output |
+| Any `tap-ci.yml` edit | Regression suites and full PR-enabled source-build matrix |
+| Shared package execution steps, dependencies, runtime configuration, or unproved inputs | Fail-safe full builds |
 | Mixed artifact/build inputs for one package | Full build wins |
 | Unknown production pipeline inputs | Conservatively run full builds |
 
@@ -21,7 +25,41 @@ workflows retain their existing build and runtime gates.
 
 The planner runs locally on the GitHub runner with Node and Git. It does not need
 to start Dagger, pull a build image, or install APT packages to select a matrix.
+PRs compare the native merge-base; pushes compare exact before/head commits.
 Both sides of renames are considered, and invalid Git references fail the plan.
+The path-only Dagger entrypoints remain conservative when source contents are
+unavailable; the runner's `scripts/plan-tap-ci.mjs` applies change-aware routing.
+
+The runner installs the existing pinned TypeScript compiler with lifecycle scripts
+disabled, then compares reachable declarations in both Git trees. Package CI and
+artifact-check roots follow local named imports, method calls, constants, types,
+and shared helpers. Explicit `packageId` switches and equality guards are
+specialized; other conditions remain conservative. Registry entries include
+registered recipe dependents. Artifact plans are selected by package key.
+Unknown paths, missing/deleted source modules, parse errors, unsupported local
+imports or top-level side effects fall back to the full matrix. Runtime dependency
+and module-config changes retain full coverage. Release workflows and their gates
+are unchanged; changes confined to registered release orchestration and auto-update
+slots run regression checks rather than rebuilding PR packages.
+
+Examples verified against actual source diffs in `tests/impact.test.ts` and native
+Git fixtures in `tests/planner.test.ts`:
+
+- A Codex MemoryD `ciCheck` case edit selects Codex MemoryD, not Buzz or 15 other packages.
+- An RCC registry URL edit selects RCC. Mixed recipe/build inputs keep build mode.
+- A `t3BaseContainer` edit selects the T3 CLI and Desktop consumers.
+- A shared Homebrew image edit selects all PR packages.
+- A comment-only monolith edit selects no package jobs; every workflow edit selects the full matrix.
+- An unknown added module or deleted dependency retains the fail-safe full matrix.
+
+The regression suites still run on every PR. Every `tap-ci.yml` edit triggers
+the full PR-enabled source-build matrix because the planner does not parse and
+prove workflow semantics. This includes reporting-only and formatting changes;
+keep workflow edits focused and account for the additional CI cost. Permission,
+job gating, environment, tool setup, test execution, and planner output changes
+therefore cannot be masked as regression-only changes.
+The planner selects package jobs only; it does not validate GitHub token
+permissions or guarantee that workflow conditions allow those jobs to execute.
 Runtime fixtures still schedule package checks. Unknown test-like paths are not
 assumed to be safe to skip. Versioned cask leaves without a dedicated check fail
 planning explicitly instead of checking the unversioned package.
