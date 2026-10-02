@@ -2,10 +2,10 @@ cask "t3-code-linux" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "main.20261001175125.bed69f6ea41d"
-  sha256 x86_64_linux: "1524ae3c1f475332c1a2d8bb5d2edbba93499d55edc03e418a9391f27f45db4e"
+  version "main.20261002000835.b33eda13998b"
+  sha256 x86_64_linux: "01a370323343909f4e447dcf8dfb0842ff3085a3034dd2c5be0e72e641d7e2ac"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-main.20261001175125.bed69f6ea41d/T3-Code-main.20261001175125.bed69f6ea41d-x86_64.AppImage"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-main.20261002000835.b33eda13998b/T3-Code-main.20261002000835.b33eda13998b-x86_64.AppImage"
   name "T3 Code"
   desc "Minimal GUI for AI code agents"
   homepage "https://t3.codes/"
