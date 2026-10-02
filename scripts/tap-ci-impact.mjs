@@ -144,14 +144,6 @@ export function packageFingerprint(read, packageId, registryIds = [packageId], c
   return parts.sort().join("\n")
 }
 
-// Job-level boundaries are deliberately narrow. Execution/runtime changes stay fail-safe.
-export function regressionOnlyWorkflowChange(before, after) {
-  if (before === undefined || after === undefined) return false
-  const normalize = (text) => text.split("\n").map((line) => line.trimEnd()).filter((line) => line.trim()).join("\n")
-  const omitTests = (text) => text.replace(/\n  (?:tap-pipeline-tests|plan):\n[\s\S]*?(?=\n  [\w-]+:\n)/g, "")
-  return normalize(omitTests(before)) === normalize(omitTests(after))
-}
-
 export function nonsemanticScriptChange(path, before, after) {
   if (before === undefined || after === undefined || !/\.(?:mjs|js|ts)$/.test(path)) return false
   const render = (text) => {

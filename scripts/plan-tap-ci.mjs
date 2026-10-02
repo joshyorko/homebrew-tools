@@ -3,7 +3,7 @@
 import { spawnSync } from "node:child_process"
 import { pathToFileURL } from "node:url"
 
-import { nonsemanticScriptChange, packageFingerprint, regressionOnlyWorkflowChange } from "./tap-ci-impact.mjs"
+import { nonsemanticScriptChange, packageFingerprint } from "./tap-ci-impact.mjs"
 
 import { PACKAGE_REGISTRY, changedPackagesFromPaths, ciPlanFromPaths } from "../dagger/tap-pipeline/src/library.ts"
 
@@ -81,8 +81,7 @@ export function planTapCi({ baseRef, headRef, eventName } = {}) {
   }
   const sourcePaths = paths.filter((path) => /^dagger\/tap-pipeline\/src\/[^/]+\.ts$/.test(path))
   const remaining = paths.filter((path) => !sourcePaths.includes(path)
-    && !nonsemanticScriptChange(path, read(base, path), read(head, path))
-    && !(path === ".github/workflows/tap-ci.yml" && regressionOnlyWorkflowChange(read(base, path), read(head, path))))
+    && !nonsemanticScriptChange(path, read(base, path), read(head, path)))
   const plan = ciPlanFromPaths(remaining)
   if (sourcePaths.length) {
     try {

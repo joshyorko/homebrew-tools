@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { nonsemanticScriptChange, packageFingerprint, regressionOnlyWorkflowChange } from "../../../scripts/tap-ci-impact.mjs"
+import { nonsemanticScriptChange, packageFingerprint } from "../../../scripts/tap-ci-impact.mjs"
 import { PACKAGE_REGISTRY } from "../src/library.ts"
 
 const root = new URL("../../..", import.meta.url)
@@ -33,12 +33,6 @@ test("one registry entry and one artifact plan remain scoped", () => {
   assert.deepEqual(affected("dagger/tap-pipeline/src/library.ts", (text) => text.replace('https://github.com/joshyorko/rcc', 'https://github.com/example/rcc')), ["rcc"])
   assert.deepEqual(affected("dagger/tap-pipeline/src/install-checks.ts", (text) => text.replace('"codex-memoryd --version"', '"codex-memoryd --help"')), ["codex-memoryd"])
 })
-test("workflow test commands are cheap; execution environment changes are not", () => {
-  const source = read(".github/workflows/tap-ci.yml")
-  assert.equal(regressionOnlyWorkflowChange(source, source.replace('npm test --prefix dagger/tap-pipeline', 'npm test --prefix dagger/tap-pipeline -- --test-reporter=spec')), true)
-  assert.equal(regressionOnlyWorkflowChange(source, source.replace('DAGGER_VERSION: "0.21.9"', 'DAGGER_VERSION: "0.22.0"')), false)
-})
-
 test("script formatting comparison preserves runtime strings and ASI", () => {
   assert.equal(nonsemanticScriptChange("builder.mjs", 'const x = "value"\n', '// comment\nconst   x = "value";\n'), true)
   assert.equal(nonsemanticScriptChange("builder.mjs", 'const x = `a b`', 'const x = `a  b`'), false)

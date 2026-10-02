@@ -12,7 +12,7 @@ package has a visible reason and one of two modes:
 | Builder or packaging helper edits | Full source build and checks for registered consumers |
 | Dagger function, constant, registry entry, or artifact-plan edits | Full checks for consumers whose reachable TypeScript declarations changed |
 | Comment/formatting-only JavaScript or TypeScript edits | Regression suites only, after equal parsed/printer output |
-| Tap CI regression or planner job edits | Regression suites and planning; no package rebuild |
+| Any `tap-ci.yml` edit | Regression suites and full PR-enabled source-build matrix |
 | Shared package execution steps, dependencies, runtime configuration, or unproved inputs | Fail-safe full builds |
 | Mixed artifact/build inputs for one package | Full build wins |
 | Unknown production pipeline inputs | Conservatively run full builds |
@@ -49,13 +49,17 @@ Git fixtures in `tests/planner.test.ts`:
 - An RCC registry URL edit selects RCC. Mixed recipe/build inputs keep build mode.
 - A `t3BaseContainer` edit selects the T3 CLI and Desktop consumers.
 - A shared Homebrew image edit selects all PR packages.
-- A comment-only monolith edit or regression-job command edit selects no package jobs.
+- A comment-only monolith edit selects no package jobs; every workflow edit selects the full matrix.
 - An unknown added module or deleted dependency retains the fail-safe full matrix.
 
-The regression suites still run on every PR, including an empty package matrix.
-A workflow change outside the two cheap jobs remains fail-safe; edits to package
-execution, global environment, permissions, or dependencies are never inferred
-safe from a filename or a formatting heuristic.
+The regression suites still run on every PR. Every `tap-ci.yml` edit triggers
+the full PR-enabled source-build matrix because the planner does not parse and
+prove workflow semantics. This includes reporting-only and formatting changes;
+keep workflow edits focused and account for the additional CI cost. Permission,
+job gating, environment, tool setup, test execution, and planner output changes
+therefore cannot be masked as regression-only changes.
+The planner selects package jobs only; it does not validate GitHub token
+permissions or guarantee that workflow conditions allow those jobs to execute.
 Runtime fixtures still schedule package checks. Unknown test-like paths are not
 assumed to be safe to skip. Versioned cask leaves without a dedicated check fail
 planning explicitly instead of checking the unversioned package.
