@@ -16,6 +16,7 @@ on:
   - cron: "0 10 * * *"
   - cron: "31 10 * * *"
   - cron: "23 10 * * *"
+  - cron: "37 10 * * *"
   workflow_dispatch:
     inputs:
       slot_id:
@@ -36,6 +37,7 @@ on:
         - chatgpt-daily
         - headroom-daily
         - camp-daily
+        - codex-memoryd-daily
 
 permissions:
   contents: write
@@ -55,8 +57,8 @@ jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *')
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily' && inputs.slot_id != 'codex-memoryd-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *' && github.event.schedule != '37 10 * * *')
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -150,6 +152,13 @@ jobs:
           echo "matrix=$matrix"
           echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)"
         } >> "$GITHUB_OUTPUT"
+
+  codex-memoryd:
+    name: Refresh Codex MemoryD from master
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'codex-memoryd-daily') ||
+      (github.event_name == 'schedule' && github.event.schedule == '37 10 * * *')
+    uses: ./.github/workflows/codex-memoryd-update.yml
 
   camp:
     concurrency:

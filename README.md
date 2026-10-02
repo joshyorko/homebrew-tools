@@ -763,6 +763,44 @@ The tap-pipeline test suite covers:
 - changed-package routing for PR CI
 - release metadata contract shape across every registered package kind
 
+## Codex MemoryD
+
+`joshyorko/tools/codex-memoryd` tracks merged commits on
+`joshyorko/codex-memoryd`'s default branch, `master`. The
+`codex-memoryd-daily` Tap Auto Update slot runs at 10:37 UTC daily and can
+also be dispatched immediately after a merge:
+
+```sh
+gh workflow run tap-auto-update.yml --repo joshyorko/homebrew-tools -f slot_id=codex-memoryd-daily
+```
+
+The native builder pins one source commit, builds Linux x86_64/ARM64 and
+macOS Intel/Apple Silicon archives, runs source regressions and each native
+lifecycle check, then tests the candidate through Wolfi Linuxbrew. Publication
+uses the shared `tap-publish` queue and refuses to advance the formula if
+upstream `master` moved during the build. A subsequent scheduled run picks up
+the newer commit. Unchanged commits skip rebuilding.
+
+```sh
+brew update
+brew install joshyorko/tools/codex-memoryd
+# For an existing installation:
+codex-memoryd down
+brew upgrade joshyorko/tools/codex-memoryd
+codex-memoryd up
+```
+
+Homebrew versions use the source commit's UTC timestamp plus its short SHA,
+so merged builds upgrade from the original 0.1.0 formula. The binary's
+`--version` still reports the upstream Cargo package version; the tap release's
+per-target provenance records identify the exact merged commit. Artifacts and
+SHA256SUMS are retained in this tap's releases and never overwritten. Upgrade
+and uninstall smoke checks verify that the user's database survives.
+
+The Dagger registry exposes the slot and source status, but its single-platform
+`release-bundle` method does not build this package. Use Tap Auto Update's
+`codex-memoryd-daily` slot or `codex-memoryd-update.yml` directly.
+
 ## License
 
 MIT

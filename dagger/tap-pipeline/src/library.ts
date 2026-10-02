@@ -486,13 +486,15 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     supportsPrCi: true,
     supportsReleaseBundle: false,
     autoUpdate: {
-      kind: "manual",
-      reason: "Updated only after a verified immutable codex-memoryd release.",
+      kind: "git_head_sha",
+      ref: "master",
+      shaLength: 12,
+      includeCommitDate: true,
     },
     upstream: {
-      kind: "github_release",
+      kind: "git",
       repo: "https://github.com/joshyorko/codex-memoryd",
-      assetPrefix: "codex-memoryd-v",
+      ref: "master",
     },
   },
 ]
@@ -575,7 +577,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     "codex-desktop-linux",
     ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],
   ],
-  ["codex-memoryd", ["Formula/codex-memoryd.rb", "scripts/fill-codex-memoryd-checksums.mjs"]],
+  ["codex-memoryd", ["Formula/codex-memoryd.rb", "scripts/fill-codex-memoryd-checksums.mjs", "scripts/codex-memoryd-update.mjs", "scripts/smoke-codex-memoryd-homebrew.sh", ".github/workflows/codex-memoryd-update.yml"]],
   ["headroom-self-hosted", ["Formula/headroom-self-hosted.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
   ["devsy-desktop", ["Casks/devsy-desktop.rb", "Formula/devsy.rb"]],
