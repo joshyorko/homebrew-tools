@@ -45,7 +45,7 @@ permissions:
   contents: write
 
 env:
-  DAGGER_VERSION: "0.21.9"
+  DAGGER_VERSION: "0.21.10"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
