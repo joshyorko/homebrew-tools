@@ -347,4 +347,7 @@ test("Codex MemoryD slot uses the four-platform native builder instead of Dagger
   assert.match(builder, /commits\/master --jq \.sha\)" = "\$SOURCE_COMMIT"/)
   assert.match(builder, /cmp "\$artifact"/)
   assert.doesNotMatch(builder, /--clobber/)
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const tags = section(pipeline, "private expectedTapReleaseTag", "private async tapReleaseExists")
+  assert.match(tags, /case "codex-memoryd":\s*return `codex-memoryd-\$\{version\}`/)
 })

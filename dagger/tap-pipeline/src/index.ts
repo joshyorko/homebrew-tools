@@ -646,6 +646,8 @@ export class TapPipeline {
         return `codex-desktop-linux-${version}`
       case "headroom-self-hosted":
         return `headroom-self-hosted-${version}`
+      case "codex-memoryd":
+        return `codex-memoryd-${version}`
       case "vscode-insiders-linux":
         return `vscode-insiders-linux-${version.replace(/,/g, "-")}`
       case "voxtype":
