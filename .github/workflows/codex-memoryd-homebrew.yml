@@ -23,7 +23,7 @@ jobs:
     name: Work-JATT Wolfi Linuxbrew smoke
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/joshyorko/room-of-requirement:wolfi@sha256:fe349528b588cd4e65de701471b1c1eb0c94183acff6df70eb20865f86187255
+      image: ghcr.io/joshyorko/room-of-requirement:wolfi@sha256:3e782a61e9ab2d89eb7d2a96c88c0f49dce65d9d51b4a42144a909e3560039b2
       options: --user root
     steps:
     - name: Checkout formula from PR branch
