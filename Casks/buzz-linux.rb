@@ -2,10 +2,10 @@ cask "buzz-linux" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "0.5.27,1"
-  sha256 x86_64_linux: "a9b12a2b567cd8be07de26663ad3aef56397573701278fef7b5be3def9204599"
+  version "0.5.28,1"
+  sha256 x86_64_linux: "8d6f01047ec2ecfb7b22f6ffcf2f3a7b87d1a0b346a9d9a81809838fbd8f9396"
 
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/buzz-linux-0.5.27-1/buzz-linux-0.5.27-1-x86_64.AppImage"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/buzz-linux-0.5.28-1/buzz-linux-0.5.28-1-x86_64.AppImage"
   name "Buzz"
   desc "Portable Linux desktop client for the Buzz collaboration platform"
   homepage "https://github.com/block/buzz"
