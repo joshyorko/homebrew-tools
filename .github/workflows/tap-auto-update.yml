@@ -117,7 +117,7 @@ jobs:
         version: ${{ env.DAGGER_VERSION }}
         module: ./dagger/tap-pipeline
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        call: resolve-t3-source --github-token=env://GH_TOKEN
+        call: resolve-t-3-source --github-token=env://GH_TOKEN
 
     - name: Resolve packages needing update
       id: dagger_plan
@@ -268,7 +268,7 @@ jobs:
           --github-token=env://GH_TOKEN
           --codex-desktop-conversion-commit="patchraptor-main"
           --codex-desktop-package-source="${{ matrix.package_id == 'codex-desktop-linux' && 'latest' || 'pinned' }}"
-          ${{ (matrix.package_id == 't3code-cli-main' || matrix.package_id == 't3-code-linux') && format('--t3-source-ref="{0}" --t3-source-version="{1}"', needs.resolve.outputs.t3_source_commit, needs.resolve.outputs.t3_source_version) || '' }}
+          ${{ (matrix.package_id == 't3code-cli-main' || matrix.package_id == 't3-code-linux') && format('--t-3-source-ref="{0}" --t-3-source-version="{1}"', needs.resolve.outputs.t3_source_commit, needs.resolve.outputs.t3_source_version) || '' }}
 
     - name: Export Buzz Linux release bundle
       if: matrix.package_id == 'buzz-linux'

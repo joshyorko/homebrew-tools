@@ -139,12 +139,31 @@ test("T3 auto-update slots build and validate CLI/Desktop as one source pair", (
   }
   assert.match(workflow, /Resolve shared T3 source/)
   assert.match(workflow, /PACKAGE_IDS_JSON='\["t3code-cli-main","t3-code-linux"\]'/)
-  assert.match(workflow, /--t3-source-ref=.*--t3-source-version=/)
+  assert.match(workflow, /call: resolve-t-3-source --github-token=env:\/\/GH_TOKEN/)
+  assert.match(workflow, /--t-3-source-ref=.*--t-3-source-version=/)
   assert.match(publish, /cli_commit.*desktop_commit.*T3_SOURCE_COMMIT/)
   assert.ok(
     publish.indexOf("T3 CLI/Desktop source metadata mismatch") < publish.indexOf("for package_id"),
     "paired metadata must be validated before either release is published",
   )
+})
+
+test("T3 PR acceptance resolves one source for both package checks", () => {
+  const workflow = read(".github/workflows/tap-ci.yml")
+  const pairedAcceptance = section(workflow, "  t3-paired-acceptance:", "  ci:")
+
+  assert.match(pairedAcceptance, /call: resolve-t-3-source --github-token=env:\/\/GH_TOKEN/)
+  for (const packageId of ["t3code-cli-main", "t3-code-linux"]) {
+    const start = pairedAcceptance.indexOf(`--package-id="${packageId}"`)
+    assert.notEqual(start, -1, `missing paired acceptance for ${packageId}`)
+    const end = packageId === "t3code-cli-main"
+      ? pairedAcceptance.indexOf('--package-id="t3-code-linux"', start)
+      : pairedAcceptance.length
+    assert.notEqual(end, -1, `missing Desktop acceptance after ${packageId}`)
+    const packageCheck = pairedAcceptance.slice(start, end)
+    assert.match(packageCheck, /--t-3-source-ref="\$\{\{ fromJSON\(steps\.t3_source\.outputs\.output\)\.commit \}\}"/)
+    assert.match(packageCheck, /--t-3-source-version="\$\{\{ fromJSON\(steps\.t3_source\.outputs\.output\)\.version \}\}"/)
+  }
 })
 
 test("T3 CLI package CI executes the resource monitor, formula test, and isolated help command", () => {

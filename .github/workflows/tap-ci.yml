@@ -31,12 +31,18 @@ jobs:
       with:
         node-version: "24"
 
+    - name: Install Dagger CLI for generated schema regression
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+
     - name: Install planner compiler
       run: npm install --prefix dagger/tap-pipeline --ignore-scripts --package-lock=false
 
     - name: Run pipeline and Buzz regression suites
       run: |
         set -euo pipefail
+        node scripts/test-t3-dagger-cli.mjs
         npm test --prefix dagger/tap-pipeline
         node --test scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
         npm test --prefix dagger/buzz-linux-smoke
@@ -86,6 +92,54 @@ jobs:
 
         echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
         echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  t3-paired-acceptance:
+    name: T3 paired CLI and Desktop acceptance
+    timeout-minutes: 120
+    needs:
+    - tap-pipeline-tests
+    - plan
+    if: >-
+      needs.plan.outputs.has_packages == 'true' &&
+      (contains(needs.plan.outputs.matrix, 't3code-cli-main') || contains(needs.plan.outputs.matrix, 't3-code-linux'))
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Resolve shared T3 source
+      id: t3_source
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        call: resolve-t-3-source --github-token=env://GH_TOKEN
+    - name: Run T3 CLI acceptance at the resolved source
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          ci-check
+          --package-id="t3code-cli-main"
+          --github-token=env://GH_TOKEN
+          --t-3-source-ref="${{ fromJSON(steps.t3_source.outputs.output).commit }}"
+          --t-3-source-version="${{ fromJSON(steps.t3_source.outputs.output).version }}"
+    - name: Run T3 Desktop acceptance at the resolved source
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          ci-check
+          --package-id="t3-code-linux"
+          --github-token=env://GH_TOKEN
+          --t-3-source-ref="${{ fromJSON(steps.t3_source.outputs.output).commit }}"
+          --t-3-source-version="${{ fromJSON(steps.t3_source.outputs.output).version }}"
 
   ci:
     name: Package CI
