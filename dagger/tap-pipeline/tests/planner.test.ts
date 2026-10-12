@@ -307,6 +307,8 @@ test("real Git workflow control edits retain the full source-build matrix", () =
   const fixture = mkdtempSync(join(tmpdir(), "tap-ci-workflow-git-"))
   const workflowPath = ".github/workflows/tap-ci.yml"
   const workflow = readFileSync(new URL(`../../../${workflowPath}`, import.meta.url), "utf8")
+  const daggerVersion = workflow.match(/^  DAGGER_VERSION: "([^"]+)"$/m)?.[1]
+  assert.ok(daggerVersion, "workflow must declare a job environment Dagger version")
   const edits = [
     ["job-level write permission", "  tap-pipeline-tests:\n", "  tap-pipeline-tests:\n    permissions:\n      contents: write\n"],
     ["disabled regression job", "  tap-pipeline-tests:\n", "  tap-pipeline-tests:\n    if: false\n"],
@@ -314,7 +316,7 @@ test("real Git workflow control edits retain the full source-build matrix", () =
     ["no-op regression command", "npm test --prefix dagger/tap-pipeline", 'echo "regression checks disabled"'],
     ["planner output gating", "      has_packages: ${{ steps.plan.outputs.has_packages }}", "      has_packages: 'false'"],
     ["package job gating", "    if: needs.plan.outputs.has_packages == 'true'", "    if: false"],
-    ["job environment", '  DAGGER_VERSION: "0.21.9"', '  DAGGER_VERSION: "0.22.0"'],
+    ["job environment", `  DAGGER_VERSION: "${daggerVersion}"`, '  DAGGER_VERSION: "0.22.0"'],
     ["tool setup", '        node-version: "24"', '        node-version: "20"'],
     ["regression reporting option", "npm test --prefix dagger/tap-pipeline", "npm test --prefix dagger/tap-pipeline -- --test-reporter=spec"],
   ]

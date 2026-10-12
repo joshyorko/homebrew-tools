@@ -66,6 +66,8 @@ jobs:
       package_ids_json: ${{ steps.packages.outputs.package_ids_json }}
       has_packages: ${{ steps.packages.outputs.has_packages }}
       matrix: ${{ steps.packages.outputs.matrix }}
+      t3_source_commit: ${{ steps.packages.outputs.t3_source_commit }}
+      t3_source_version: ${{ steps.packages.outputs.t3_source_version }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -107,6 +109,16 @@ jobs:
         echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
         echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
 
+    - name: Resolve shared T3 source
+      id: t3_source
+      if: steps.slot.outputs.slot_id == 't3-daily' || steps.slot.outputs.slot_id == 't3-code-6h'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        call: resolve-t3-source --github-token=env://GH_TOKEN
+
     - name: Resolve packages needing update
       id: dagger_plan
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
@@ -127,12 +139,23 @@ jobs:
         SLOT_ID: ${{ steps.slot.outputs.slot_id }}
         TRIGGER_SOURCE: ${{ steps.slot.outputs.trigger_source }}
         STATUS_JSON: ${{ steps.dagger_plan.outputs.output }}
+        T3_SOURCE_JSON: ${{ steps.t3_source.outputs.output }}
       run: |
         set -euo pipefail
         PACKAGE_IDS_JSON="$(jq -cer '[.[] | select(.needs_update) | .id]' <<<"$STATUS_JSON")"
+        if [[ "$SLOT_ID" == "t3-daily" || "$SLOT_ID" == "t3-code-6h" ]] &&
+          jq -e '[.[] | select(.id == "t3code-cli-main" or .id == "t3-code-linux") | .needs_update] | any' <<<"$STATUS_JSON" >/dev/null; then
+          PACKAGE_IDS_JSON='["t3code-cli-main","t3-code-linux"]'
+        fi
         matrix="$(jq -cn --argjson package_ids "$PACKAGE_IDS_JSON" '{include: ($package_ids | map({package_id: .}))}')"
         count="$(jq '.include | length' <<<"$matrix")"
         package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$PACKAGE_IDS_JSON")"
+        t3_source_commit=""
+        t3_source_version=""
+        if [[ "$SLOT_ID" == "t3-daily" || "$SLOT_ID" == "t3-code-6h" ]]; then
+          t3_source_commit="$(jq -er '.commit | select(test("^[0-9a-f]{40}$"))' <<<"$T3_SOURCE_JSON")"
+          t3_source_version="$(jq -er '.version | select(endswith("." + $sha[0:12]))' --arg sha "$t3_source_commit" <<<"$T3_SOURCE_JSON")"
+        fi
 
         echo "Resolved slot $SLOT_ID -> $package_ids"
         {
@@ -151,6 +174,8 @@ jobs:
           echo "package_ids_json=$PACKAGE_IDS_JSON"
           echo "matrix=$matrix"
           echo "has_packages=$([ "$count" -gt 0 ] && echo true || echo false)"
+          echo "t3_source_commit=$t3_source_commit"
+          echo "t3_source_version=$t3_source_version"
         } >> "$GITHUB_OUTPUT"
 
   codex-memoryd:
@@ -243,6 +268,7 @@ jobs:
           --github-token=env://GH_TOKEN
           --codex-desktop-conversion-commit="patchraptor-main"
           --codex-desktop-package-source="${{ matrix.package_id == 'codex-desktop-linux' && 'latest' || 'pinned' }}"
+          ${{ (matrix.package_id == 't3code-cli-main' || matrix.package_id == 't3-code-linux') && format('--t3-source-ref="{0}" --t3-source-version="{1}"', needs.resolve.outputs.t3_source_commit, needs.resolve.outputs.t3_source_version) || '' }}
 
     - name: Export Buzz Linux release bundle
       if: matrix.package_id == 'buzz-linux'
@@ -290,6 +316,8 @@ jobs:
         SLOT_ID: ${{ needs.resolve.outputs.slot_id }}
         TRIGGER_SOURCE: ${{ needs.resolve.outputs.trigger_source }}
         PACKAGE_IDS_JSON: ${{ needs.resolve.outputs.package_ids_json }}
+        T3_SOURCE_COMMIT: ${{ needs.resolve.outputs.t3_source_commit }}
+        T3_SOURCE_VERSION: ${{ needs.resolve.outputs.t3_source_version }}
       run: |
         set -euo pipefail
         gh auth setup-git
@@ -301,6 +329,24 @@ jobs:
         updated_ids=()
         changed_paths=()
         updated_release_jsons=()
+
+        if [[ " ${package_ids[*]} " == *" t3code-cli-main "* && " ${package_ids[*]} " == *" t3-code-linux "* ]]; then
+          cli_bundle_root="$RUNNER_TEMP/bundles/release-bundle-t3code-cli-main"
+          desktop_bundle_root="$RUNNER_TEMP/bundles/release-bundle-t3-code-linux"
+          cli_bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$cli_bundle_root")"
+          desktop_bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$desktop_bundle_root")"
+          cli_release="$cli_bundle_dir/release.json"
+          desktop_release="$desktop_bundle_dir/release.json"
+          cli_commit="$(jq -er '.upstream.commit' "$cli_release")"
+          desktop_commit="$(jq -er '.upstream.commit' "$desktop_release")"
+          cli_version="$(jq -er '.version' "$cli_release")"
+          desktop_version="$(jq -er '.version' "$desktop_release")"
+          if [[ "$cli_commit" != "$desktop_commit" || "$cli_commit" != "$T3_SOURCE_COMMIT" ||
+                "$cli_version" != "$desktop_version" || "$cli_version" != "$T3_SOURCE_VERSION" ]]; then
+            echo "T3 CLI/Desktop source metadata mismatch: CLI=$cli_version@$cli_commit Desktop=$desktop_version@$desktop_commit selected=$T3_SOURCE_VERSION@$T3_SOURCE_COMMIT" >&2
+            exit 1
+          fi
+        fi
 
         for package_id in "${package_ids[@]}"; do
           bundle_root="$RUNNER_TEMP/bundles/release-bundle-$package_id"
@@ -357,6 +403,10 @@ jobs:
             echo "Result: $result"
             echo "Homebrew path: \`$homebrew_path\`"
             echo "Release tag: \`$release_tag\`"
+            upstream_commit="$(jq -r '.upstream.commit // empty' "$release_json")"
+            if [ -n "$upstream_commit" ]; then
+              echo "Upstream source: \`$(jq -r '.version' "$release_json") @ $upstream_commit\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
         done
 
