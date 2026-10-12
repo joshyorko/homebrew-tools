@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { applyPnpmPackagePatch } from "./lib/apply-pnpm-package-patch.mjs";
 
 function parseArgs(argv) {
@@ -30,47 +31,55 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-function readPnpmWorkspaceCatalog(path) {
+function readPnpmWorkspaceSection(path, sectionName) {
   if (!existsSync(path)) return {};
 
-  const catalog = {};
+  const section = {};
   const lines = readFileSync(path, "utf8").split(/\r?\n/);
-  const catalogStart = lines.findIndex((line) => line === "catalog:");
-  if (catalogStart === -1) return catalog;
+  const sectionStart = lines.findIndex((line) => line === `${sectionName}:`);
+  if (sectionStart === -1) return section;
 
-  for (const line of lines.slice(catalogStart + 1)) {
+  for (const line of lines.slice(sectionStart + 1)) {
     if (/^\S/.test(line)) break;
 
     const match = line.match(/^  (?:"([^"]+)"|([^:]+)):\s+(.+)$/);
     if (!match) continue;
 
     const name = match[1] ?? match[2].trim();
-    const version = match[3].trim().replace(/^"(.+)"$/, "$1");
-    catalog[name] = version;
+    const version = match[3].trim().replace(/^(["'])(.+)\1$/, "$2");
+    section[name] = version;
   }
 
-  return catalog;
+  return section;
 }
 
-function readPnpmPackageVersion(path, packageName) {
+function readPnpmPackageVersion(path, packageName, requestedVersion) {
   if (!existsSync(path)) return undefined;
 
-  const packagePrefix = `  '${packageName}@`;
-  const line = readFileSync(path, "utf8")
-    .split(/\r?\n/)
-    .find((entry) => entry.startsWith(packagePrefix) && entry.endsWith("':"));
-
-  return line ? line.slice(packagePrefix.length, -2) : undefined;
+  const packagePrefix = `${packageName}@`;
+  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^  (?:"([^"]+)"|'([^']+)'|([^:]+)):\s*$/);
+    const key = match?.[1] ?? match?.[2] ?? match?.[3]?.trim();
+    if (requestedVersion) {
+      if (key === `${packagePrefix}${requestedVersion}`) return requestedVersion;
+    } else if (key?.startsWith(packagePrefix)) {
+      return key.slice(packagePrefix.length);
+    }
+  }
 }
 
 function resolveCatalogDependencies(dependencies, catalog) {
   const resolved = {};
 
   for (const [name, version] of Object.entries(dependencies ?? {})) {
-    if (version === "catalog:") {
-      const resolvedVersion = catalog?.[name];
+    if (typeof version === "string" && version.startsWith("catalog:")) {
+      const selector = name.split(">").at(-1) ?? name;
+      const versionIndex = selector.indexOf("@", 1);
+      const packageName = versionIndex === -1 ? selector : selector.slice(0, versionIndex);
+      const catalogKey = version.slice("catalog:".length).trim() || packageName;
+      const resolvedVersion = catalog?.[catalogKey];
       if (!resolvedVersion) {
-        throw new Error(`Missing catalog version for dependency "${name}"`);
+        throw new Error(`Missing catalog version for dependency "${name}" (catalog key "${catalogKey}")`);
       }
 
       resolved[name] = resolvedVersion;
@@ -83,6 +92,32 @@ function resolveCatalogDependencies(dependencies, catalog) {
   return resolved;
 }
 
+function npmOverridesFromPnpm(overrides) {
+  const npmOverrides = {};
+
+  for (const [selector, version] of Object.entries(overrides)) {
+    if (version === "-") continue;
+
+    const parts = selector.split(">");
+    let target = npmOverrides;
+    for (const part of parts.slice(0, -1)) {
+      const existing = target[part];
+      if (!existing || typeof existing !== "object") {
+        target[part] = existing === undefined ? {} : { ".": existing };
+      }
+      target = target[part];
+    }
+
+    const finalPart = parts.at(-1);
+    const existing = target[finalPart];
+    target[finalPart] = existing && typeof existing === "object"
+      ? { ...existing, ".": version }
+      : version;
+  }
+
+  return npmOverrides;
+}
+
 function normalizeBinEntry(binEntry) {
   if (typeof binEntry !== "string" || binEntry.length === 0) {
     throw new Error('Expected apps/server/package.json to define a string bin entry for "t3"');
@@ -91,7 +126,7 @@ function normalizeBinEntry(binEntry) {
   return binEntry.startsWith("./") ? binEntry.slice(2) : binEntry;
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   const upstreamDirArg = args["upstream-dir"];
   const version = args.version;
@@ -105,12 +140,45 @@ function main() {
   const outputPath = resolve(outputPathArg);
 
   const rootPackageJson = readJson(join(upstreamDir, "package.json"));
-  const pnpmWorkspaceCatalog = readPnpmWorkspaceCatalog(join(upstreamDir, "pnpm-workspace.yaml"));
-  const pinnedPlatformNodeSharedVersion = readPnpmPackageVersion(
-    join(upstreamDir, "pnpm-lock.yaml"),
-    "@effect/platform-node-shared",
-  );
+  const workspacePath = join(upstreamDir, "pnpm-workspace.yaml");
+  const lockfilePath = join(upstreamDir, "pnpm-lock.yaml");
+  const pnpmWorkspaceCatalog = readPnpmWorkspaceSection(workspacePath, "catalog");
+  const pnpmWorkspaceOverrides = readPnpmWorkspaceSection(workspacePath, "overrides");
+  const pnpmWorkspacePatches = readPnpmWorkspaceSection(workspacePath, "patchedDependencies");
+  const pinnedPlatformNodeSharedVersion = readPnpmPackageVersion(lockfilePath, "@effect/platform-node-shared");
   const serverPackageJson = readJson(join(upstreamDir, "apps/server/package.json"));
+  const { selectCliRuntimeExternalDependencies } = await import(
+    pathToFileURL(join(upstreamDir, "scripts/lib/cli-external-packages.ts")).href
+  );
+  const catalog = {
+    ...rootPackageJson.workspaces?.catalog,
+    ...pnpmWorkspaceCatalog,
+  };
+  const npmWorkspaceOverrides = npmOverridesFromPnpm(
+    resolveCatalogDependencies(pnpmWorkspaceOverrides, catalog),
+  );
+  const runtimeDependencies = selectCliRuntimeExternalDependencies(
+    resolveCatalogDependencies(serverPackageJson.dependencies, catalog),
+  );
+  for (const [name, version] of Object.entries(runtimeDependencies)) {
+    if (version.startsWith("workspace:")) {
+      throw new Error(`Upstream CLI external dependency "${name}" is unresolved: ${version}`);
+    }
+  }
+  for (const patchedPackage of Object.keys(pnpmWorkspacePatches)) {
+    const separator = patchedPackage.lastIndexOf("@");
+    const packageName = patchedPackage.slice(0, separator);
+    const patchVersion = patchedPackage.slice(separator + 1);
+    if (!Object.hasOwn(runtimeDependencies, packageName)) continue;
+
+    const lockedVersion = readPnpmPackageVersion(lockfilePath, packageName, patchVersion);
+    if (lockedVersion !== patchVersion) {
+      throw new Error(
+        `Expected pnpm lockfile to pin patched external ${packageName}@${patchVersion}; got ${lockedVersion ?? "none"}`,
+      );
+    }
+    runtimeDependencies[packageName] = lockedVersion;
+  }
   const licensePath = join(upstreamDir, "LICENSE");
   const readmePath = join(upstreamDir, "README.md");
   const distDir = join(upstreamDir, "apps/server/dist");
@@ -143,16 +211,17 @@ function main() {
     },
     files: ["dist"],
     engines: serverPackageJson.engines,
-    ...(pinnedPlatformNodeSharedVersion
-      ? { overrides: { "@effect/platform-node-shared": pinnedPlatformNodeSharedVersion } }
+    ...(pinnedPlatformNodeSharedVersion || Object.keys(npmWorkspaceOverrides).length > 0
+      ? {
+          overrides: {
+            ...npmWorkspaceOverrides,
+            ...(pinnedPlatformNodeSharedVersion
+              ? { "@effect/platform-node-shared": pinnedPlatformNodeSharedVersion }
+              : {}),
+          },
+        }
       : {}),
-    dependencies: resolveCatalogDependencies(
-      serverPackageJson.dependencies,
-      {
-        ...rootPackageJson.workspaces?.catalog,
-        ...pnpmWorkspaceCatalog,
-      },
-    ),
+    dependencies: runtimeDependencies,
   };
 
   cpSync(distDir, join(packageDir, "dist"), { recursive: true });
@@ -170,11 +239,13 @@ function main() {
     stdio: "inherit",
   });
 
-  const fffNodeVersion = serverPackageJson.dependencies?.["@ff-labs/fff-node"];
-  if (!fffNodeVersion || !/^\d+\.\d+\.\d+$/.test(fffNodeVersion)) {
-    throw new Error(`Expected apps/server to pin @ff-labs/fff-node; got ${JSON.stringify(fffNodeVersion)}`);
+  for (const patchedPackage of Object.keys(pnpmWorkspacePatches)) {
+    const separator = patchedPackage.lastIndexOf("@");
+    const packageName = patchedPackage.slice(0, separator);
+    const version = patchedPackage.slice(separator + 1);
+    if (runtimeDependencies[packageName] !== version) continue;
+    applyPnpmPackagePatch(upstreamDir, join(packageDir, "node_modules"), packageName, version);
   }
-  applyPnpmPackagePatch(upstreamDir, join(packageDir, "node_modules"), "@ff-labs/fff-node", fffNodeVersion);
 
   mkdirSync(dirname(outputPath), { recursive: true });
   execFileSync("tar", ["-czf", outputPath, "-C", packageDir, "."], {
@@ -185,4 +256,7 @@ function main() {
   console.log(outputPath);
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -588,6 +588,17 @@ export class TapPipeline {
     return json(entries.filter((entry) => entry.needs_update).map((entry) => entry.id))
   }
 
+  @func()
+  async resolveT3Source(githubToken?: Secret): Promise<string> {
+    this.setGithubToken(githubToken)
+    const entry = this.packageEntry("t3code-cli-main")
+    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+      throw new Error("Expected t3code-cli-main to use a git-head auto-update strategy")
+    }
+
+    return json(await this.resolveGitHeadVersion(entry.upstream.repo, entry.autoUpdate.ref, entry.autoUpdate))
+  }
+
   private setGithubToken(githubToken?: Secret): void {
     if (githubToken) {
       this.githubToken = githubToken
@@ -1035,7 +1046,7 @@ export class TapPipeline {
       upstream: {
         kind: "git",
         repo: "https://github.com/pingdotgg/t3code",
-        ref: "main",
+        ref: build.commit,
         version: build.version,
         commit: build.commit,
       },
@@ -1121,7 +1132,7 @@ export class TapPipeline {
       upstream: {
         kind: "git",
         repo: "https://github.com/pingdotgg/t3code",
-        ref: "main",
+        ref: build.commit,
         version: build.version,
         commit: build.commit,
       },
@@ -1331,7 +1342,11 @@ end
     })
   }
 
-  private async buildT3Artifact(tap: Directory, ref: string, version?: string): Promise<T3Build> {
+  private async buildT3Artifact(
+    tap: Directory,
+    ref: string,
+    version?: string,
+  ): Promise<T3Build> {
     const entry = this.packageEntry("t3code-cli-main")
 
     if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
@@ -1345,6 +1360,9 @@ end
     const commit = await upstreamRef.commit()
     const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
 
+    if (/^[0-9a-f]{40}$/.test(ref) && commit !== ref) {
+      throw new Error(`Resolved T3 CLI source ${commit} does not match requested commit ${ref}`)
+    }
     if (!resolvedVersion) {
       throw new Error("Failed to resolve t3code-cli-main version")
     }
@@ -1380,6 +1398,7 @@ end
       .withExec(["bash", "/tap/scripts/build-t3code-resource-monitor.sh", "/upstream"])
       .withExec([
         "node",
+        "--experimental-strip-types",
         "/tap/scripts/package-t3code-cli-main.mjs",
         "--upstream-dir",
         "/upstream",
@@ -2534,7 +2553,11 @@ end
     }
   }
 
-  private async buildT3CodeArtifact(tap: Directory, ref: string, version?: string): Promise<T3CodeBuild> {
+  private async buildT3CodeArtifact(
+    tap: Directory,
+    ref: string,
+    version?: string,
+  ): Promise<T3CodeBuild> {
     const entry = this.packageEntry("t3-code-linux")
 
     if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
@@ -2548,6 +2571,9 @@ end
     const commit = await upstreamRef.commit()
     const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
 
+    if (/^[0-9a-f]{40}$/.test(ref) && commit !== ref) {
+      throw new Error(`Resolved T3 Desktop source ${commit} does not match requested commit ${ref}`)
+    }
     if (!resolvedVersion) {
       throw new Error("Failed to resolve t3-code-linux version")
     }
@@ -3077,6 +3103,8 @@ end
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
     codexDesktopPackageSource?: string,
+    t3SourceRef?: string,
+    t3SourceVersion?: string,
   ): Promise<string> {
     this.setGithubToken(githubToken)
 
@@ -3229,7 +3257,7 @@ end
           .stdout()
       }
       case "t3code-cli-main": {
-        const build = await this.buildT3Artifact(tap, "main")
+        const build = await this.buildT3Artifact(tap, t3SourceRef || "main", t3SourceVersion)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3551,7 +3579,7 @@ end
           .stdout()
       }
       case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact(tap, "main")
+        const build = await this.buildT3CodeArtifact(tap, t3SourceRef || "main", t3SourceVersion)
         const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
         const updatedCask = this.renderT3CodeCask(
           caskContents,
@@ -3844,6 +3872,8 @@ end
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
     codexDesktopPackageSource?: string,
+    t3SourceRef?: string,
+    t3SourceVersion?: string,
   ): Promise<string> {
     this.setGithubToken(githubToken)
 
@@ -3871,7 +3901,7 @@ end
         return json(this.devsyDesktopReleaseMetadata(build))
       }
       case "t3code-cli-main": {
-        const build = await this.buildT3Artifact(tap, "main")
+        const build = await this.buildT3Artifact(tap, t3SourceRef || "main", t3SourceVersion)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -3899,7 +3929,7 @@ end
         return json(this.fizzySymphonyReleaseMetadata(build, sha256))
       }
       case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact(tap, "main")
+        const build = await this.buildT3CodeArtifact(tap, t3SourceRef || "main", t3SourceVersion)
         return json(this.t3CodeReleaseMetadata(build))
       }
       case "headroom-self-hosted": {
@@ -3950,10 +3980,41 @@ end
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
     codexDesktopPackageSource?: string,
+    t3SourceRef?: string,
+    t3SourceVersion?: string,
   ): Promise<Directory> {
     this.setGithubToken(githubToken)
 
-    const tap = this.source
+    const tap = this.source;
+    const isT3Package = packageId === "t3code-cli-main" || packageId === "t3-code-linux"
+    let selectedT3SourceRef = t3SourceRef
+    let selectedT3SourceVersion = t3SourceVersion
+
+    if (isT3Package && (!selectedT3SourceRef || !selectedT3SourceVersion)) {
+      if (selectedT3SourceRef || selectedT3SourceVersion) {
+        throw new Error("T3 release bundles require both source ref and source version")
+      }
+      const entry = this.packageEntry("t3code-cli-main")
+      if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
+        throw new Error("Expected t3code-cli-main to use a git-head auto-update strategy")
+      }
+      const resolved = await this.resolveGitHeadVersion(
+        entry.upstream.repo,
+        entry.autoUpdate.ref,
+        entry.autoUpdate,
+      )
+      selectedT3SourceRef = resolved.commit
+      selectedT3SourceVersion = resolved.version
+    }
+
+    if (isT3Package) {
+      if (!/^[0-9a-f]{40}$/.test(selectedT3SourceRef ?? "")) {
+        throw new Error(`Invalid immutable T3 source commit: ${selectedT3SourceRef}`)
+      }
+      if (!selectedT3SourceVersion?.endsWith(`.${selectedT3SourceRef.slice(0, 12)}`)) {
+        throw new Error("T3 source version does not identify the selected commit")
+      }
+    }
 
     if (packageId === "buzz-linux") {
       const entry = this.packageEntry(packageId)
@@ -3975,6 +4036,8 @@ end
       githubToken,
       codexDesktopConversionCommit,
       codexDesktopPackageSource,
+      selectedT3SourceRef,
+      selectedT3SourceVersion,
     )
 
     switch (packageId) {
@@ -4089,7 +4152,7 @@ end
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "t3code-cli-main": {
-        const build = await this.buildT3Artifact(tap, "main")
+        const build = await this.buildT3Artifact(tap, selectedT3SourceRef!, selectedT3SourceVersion)
         const sha256 = (
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
@@ -4167,7 +4230,7 @@ end
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact(tap, "main")
+        const build = await this.buildT3CodeArtifact(tap, selectedT3SourceRef!, selectedT3SourceVersion)
         const releaseTag = `t3-code-linux-${build.version}`
         const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
         const updatedCask = this.renderT3CodeCask(

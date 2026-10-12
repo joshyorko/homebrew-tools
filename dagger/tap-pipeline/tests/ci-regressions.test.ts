@@ -111,6 +111,51 @@ test("T3 desktop disables V8 functions without changing the CLI builder", () => 
   assert.doesNotMatch(cliBuild, /ENABLE_V8_FUNCTIONS/)
 })
 
+test("T3 release bundles reuse one immutable source ref and version across CI and packaging", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const resolver = section(pipeline, "async resolveT3Source(", "private setGithubToken(")
+  const releaseBundle = section(pipeline, "async releaseBundle(", "async recoveryExport(")
+
+  assert.match(resolver, /resolveGitHeadVersion\(entry\.upstream\.repo, entry\.autoUpdate\.ref/)
+  assert.match(releaseBundle, /selectedT3SourceRef = resolved\.commit/)
+  assert.match(releaseBundle, /selectedT3SourceVersion = resolved\.version/)
+  assert.match(releaseBundle, /selectedT3SourceVersion\?\.endsWith/)
+  assert.match(releaseBundle, /selectedT3SourceRef,\s*selectedT3SourceVersion,/)
+  assert.match(releaseBundle, /buildT3Artifact\(tap, selectedT3SourceRef!, selectedT3SourceVersion\)/)
+  assert.match(releaseBundle, /buildT3CodeArtifact\(tap, selectedT3SourceRef!, selectedT3SourceVersion\)/)
+})
+
+test("T3 auto-update slots build and validate CLI/Desktop as one source pair", () => {
+  const slots = JSON.parse(read("dagger/tap-pipeline/auto-update-slots.json")) as Array<{
+    id: string
+    packageIds: string[]
+  }>
+  const workflow = read(".github/workflows/tap-auto-update.yml")
+  const publish = section(workflow, "  publish:", "  no_updates_required:")
+
+  for (const slotId of ["t3-daily", "t3-code-6h"]) {
+    const slot = slots.find((candidate) => candidate.id === slotId)
+    assert.deepEqual(slot?.packageIds, ["t3code-cli-main", "t3-code-linux"])
+  }
+  assert.match(workflow, /Resolve shared T3 source/)
+  assert.match(workflow, /PACKAGE_IDS_JSON='\["t3code-cli-main","t3-code-linux"\]'/)
+  assert.match(workflow, /--t3-source-ref=.*--t3-source-version=/)
+  assert.match(publish, /cli_commit.*desktop_commit.*T3_SOURCE_COMMIT/)
+  assert.ok(
+    publish.indexOf("T3 CLI/Desktop source metadata mismatch") < publish.indexOf("for package_id"),
+    "paired metadata must be validated before either release is published",
+  )
+})
+
+test("T3 CLI package CI executes the resource monitor, formula test, and isolated help command", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const cliCi = section(pipeline, 'case "t3code-cli-main": {', 'case "chatgpt": {')
+
+  assert.match(cliCi, /test -x.*monitor/)
+  assert.match(cliCi, /brew test test\/tap\/t3code-cli-main/)
+  assert.match(cliCi, /t3 --help/)
+})
+
 test("root Homebrew APT bootstraps remove only the inherited GitHub CLI source before updating", () => {
   const paths = [
     "dagger/tap-pipeline/src/index.ts",
@@ -163,13 +208,24 @@ test("T3 base installs libsecret development metadata and verifies it before dep
   assert.ok(checkIndex < bunInstallIndex, "libsecret verification must happen before tool setup continues")
 })
 
-test("T3 packaging preserves the upstream pinned platform-node-shared version", () => {
+test("T3 packaging stages only upstream runtime externals and preserves its patch and override", () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "t3-package-test-"))
   try {
     const upstream = join(tempRoot, "upstream")
     const serverDist = join(upstream, "apps/server/dist")
     mkdirSync(join(serverDist, "client"), { recursive: true })
-    writeFileSync(join(upstream, "package.json"), "{}\n")
+    mkdirSync(join(upstream, "scripts/lib"), { recursive: true })
+    writeFileSync(
+      join(upstream, "scripts/lib/cli-external-packages.ts"),
+      [
+        "const externalPackages = [\"@ff-labs/fff-node\", \"node-pty\", \"undici\"]",
+        "export function selectCliRuntimeExternalDependencies(dependencies) {",
+        "  return Object.fromEntries(Object.entries(dependencies).filter(([name]) => externalPackages.includes(name)))",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    writeFileSync(join(upstream, "package.json"), '{"type":"module"}\n')
     writeFileSync(join(upstream, "LICENSE"), "MIT\n")
     writeFileSync(join(upstream, "README.md"), "T3\n")
     writeFileSync(join(serverDist, "bin.mjs"), "#!/usr/bin/env node\n")
@@ -182,15 +238,37 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
         "  \"@effect/platform-node\": 4.0.0-rc.112",
         "  \"@effect/sql-sqlite-bun\": 4.0.0-rc.112",
         "  effect: 4.0.0-rc.112",
+        "  undici: 7.0.0",
+        "",
+        "overrides:",
+        '  "undici": "catalog:"',
+        "  node-abi: 4.33.0",
+        "  node-pty>node-abi: 4.33.0",
+        '  "@ff-labs/fff-node": 0.9.4',
+        '  "@ff-labs/fff-node>node-abi": 4.33.0',
+        "  unused>removed: -",
         "",
         "patchedDependencies:",
         '  "@ff-labs/fff-node@0.9.4": patches/fff-node.patch',
+        "  node-pty@1.2.0-beta.15: patches/node-pty.patch",
         "",
       ].join("\n"),
     )
     mkdirSync(join(upstream, "patches"), { recursive: true })
     writeFileSync(
       join(upstream, "patches/fff-node.patch"),
+      [
+        "diff --git a/package.json b/package.json",
+        "--- a/package.json",
+        "+++ b/package.json",
+        "@@ -1 +1 @@",
+        '-{"exports":{".":{"import":"./index.js"}}}',
+        '+{"exports":{".":{"import":"./index.js","require":"./index.js"}}}',
+        "",
+      ].join("\n"),
+    )
+    writeFileSync(
+      join(upstream, "patches/node-pty.patch"),
       [
         "diff --git a/package.json b/package.json",
         "--- a/package.json",
@@ -209,6 +287,12 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
         "packages:",
         "  '@effect/platform-node-shared@4.0.0-rc.112':",
         "    resolution: {integrity: sha512-test}",
+        "  '@ff-labs/fff-node@0.9.4':",
+        "    resolution: {integrity: sha512-test}",
+        "  node-pty@1.3.0:",
+        "    resolution: {integrity: sha512-test}",
+        "  node-pty@1.2.0-beta.15:",
+        "    resolution: {integrity: sha512-test}",
         "",
       ].join("\n"),
     )
@@ -218,10 +302,13 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
         name: "t3",
         bin: { t3: "./dist/bin.mjs" },
         dependencies: {
+          "@ff-labs/fff-node": "0.9.4",
+          "internal-workspace-package": "workspace:*",
+          "node-pty": "^1.2.0-beta.15",
+          undici: "catalog:",
           "@effect/platform-bun": "catalog:",
           "@effect/platform-node": "catalog:",
           "@effect/sql-sqlite-bun": "catalog:",
-          "@ff-labs/fff-node": "0.9.4",
           effect: "catalog:",
         },
       }),
@@ -241,9 +328,11 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
         "  writeFileSync(join(process.cwd(), 'package-lock.json'), '{}\\n')",
         "}",
         "if (process.argv.includes('ci')) {",
-        "  const dependency = join(process.cwd(), 'node_modules/@ff-labs/fff-node')",
-        "  mkdirSync(dependency, { recursive: true })",
-        "  writeFileSync(join(dependency, 'package.json'), '{\\\"exports\\\":{\\\".\\\":{\\\"import\\\":\\\"./index.js\\\"}}}\\n')",
+        "  for (const name of Object.keys(manifest.dependencies)) {",
+        "    const dependency = join(process.cwd(), 'node_modules', ...name.split('/'))",
+        "    mkdirSync(dependency, { recursive: true })",
+        "    writeFileSync(join(dependency, 'package.json'), '{\\\"exports\\\":{\\\".\\\":{\\\"import\\\":\\\"./index.js\\\"}}}\\n')",
+        "  }",
         "}",
         "",
       ].join("\n"),
@@ -254,6 +343,7 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
     execFileSync(
       process.execPath,
       [
+        "--experimental-strip-types",
         join(repoRoot.pathname, "scripts/package-t3code-cli-main.mjs"),
         "--upstream-dir",
         upstream,
@@ -273,8 +363,29 @@ test("T3 packaging preserves the upstream pinned platform-node-shared version", 
     )
 
     const manifest = JSON.parse(readFileSync(observedManifest, "utf8"))
-    assert.equal(manifest.dependencies.effect, "4.0.0-rc.112")
+    assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@ff-labs/fff-node", "node-pty", "undici"])
+    assert.equal(manifest.dependencies.undici, "7.0.0")
+    assert.ok(Object.values(manifest.dependencies).every((version) => !version.startsWith("workspace:")))
+    assert.equal(manifest.overrides.undici, "7.0.0")
+    assert.equal(manifest.overrides["node-pty"]["node-abi"], "4.33.0")
+    assert.equal(manifest.overrides["@ff-labs/fff-node"]["."], "0.9.4")
+    assert.equal(manifest.overrides["@ff-labs/fff-node"]["node-abi"], "4.33.0")
+    assert.equal(manifest.overrides["node-abi"], "4.33.0")
+    assert.equal(manifest.overrides.unused, undefined)
     assert.equal(manifest.overrides["@effect/platform-node-shared"], "4.0.0-rc.112")
+    assert.equal(manifest.dependencies["node-pty"], "1.2.0-beta.15")
+
+    const unpacked = join(tempRoot, "unpacked")
+    mkdirSync(unpacked)
+    execFileSync("tar", ["-xzf", join(tempRoot, "package.tar.gz"), "-C", unpacked])
+    const patchedDependency = JSON.parse(
+      readFileSync(join(unpacked, "node_modules/@ff-labs/fff-node/package.json"), "utf8"),
+    )
+    assert.equal(patchedDependency.exports["."].require, "./index.js")
+    const patchedNativeDependency = JSON.parse(
+      readFileSync(join(unpacked, "node_modules/node-pty/package.json"), "utf8"),
+    )
+    assert.equal(patchedNativeDependency.exports["."].require, "./index.js")
   } finally {
     rmSync(tempRoot, { recursive: true, force: true })
   }
