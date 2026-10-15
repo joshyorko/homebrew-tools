@@ -11,6 +11,14 @@ export const TARGETS = [
   "aarch64-apple-darwin",
 ]
 
+export function wolfiImage(workflow) {
+  const images = [...workflow.matchAll(/^[ \t]*image:[ \t]*(.*)$/gm)].map((match) => match[1].trim())
+  if (images.length !== 1 || !/^ghcr\.io\/joshyorko\/room-of-requirement:wolfi@sha256:[0-9a-f]{64}$/.test(images[0])) {
+    throw new Error("Expected one immutable Wolfi image in the consumer workflow")
+  }
+  return images[0]
+}
+
 export function sourceVersion(source) {
   if (!source || !/^[0-9a-f]{40}$/.test(source.sha ?? "")) throw new Error("Invalid source commit")
   const date = source.commit?.committer?.date
@@ -48,12 +56,15 @@ function main() {
   const [command, ...args] = process.argv.slice(2)
   if (command === "version" && args.length === 1) {
     console.log(sourceVersion(JSON.parse(readFileSync(args[0], "utf8"))))
+  } else if (command === "wolfi-image" && args.length === 1) {
+    console.log(wolfiImage(readFileSync(args[0], "utf8")))
   } else if (command === "formula" && args.length === 3) {
     const [path, version, checksums] = args
     writeFileSync(path, renderFormula(readFileSync(path, "utf8"), version, readFileSync(checksums, "utf8")))
   } else {
-    throw new Error("Usage: codex-memoryd-update.mjs version COMMIT.json | formula FORMULA VERSION SHA256SUMS")
+    throw new Error("Usage: codex-memoryd-update.mjs version COMMIT.json | formula FORMULA VERSION SHA256SUMS | wolfi-image CONSUMER.yml")
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main()
+
