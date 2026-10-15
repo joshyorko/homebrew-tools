@@ -3,6 +3,9 @@ name: Codex MemoryD Homebrew Consumer
 on:
   pull_request:
     paths:
+    - .github/workflows/codex-memoryd-update.yml
+    - scripts/codex-memoryd-update.mjs
+    - scripts/codex-memoryd-update.test.mjs
     - Formula/codex-memoryd.rb
     - scripts/smoke-codex-memoryd-homebrew.sh
     - .github/workflows/codex-memoryd-homebrew.yml
@@ -10,6 +13,9 @@ on:
     branches:
     - main
     paths:
+    - .github/workflows/codex-memoryd-update.yml
+    - scripts/codex-memoryd-update.mjs
+    - scripts/codex-memoryd-update.test.mjs
     - Formula/codex-memoryd.rb
     - scripts/smoke-codex-memoryd-homebrew.sh
     - .github/workflows/codex-memoryd-homebrew.yml
@@ -32,3 +38,4 @@ jobs:
       env:
         FORMULA_PATH: ${{ github.workspace }}/Formula/codex-memoryd.rb
       run: su -p -s /bin/bash vscode -c 'scripts/smoke-codex-memoryd-homebrew.sh'
+

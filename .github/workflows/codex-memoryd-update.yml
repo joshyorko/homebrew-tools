@@ -157,10 +157,12 @@ jobs:
         mkdir -p "$RUNNER_TEMP/smoke"
         sed 's|https://github.com/joshyorko/homebrew-tools/releases/download/codex-memoryd-#{version}/|file:///artifacts/|' \
           Formula/codex-memoryd.rb > "$RUNNER_TEMP/smoke/codex-memoryd.rb"
+        # Reuse the Renovate-managed consumer pin instead of maintaining a second digest.
+        wolfi_image="$(node scripts/codex-memoryd-update.mjs wolfi-image .github/workflows/codex-memoryd-homebrew.yml)"
         docker run --rm --user root --entrypoint su \
           -v "$PWD/dist:/artifacts:ro" -v "$PWD/scripts:/scripts:ro" -v "$RUNNER_TEMP/smoke:/candidate:ro" \
           -e FORMULA_PATH=/candidate/codex-memoryd.rb \
-          ghcr.io/joshyorko/room-of-requirement:wolfi@sha256:15e656361bf937a9af2a706ea9863c4375c1b47fdefa407d877bbfcc1ee841e4 \
+          "$wolfi_image" \
           -p -s /bin/bash vscode -c '/scripts/smoke-codex-memoryd-homebrew.sh'
     - name: Publish retained artifacts and advance the main formula
       run: |
@@ -199,3 +201,4 @@ jobs:
           git push origin HEAD:main
         fi
         echo "Published $tag from $SOURCE_COMMIT. Run brew update && brew upgrade joshyorko/tools/codex-memoryd." >> "$GITHUB_STEP_SUMMARY"
+

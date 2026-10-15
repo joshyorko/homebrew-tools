@@ -1,12 +1,25 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
-import { sourceVersion, renderFormula, TARGETS } from "./codex-memoryd-update.mjs"
+import { sourceVersion, renderFormula, wolfiImage, TARGETS } from "./codex-memoryd-update.mjs"
 
 const commit = "8146e6bd4bfe32651183d61f2dd1b12b84ab93cb"
 const version = "20261002154624.8146e6bd4bfe"
 const formula = readFileSync(new URL("../Formula/codex-memoryd.rb", import.meta.url), "utf8")
 const checksums = TARGETS.map((target, index) => `${String(index + 1).repeat(64)}  codex-memoryd-${version}-${target}.tar.gz`).join("\n")
+
+test("publisher uses the consumer's single immutable Wolfi image", () => {
+  const consumer = readFileSync(new URL("../.github/workflows/codex-memoryd-homebrew.yml", import.meta.url), "utf8")
+  const image = `ghcr.io/joshyorko/room-of-requirement:wolfi@sha256:${"a".repeat(64)}`
+  assert.equal(wolfiImage(`    image: ${image}\n`), image)
+  assert.match(wolfiImage(consumer), /@sha256:[0-9a-f]{64}$/)
+  for (const invalid of ["", "image: ghcr.io/joshyorko/room-of-requirement:wolfi", `image: ${image}\nimage: ${image}`, `image: ${image}; echo unsafe`]) {
+    assert.throws(() => wolfiImage(invalid), /one immutable Wolfi image/)
+  }
+  const publisher = readFileSync(new URL("../.github/workflows/codex-memoryd-update.yml", import.meta.url), "utf8")
+  assert.ok(publisher.includes("node scripts/codex-memoryd-update.mjs wolfi-image .github/workflows/codex-memoryd-homebrew.yml"))
+  assert.ok(!publisher.includes("room-of-requirement:wolfi@"))
+})
 
 test("commit-derived versions are deterministic and reject malformed source identities", () => {
   assert.equal(sourceVersion({ sha: commit, commit: { committer: { date: "2026-10-02T15:46:24Z" } } }), version)
@@ -32,3 +45,4 @@ test("a partial or ambiguous artifact set cannot update the formula", () => {
   assert.throws(() => renderFormula(formula.replace(/^  version .*$/m, ""), version, checksums), /version/)
   assert.throws(() => renderFormula(formula, version, checksums.replace(/1{64}/, "invalid")), /checksum/)
 })
+
