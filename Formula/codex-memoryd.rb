@@ -1,7 +1,7 @@
 class CodexMemoryd < Formula
   desc "Local-first memory daemon for coding agents"
   homepage "https://github.com/joshyorko/codex-memoryd"
-  version "20261002154623.8146e6bd4bfe"
+  version "20261014222239.79a279d5f730"
   license "MIT"
 
   livecheck do
@@ -11,24 +11,24 @@ class CodexMemoryd < Formula
   on_linux do
     on_intel do
       url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-memoryd-#{version}/codex-memoryd-#{version}-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "89539833250adb996f97dfefe7b2731c89f08ab57454e9f2ad35fe360bae0785"
+      sha256 "dacd1489f6358231077a03cfc2f84d05600a391702c4ec95857c1277e439ffdd"
     end
 
     on_arm do
       url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-memoryd-#{version}/codex-memoryd-#{version}-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "a0b8b5038e357235c2cc88d48d6a3a8016b40d7b5a965a457a2c89ed4fd21801"
+      sha256 "c36be511d83bfca1d7afc6e491b196d625c73dd898dffa394b183c50b52c0f22"
     end
   end
 
   on_macos do
     on_intel do
       url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-memoryd-#{version}/codex-memoryd-#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "d15798c99f09afcd3f827cbda62e5da146064914186c69778ac76d018adbc4df"
+      sha256 "54e853721a11366b1b740ff366d9a0f24f9701b1c70dd1a202f97e00f29056ea"
     end
 
     on_arm do
       url "https://github.com/joshyorko/homebrew-tools/releases/download/codex-memoryd-#{version}/codex-memoryd-#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "9db31c6f644af69440fd642551fee4c9bc0aac50e370164467d91b99844217ba"
+      sha256 "6e58453409cddfe018e952fff17c00528d936fc5c91fa1067965f0cc147b7498"
     end
   end
 
