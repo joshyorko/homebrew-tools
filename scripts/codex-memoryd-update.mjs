@@ -12,7 +12,7 @@ export const TARGETS = [
 ]
 
 export function wolfiImage(workflow) {
-  const images = [...workflow.matchAll(/^\s*image:\s*(\S+)\s*$/gm)].map((match) => match[1])
+  const images = [...workflow.matchAll(/^[ \t]*image:[ \t]*(.*)$/gm)].map((match) => match[1].trim())
   if (images.length !== 1 || !/^ghcr\.io\/joshyorko\/room-of-requirement:wolfi@sha256:[0-9a-f]{64}$/.test(images[0])) {
     throw new Error("Expected one immutable Wolfi image in the consumer workflow")
   }

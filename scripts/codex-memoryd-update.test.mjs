@@ -13,7 +13,7 @@ test("publisher uses the consumer's single immutable Wolfi image", () => {
   const image = `ghcr.io/joshyorko/room-of-requirement:wolfi@sha256:${"a".repeat(64)}`
   assert.equal(wolfiImage(`    image: ${image}\n`), image)
   assert.match(wolfiImage(consumer), /@sha256:[0-9a-f]{64}$/)
-  for (const invalid of ["", "image: ghcr.io/joshyorko/room-of-requirement:wolfi", `image: ${image}\nimage: ${image}`, `image: ${image}; echo unsafe`]) {
+  for (const invalid of ["", "image: ghcr.io/joshyorko/room-of-requirement:wolfi", `image: ${image}\nimage: ${image}`, `image: ${image}; echo unsafe`, `image: ${image}\nimage: invalid value`]) {
     assert.throws(() => wolfiImage(invalid), /one immutable Wolfi image/)
   }
   const publisher = readFileSync(new URL("../.github/workflows/codex-memoryd-update.yml", import.meta.url), "utf8")
