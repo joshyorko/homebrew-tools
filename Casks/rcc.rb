@@ -1,5 +1,5 @@
 cask "rcc" do
-  version "18.19.6"
+  version "18.19.7"
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."
@@ -7,21 +7,21 @@ cask "rcc" do
 
   on_macos do
     on_arm do
-      sha256 "18bfdd6c85abf5f26170a8e933c97799c884a067877943e65c74d4eadeb1e08f"
-      url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.6/rcc-macosarm64"
+      sha256 "324e2ead0e96754eaf0dc2e22bb41928ad2bec90c7e1e7ad069038a100bca595"
+      url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.7/rcc-macosarm64"
       binary "rcc-macosarm64", target: "rcc"
     end
 
     on_intel do
-      sha256 "22832fc7c8511f7827ea83cf19fcccb6265b57db986fccb07bf801a52c6078ce"
-      url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.6/rcc-macos64"
+      sha256 "092c8efb615e5d948d16a7330be76c99583c42df2c8a541a6f31f3aaeaeb1a89"
+      url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.7/rcc-macos64"
       binary "rcc-macos64", target: "rcc"
     end
   end
 
   on_linux do
-    sha256 "2036b84ec8637e76ea41ab90abd2963357b1fed5ceb9a4e58fe852c67baaff1e"
-    url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.6/rcc-linux64"
+    sha256 "f8e0394be7f47ee84d6f4cd734822b87b492a4d6102f977f6a18f29453703d48"
+    url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.7/rcc-linux64"
     binary "rcc-linux64", target: "rcc"
   end
 
