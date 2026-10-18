@@ -1,5 +1,5 @@
 cask "action-server" do
-  version "1.0.3"
+  version "1.0.4"
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."
@@ -8,17 +8,17 @@ cask "action-server" do
   on_macos do
     depends_on arch: :arm64
     on_arm do
-      sha256 "720ed3da25311268234dec8bff5710dde21f16e5d2485e03018025d21d93731c"
-      url "https://github.com/joshyorko/homebrew-tools/releases/download/action-server-1.0.3/actions-runtime-1.0.3-macos-arm64"
-      binary "actions-runtime-1.0.3-macos-arm64", target: "action-server"
+      sha256 "cd4a4e93a17b54fbbb085e97ae136d98f0520453c262150ca0903fa73cc0959f"
+      url "https://github.com/joshyorko/homebrew-tools/releases/download/action-server-1.0.4/actions-runtime-1.0.4-macos-arm64"
+      binary "actions-runtime-1.0.4-macos-arm64", target: "action-server"
     end
 
   end
 
   on_linux do
-    sha256 "8d07146f7e0ed3be8c7d9e7f7042907b86ad899a4c47d1a755edb98975dc6579"
-    url "https://github.com/joshyorko/homebrew-tools/releases/download/action-server-1.0.3/actions-runtime-1.0.3-linux64"
-    binary "actions-runtime-1.0.3-linux64", target: "action-server"
+    sha256 "d3c450a2b10b226613588cc40cc6ec18873b23c7427958b0752711e4531a1de4"
+    url "https://github.com/joshyorko/homebrew-tools/releases/download/action-server-1.0.4/actions-runtime-1.0.4-linux64"
+    binary "actions-runtime-1.0.4-linux64", target: "action-server"
   end
 
   name "Action Server"
