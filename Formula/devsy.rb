@@ -1,7 +1,7 @@
 class Devsy < Formula
   desc "Development environment platform for containers and Kubernetes"
   homepage "https://devsy.sh/"
-  version "1.23.2"
+  version "1.24.0"
   license "MPL-2.0"
 
   livecheck do
@@ -12,13 +12,13 @@ class Devsy < Formula
 
   on_linux do
     on_intel do
-      url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-1.23.2/devsy-linux-amd64"
-      sha256 "0e9e703662575faa796c933e108bbaa9bcfbcf95046825da9c8eb3cf452e8891"
+      url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-1.24.0/devsy-linux-amd64"
+      sha256 "d1f75dfbff189cf65ff472eadc061d5a6e3d9886486a0e340b96dce07636a4a3"
     end
 
     on_arm do
-      url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-1.23.2/devsy-linux-arm64"
-      sha256 "872cd988be2f5c37dc92da684c92fb6e9dd56153963366c1bdb143b78f816ae2"
+      url "https://github.com/joshyorko/homebrew-tools/releases/download/devsy-1.24.0/devsy-linux-arm64"
+      sha256 "f7b7aa716e421affac06d7c8a9093fe71a935b27789b5d52a52004a081e87bc6"
     end
   end
 
