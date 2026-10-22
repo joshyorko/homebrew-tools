@@ -260,6 +260,8 @@ test("T3 packaging stages only upstream runtime externals and preserves its patc
         "  undici: 7.0.0",
         "",
         "overrides:",
+        "  # Move this with @react-navigation/native: an older core than it requires crashes",
+        "  # every native stack at launch.",
         '  "undici": "catalog:"',
         "  node-abi: 4.33.0",
         "  node-pty>node-abi: 4.33.0",
@@ -386,6 +388,7 @@ test("T3 packaging stages only upstream runtime externals and preserves its patc
     assert.equal(manifest.dependencies.undici, "7.0.0")
     assert.ok(Object.values(manifest.dependencies).every((version) => !version.startsWith("workspace:")))
     assert.equal(manifest.overrides.undici, "7.0.0")
+    assert.equal(Object.hasOwn(manifest.overrides, "# Move this with @react-navigation/native"), false)
     assert.equal(manifest.overrides["node-pty"]["node-abi"], "4.33.0")
     assert.equal(manifest.overrides["@ff-labs/fff-node"]["."], "0.9.4")
     assert.equal(manifest.overrides["@ff-labs/fff-node"]["node-abi"], "4.33.0")
