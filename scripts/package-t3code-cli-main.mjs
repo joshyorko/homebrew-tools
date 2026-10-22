@@ -40,6 +40,7 @@ function readPnpmWorkspaceSection(path, sectionName) {
   if (sectionStart === -1) return section;
 
   for (const line of lines.slice(sectionStart + 1)) {
+    if (/^\s*#/.test(line)) continue;
     if (/^\S/.test(line)) break;
 
     const match = line.match(/^  (?:"([^"]+)"|([^:]+)):\s+(.+)$/);
