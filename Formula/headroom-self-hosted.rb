@@ -1,9 +1,9 @@
 class HeadroomSelfHosted < Formula
   desc "Self-hosted Headroom CLI and proxy from the pinned self-hosted source"
   homepage "https://github.com/joshyorko/headroom"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/headroom-self-hosted-selfhosted.97be12cef8d0/headroom-self-hosted-selfhosted.97be12cef8d0.tar.gz"
-  version "selfhosted.97be12cef8d0"
-  sha256 "89d6a4f0bebfcae5756d72b9689d035a5dcf385f7e8c5bbf173b09dd9eed8005"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/headroom-self-hosted-selfhosted.9219f615111c/headroom-self-hosted-selfhosted.9219f615111c.tar.gz"
+  version "selfhosted.9219f615111c"
+  sha256 "b21f5c2f91f92c017ca2a22e3b0d6f3ebc3300836ddf11dc331740af6c1553b6"
   license "Apache-2.0"
 
   livecheck do
