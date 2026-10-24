@@ -33,6 +33,7 @@ import {
   resolveStableDevsyRelease,
   verifyDevsyGithubDigest,
 } from "./devsy-render.js"
+import { resolveReviewRelease, verifyReviewArtifact } from "./review-release.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
 import { artifactCheckPlan, buzzArtifactVerificationCommands, rejectForbiddenShaCommand } from "./install-checks.js"
@@ -2361,6 +2362,40 @@ end
     ).trim().split(/\s+/)[0]
   }
 
+  private async buildReviewArtifacts() {
+    const release = resolveReviewRelease(await this.fetchJson("https://api.github.com/repos/joshyorko/review/releases/latest"))
+    const identity = await this.fetchJson(`https://api.github.com/repos/joshyorko/review/commits/${release.tagName}`) as { sha: string }
+    let container = this.githubApiContainer()
+    const artifacts = []
+    for (const asset of release.assets) {
+      const artifactPath = `/tmp/${asset.name}`
+      container = this.downloadAsset(container, asset.browser_download_url, artifactPath)
+      const sha256 = await this.sha256For(container, artifactPath)
+      const manifest = JSON.parse(await container.withExec(["tar", "-xOf", artifactPath, "./build.json"]).stdout())
+      verifyReviewArtifact(asset, sha256, manifest, release.version, identity.sha)
+      artifacts.push({ assetName: asset.name, artifactPath, sha256 })
+    }
+    return { version: release.version, upstreamTag: release.tagName, upstreamCommit: identity.sha, container, artifacts }
+  }
+
+  private reviewReleaseMetadata(build: Awaited<ReturnType<TapPipeline["buildReviewArtifacts"]>>) {
+    const asset = build.artifacts[0]
+    return {
+      ...releaseMetadataForPackage("review", {
+        version: build.version,
+        releaseTag: `review-${build.version}`,
+        assetName: asset.assetName,
+        artifactSha256: asset.sha256,
+        downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/review-${build.version}/${asset.assetName}`,
+        releaseTitle: `Review ${build.version}`,
+        releaseNotes: `Verified native appliances mirrored from joshyorko/review ${build.upstreamTag} (${build.upstreamCommit}). The source release builds and tests native SIF appliances; this tap verifies digests, source identity and native Homebrew candidate installation without rebuilding the appliance.`,
+        commitMessage: `Update review formula to v${build.version}`,
+        upstream: { kind: "github_release", repo: "https://github.com/joshyorko/review", version: build.version, commit: build.upstreamCommit },
+      }),
+      artifacts: build.artifacts.map((asset) => ({ name: asset.assetName, sha256: asset.sha256 })),
+    }
+  }
+
   private async buildRccArtifacts(): Promise<RccBuild> {
     const release = await this.fetchJson("https://api.github.com/repos/joshyorko/rcc/releases/latest") as {
       tag_name: string
@@ -3920,6 +3955,8 @@ end
     const tap = this.source
 
     switch (packageId) {
+      case "review": return json(this.reviewReleaseMetadata(await this.buildReviewArtifacts()))
+
       case "rcc": {
         const build = await this.buildRccArtifacts()
         return json(this.rccReleaseMetadata(build))
@@ -4069,6 +4106,23 @@ end
         version,
         revision: "1",
       })
+    }
+
+    if (packageId === "review") {
+      const build = await this.buildReviewArtifacts()
+      const platform = await build.container.platform()
+      const native = build.artifacts.find((asset) => asset.assetName.includes(platform.includes("arm64") ? "aarch64" : "x86_64"))!
+      const ciLog = await this.reviewCandidateCheck(build.container.file(native.artifactPath), build.version)
+      const formula = await build.container.withDirectory("/tap", tap).withExec([
+        "node", "/tap/scripts/render-review-formula.mjs", "--version", build.version,
+        "--x86-64-sha256", build.artifacts[0].sha256, "--aarch64-sha256", build.artifacts[1].sha256,
+      ]).stdout()
+      let bundle = dag.directory()
+        .withNewFile("homebrew/review.rb", formula)
+        .withNewFile("release.json", json(this.reviewReleaseMetadata(build)))
+        .withNewFile("ci.log", ciLog)
+      for (const asset of build.artifacts) bundle = bundle.withFile(`artifacts/${asset.assetName}`, build.container.file(asset.artifactPath))
+      return bundle
     }
 
     const ciLog = await this.ciCheck(

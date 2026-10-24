@@ -211,8 +211,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "http_binary_formula",
     homebrewPath: "Formula/review.rb",
     supportsPrCi: true,
-    supportsReleaseBundle: false,
-    autoUpdate: { kind: "manual", reason: "Published from verified native Review release bundles." },
+    supportsReleaseBundle: true,
+    autoUpdate: { kind: "github_release_latest_tag", stripPrefix: "v" },
     upstream: { kind: "github_release", repo: "https://github.com/joshyorko/review" },
   },
   {

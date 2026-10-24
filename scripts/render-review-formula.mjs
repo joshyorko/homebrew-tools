@@ -13,7 +13,7 @@ for (const key of ["x86-64-sha256", "aarch64-sha256"]) {
 }
 const candidate = values["candidate-url"]
 if (candidate && !/^file:\/\/\/[A-Za-z0-9/._-]+$/.test(candidate)) throw new Error("Candidate URL must be an absolute local file URL")
-const url = (arch) => candidate ?? `https://github.com/joshyorko/review/releases/download/v${version}/review-${arch}.tar.gz`
+const url = (arch) => candidate ?? `https://github.com/joshyorko/homebrew-tools/releases/download/review-${version}/review-${arch}.tar.gz`
 process.stdout.write(`class Review < Formula
   desc "Review GitHub repositories with OMP in an isolated appliance"
   homepage "https://github.com/joshyorko/review"

@@ -1,5 +1,10 @@
 [
   {
+    "id": "review-hourly",
+    "description": "Hourly stable Review native appliance mirror and Homebrew acceptance.",
+    "packageIds": ["review"]
+  },
+  {
     "id": "rcc-daily",
     "description": "Daily RCC refresh.",
     "packageIds": ["rcc"]

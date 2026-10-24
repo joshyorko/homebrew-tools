@@ -7,8 +7,8 @@ const args = [script, "--version", "0.1.0", "--x86-64-sha256", "a".repeat(64), "
 
 test("stable formula preserves architecture-specific verified assets and appliance layout", () => {
   const formula = execFileSync(process.execPath, args, { encoding: "utf8" })
-  assert.match(formula, /download\/v0\.1\.0\/review-x86_64\.tar\.gz/)
-  assert.match(formula, /download\/v0\.1\.0\/review-aarch64\.tar\.gz/)
+  assert.match(formula, /download\/review-0\.1\.0\/review-x86_64\.tar\.gz/)
+  assert.match(formula, /download\/review-0\.1\.0\/review-aarch64\.tar\.gz/)
   for (const dependency of ["apptainer", "squashfuse", "gh"]) assert.ok(formula.includes(`depends_on "${dependency}"`))
   assert.match(formula, /bin\.install "review"/)
   assert.match(formula, /libexec\.install "launcher", "build.json", "build.txt", "LICENSE", "NOTICE"/)

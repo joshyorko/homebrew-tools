@@ -15,6 +15,7 @@ export type PackageKind =
   | "codex_desktop_linux_cask"
 
 export type AutoUpdateSlotId =
+  | "review-hourly"
   | "rcc-daily"
   | "action-server-daily"
   | "desktop-6h"

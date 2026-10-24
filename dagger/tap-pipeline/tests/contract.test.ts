@@ -188,6 +188,7 @@ test("auto-update slots cover the expected package set", () => {
       "fizzy-symphony",
       "headroom-self-hosted",
       "rcc",
+      "review",
       "t3-code-linux",
       "t3code-cli-main",
       "vscode-insiders-linux",
