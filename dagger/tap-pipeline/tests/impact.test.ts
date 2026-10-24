@@ -23,7 +23,10 @@ test("actual shared T3 base affects its consumers only", () => {
   assert.deepEqual(affected(index, (text) => text.replace('"pkg-config --exists libsecret-1"', '"pkg-config --exists libsecret-1 && true"')), ["t3code-cli-main", "t3-code-linux"])
 })
 test("shared Homebrew runtime affects all consumers", () => {
-  assert.equal(affected(index, (text) => text.replace('ghcr.io/homebrew/brew:main', 'ghcr.io/homebrew/brew:changed')).length, 17)
+  assert.deepEqual(
+    affected(index, (text) => text.replace('ghcr.io/homebrew/brew:main', 'ghcr.io/homebrew/brew:changed')).sort(),
+    PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).map((entry) => entry.id).sort(),
+  )
 })
 test("AST preserves strings but ignores comments and formatting", () => {
   assert.deepEqual(affected(index, (text) => text.replace('private async buildRccArtifacts()', '// comment\n  private   async   buildRccArtifacts()')), [])
