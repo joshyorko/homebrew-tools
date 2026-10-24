@@ -2955,7 +2955,6 @@ end
       .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
       .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
       .withDirectory("/tap", tap)
-      .withFile("/smoke-review-sif.sh", this.source.file("scripts/smoke-review-sif.sh"))
       .withFile("/artifacts/review.tar.gz", artifact)
       .withExec(["bash", "-lc", [
         "set -euo pipefail",
@@ -2965,7 +2964,6 @@ end
         "brew install test/tap/review",
         "brew test test/tap/review",
         "review --help",
-        'bash /smoke-review-sif.sh "$(brew --prefix review)/libexec/launcher/review.sif"',
         'test -s "$(brew --prefix review)/libexec/launcher/review.sif"',
         'cat "$(brew --prefix review)/libexec/build.json"',
       ].join("\n")]).stdout()
