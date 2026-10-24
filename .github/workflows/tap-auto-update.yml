@@ -59,8 +59,8 @@ jobs:
   resolve:
     name: Resolve Auto Update Slot
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily' && inputs.slot_id != 'codex-memoryd-daily') ||
-      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *' && github.event.schedule != '37 10 * * *')
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id != 'camp-daily' && inputs.slot_id != 'codex-memoryd-daily' && inputs.slot_id != 'review-hourly') ||
+      (github.event_name == 'schedule' && github.event.schedule != '23 10 * * *' && github.event.schedule != '37 10 * * *' && github.event.schedule != '47 * * * *')
     runs-on: ubuntu-latest
     outputs:
       slot_id: ${{ steps.slot.outputs.slot_id }}
@@ -187,6 +187,49 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'codex-memoryd-daily') ||
       (github.event_name == 'schedule' && github.event.schedule == '37 10 * * *')
     uses: ./.github/workflows/codex-memoryd-update.yml
+
+  review:
+    concurrency:
+      group: tap-publish
+      cancel-in-progress: false
+      queue: max
+    name: Refresh Review Formula
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.slot_id == 'review-hourly') ||
+      (github.event_name == 'schedule' && github.event.schedule == '47 * * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Verify upstream native appliances and render formula through Dagger
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        enable-github-summary: "true"
+        call: >-
+          -o "$RUNNER_TEMP/review-formula"
+          review-formula-update
+    - name: Commit verified Review formula
+      run: |
+        set -euo pipefail
+        gh auth setup-git
+        git pull --rebase origin "${GITHUB_REF_NAME}"
+        formula="$RUNNER_TEMP/review-formula/Formula/review.rb"
+        test -s "$formula"
+        if cmp -s "$formula" Formula/review.rb; then
+          echo 'Review formula already matches the verified source release.'
+          exit 0
+        fi
+        install -m 0644 "$formula" Formula/review.rb
+        version="$(sed -n 's/^  version "\([^"]*\)"$/\1/p' "$formula")"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add Formula/review.rb
+        git commit -m "Update review formula to v${version}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
 
   camp:
     concurrency:

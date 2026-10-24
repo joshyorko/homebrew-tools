@@ -1,5 +1,4 @@
 # Generated from dagger/tap-pipeline/src/library.ts package registry.
-brew "joshyorko/tools/review"
 brew "joshyorko/tools/t3code-cli-main"
 cask "joshyorko/tools/chatgpt-linux"
 cask "joshyorko/tools/codex-desktop-linux"

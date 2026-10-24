@@ -2362,8 +2362,8 @@ end
     ).trim().split(/\s+/)[0]
   }
 
-  private async buildReviewArtifacts() {
-    const release = resolveReviewRelease(await this.fetchJson("https://api.github.com/repos/joshyorko/review/releases/latest"))
+  private async buildReviewArtifacts(selected?: ReturnType<typeof resolveReviewRelease>) {
+    const release = selected ?? resolveReviewRelease(await this.fetchJson("https://api.github.com/repos/joshyorko/review/releases/latest"))
     const identity = await this.fetchJson(`https://api.github.com/repos/joshyorko/review/commits/${release.tagName}`) as { sha: string }
     let container = this.githubApiContainer()
     const artifacts = []
@@ -2378,22 +2378,24 @@ end
     return { version: release.version, upstreamTag: release.tagName, upstreamCommit: identity.sha, container, artifacts }
   }
 
-  private reviewReleaseMetadata(build: Awaited<ReturnType<TapPipeline["buildReviewArtifacts"]>>) {
-    const asset = build.artifacts[0]
-    return {
-      ...releaseMetadataForPackage("review", {
-        version: build.version,
-        releaseTag: `review-${build.version}`,
-        assetName: asset.assetName,
-        artifactSha256: asset.sha256,
-        downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/review-${build.version}/${asset.assetName}`,
-        releaseTitle: `Review ${build.version}`,
-        releaseNotes: `Verified native appliances mirrored from joshyorko/review ${build.upstreamTag} (${build.upstreamCommit}). The source release builds and tests native SIF appliances; this tap verifies digests, source identity and native Homebrew candidate installation without rebuilding the appliance.`,
-        commitMessage: `Update review formula to v${build.version}`,
-        upstream: { kind: "github_release", repo: "https://github.com/joshyorko/review", version: build.version, commit: build.upstreamCommit },
-      }),
-      artifacts: build.artifacts.map((asset) => ({ name: asset.assetName, sha256: asset.sha256 })),
+  /** Verify upstream native appliances and render the source-owned release formula. */
+  @func()
+  async reviewFormulaUpdate(githubToken?: Secret): Promise<Directory> {
+    this.setGithubToken(githubToken)
+    const release = resolveReviewRelease(await this.fetchJson("https://api.github.com/repos/joshyorko/review/releases/latest"))
+    const formula = await this.githubApiContainer().withDirectory("/tap", this.source).withExec([
+      "node", "/tap/scripts/render-review-formula.mjs", "--version", release.version,
+      "--x86-64-sha256", release.assets[0].digest.slice(7), "--aarch64-sha256", release.assets[1].digest.slice(7),
+    ]).stdout()
+    if (formula === await this.source.file("Formula/review.rb").contents()) {
+      return dag.directory().withNewFile("Formula/review.rb", formula)
+        .withNewFile("ci.log", "Unchanged stable source release: version, URLs and GitHub asset digests match the formula.\n")
     }
+    const build = await this.buildReviewArtifacts(release)
+    const platform = await build.container.platform()
+    const native = build.artifacts.find((asset) => asset.assetName.includes(platform.includes("arm64") ? "aarch64" : "x86_64"))!
+    const ciLog = await this.reviewCandidateCheck(build.container.file(native.artifactPath), build.version)
+    return dag.directory().withNewFile("Formula/review.rb", formula).withNewFile("ci.log", ciLog)
   }
 
   private async buildRccArtifacts(): Promise<RccBuild> {
@@ -3955,7 +3957,6 @@ end
     const tap = this.source
 
     switch (packageId) {
-      case "review": return json(this.reviewReleaseMetadata(await this.buildReviewArtifacts()))
 
       case "rcc": {
         const build = await this.buildRccArtifacts()
@@ -4106,23 +4107,6 @@ end
         version,
         revision: "1",
       })
-    }
-
-    if (packageId === "review") {
-      const build = await this.buildReviewArtifacts()
-      const platform = await build.container.platform()
-      const native = build.artifacts.find((asset) => asset.assetName.includes(platform.includes("arm64") ? "aarch64" : "x86_64"))!
-      const ciLog = await this.reviewCandidateCheck(build.container.file(native.artifactPath), build.version)
-      const formula = await build.container.withDirectory("/tap", tap).withExec([
-        "node", "/tap/scripts/render-review-formula.mjs", "--version", build.version,
-        "--x86-64-sha256", build.artifacts[0].sha256, "--aarch64-sha256", build.artifacts[1].sha256,
-      ]).stdout()
-      let bundle = dag.directory()
-        .withNewFile("homebrew/review.rb", formula)
-        .withNewFile("release.json", json(this.reviewReleaseMetadata(build)))
-        .withNewFile("ci.log", ciLog)
-      for (const asset of build.artifacts) bundle = bundle.withFile(`artifacts/${asset.assetName}`, build.container.file(asset.artifactPath))
-      return bundle
     }
 
     const ciLog = await this.ciCheck(

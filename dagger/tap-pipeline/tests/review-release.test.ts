@@ -13,9 +13,9 @@ test("Review accepts stable native assets with immutable digests and exact sourc
   for (const changed of [{ version: "0.2.0" }, { sha: "c".repeat(40) }, { arch: "aarch64" }]) assert.throws(() => verifyReviewArtifact(assets[0], sha, { version: "0.1.0", sha: commit, arch: "x86_64", ...changed }, "0.1.0", commit))
   assert.throws(() => verifyReviewArtifact(assets[0], "c".repeat(64), { version: "0.1.0", sha: commit, arch: "x86_64" }, "0.1.0", commit))
 })
-test("Review participates in hourly stable releases and recovery", () => {
+test("Review uses hourly formula refresh without duplicating source releases", () => {
   const entry = PACKAGE_REGISTRY.find(entry => entry.id === "review")!
-  assert.equal(entry.supportsReleaseBundle, true)
-  assert.equal(entry.autoUpdate.kind, "github_release_latest_tag")
+  assert.equal(entry.supportsReleaseBundle, false)
+  assert.equal(entry.autoUpdate.kind, "manual")
   assert.deepEqual(AUTO_UPDATE_SLOTS.find(slot => slot.id === "review-hourly")?.packageIds, ["review"])
 })

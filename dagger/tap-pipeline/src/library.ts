@@ -211,8 +211,8 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "http_binary_formula",
     homebrewPath: "Formula/review.rb",
     supportsPrCi: true,
-    supportsReleaseBundle: true,
-    autoUpdate: { kind: "github_release_latest_tag", stripPrefix: "v" },
+    supportsReleaseBundle: false,
+    autoUpdate: { kind: "manual", reason: "Dedicated hourly Dagger formula refresh uses source-owned Review releases." },
     upstream: { kind: "github_release", repo: "https://github.com/joshyorko/review" },
   },
   {

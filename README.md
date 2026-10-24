@@ -11,7 +11,7 @@ brew install joshyorko/tools/review
 review owner/repo
 ```
 
-Review's source release workflow builds native appliances and tests SIF startup on the native host. The tap's hourly `review-hourly` update resolves the latest stable source release, verifies both archives against GitHub SHA-256 digests and their source version, commit and architecture, then verifies native Homebrew candidate installation. The standard Dagger `release-bundle --package-id=review` publishes those unchanged appliances as `review-VERSION` in this tap and renders the formula against the tap's release URLs. `review-candidate-check` accepts unpublished bundles; `artifact-check --package-id=review` verifies the published formula.
+Review's source release workflow builds native appliances and tests SIF startup on the native host. Review releases are published only in `joshyorko/review`. The tap's hourly `review-hourly` workflow uses Dagger `review-formula-update` to resolve the latest stable release, verify both archives against GitHub SHA-256 digests and embedded source version, commit and architecture, then test native Homebrew candidate installation. It commits the rendered formula pointing directly to those source release assets. It does not rebuild or republish the appliances. `review-candidate-check` accepts unpublished bundles; `artifact-check --package-id=review` verifies the published formula.
 
 ## Dagger Platform
 
