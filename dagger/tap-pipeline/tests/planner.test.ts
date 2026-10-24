@@ -110,6 +110,7 @@ test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
 
 test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
+    review: "Formula/review.rb",
     "t3code-cli-main": "Formula/t3code-cli-main.rb",
     chatgpt: "Casks/chatgpt-linux.rb",
     devsy: "Formula/devsy.rb",
@@ -272,6 +273,7 @@ test("versioned cask leaves throw instead of claiming package evidence", () => {
 test("unknown production changes fail safe to the full source-build matrix", () => {
   const plan = ciPlanFromPaths(["dagger/tap-pipeline/src/install-checks.ts"])
   const expectedPackageIds = [
+    "review",
     "t3code-cli-main",
     "chatgpt",
     "headroom-self-hosted",
