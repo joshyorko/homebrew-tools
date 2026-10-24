@@ -197,6 +197,11 @@ function tapStagingCommands(packageId: string): string[] {
         "cp /tap/Casks/devpod-linux.rb \"$tap_dir/Casks/\"",
         "cp /tap/Formula/devpod-appindicator-runtime-tools.rb \"$tap_dir/Formula/\"",
       ]
+    case "review":
+      return [
+        'mkdir -p "$tap_dir/Formula"',
+        'cp /tap/Formula/review.rb "$tap_dir/Formula/"',
+      ]
     case "t3code-cli-main":
       return [
         "mkdir -p \"$tap_dir/Formula\"",
@@ -2931,6 +2936,41 @@ end
     )
   }
 
+  /** Install an unpublished candidate through the same Homebrew formula as the stable release. */
+  @func()
+  async reviewCandidateCheck(artifact: File, version: string): Promise<string> {
+    const container = dag.container().from(NODE_IMAGE)
+      .withDirectory("/tap", this.source)
+      .withFile("/artifacts/review.tar.gz", artifact)
+      .withExec(["sha256sum", "/artifacts/review.tar.gz"])
+    const checksum = (await container.stdout()).trim().split(/\s+/)[0]
+    const rendered = await container.withExec([
+      "node", "/tap/scripts/render-review-formula.mjs", "--version", version,
+      "--x86-64-sha256", checksum, "--aarch64-sha256", checksum,
+      "--candidate-url", "file:///artifacts/review.tar.gz",
+    ]).stdout()
+    const tap = dag.directory().withNewFile("Formula/review.rb", rendered)
+    return dag.container().from(BREW_IMAGE)
+      .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
+      .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
+      .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
+      .withDirectory("/tap", tap)
+      .withFile("/smoke-review-sif.sh", this.source.file("scripts/smoke-review-sif.sh"))
+      .withFile("/artifacts/review.tar.gz", artifact)
+      .withExec(["bash", "-lc", [
+        "set -euo pipefail",
+        'tap_dir="$(brew --repository)/Library/Taps/test/homebrew-tap"',
+        ...tapStagingCommands("review"),
+        "brew trust --formula test/tap/review",
+        "brew install test/tap/review",
+        "brew test test/tap/review",
+        "review --help",
+        'bash /smoke-review-sif.sh "$(brew --prefix review)/libexec/launcher/review.sif"',
+        'test -s "$(brew --prefix review)/libexec/launcher/review.sif"',
+        'cat "$(brew --prefix review)/libexec/build.json"',
+      ].join("\n")]).stdout()
+  }
+
   @func()
   async artifactCheck(packageId: string): Promise<string> {
     const entry = this.packageEntry(packageId)
@@ -3112,6 +3152,8 @@ end
     const ciConversionCommit = codexDesktopConversionCommit || "patchraptor-main"
 
     switch (packageId) {
+      case "review":
+        return this.artifactCheck("review")
       case "codex-memoryd":
         return this.artifactCheck("codex-memoryd")
       case "rcc": {

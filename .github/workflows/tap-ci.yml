@@ -44,7 +44,7 @@ jobs:
         set -euo pipefail
         node scripts/test-t3-dagger-cli.mjs
         npm test --prefix dagger/tap-pipeline
-        node --test scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
+        node --test scripts/render-review-formula.test.mjs scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
         npm test --prefix dagger/buzz-linux-smoke
 
   plan:

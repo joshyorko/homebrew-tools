@@ -23,6 +23,12 @@ const cask = (homebrewPath: string, name: string, commands: string[] = [], syste
 })
 
 const plans: Record<string, ArtifactCheckPlan> = {
+  review: formula("Formula/review.rb", "review", [
+    "brew test test/tap/review",
+    "review --help",
+    'test -s "$(brew --prefix review)/libexec/launcher/review.sif"',
+    'test -f "$(brew --prefix review)/libexec/build.json"',
+  ]),
   "t3code-cli-main": formula("Formula/t3code-cli-main.rb", "t3code-cli-main", [
     "monitor=\"$(brew --prefix t3code-cli-main)/libexec/dist/resource-monitor/linux-x64/t3-resource-monitor\"",
     "test -x \"$monitor\"",
