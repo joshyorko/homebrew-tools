@@ -212,6 +212,7 @@ jobs:
         call: >-
           -o "$RUNNER_TEMP/review-formula"
           review-formula-update
+          --github-token=env://GH_TOKEN
     - name: Commit verified Review formula
       run: |
         set -euo pipefail
