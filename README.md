@@ -2,6 +2,17 @@
 
 This tap contains Homebrew casks and formulae for tools maintained by [@joshyorko](https://github.com/joshyorko).
 
+## Review
+
+Review packages the GitHub workbench and Luna Factory for Linux:
+
+```sh
+brew install joshyorko/tools/review
+review owner/repo
+```
+
+Review's release workflow builds native appliances and tests SIF startup on the native host. The tap's Dagger pipeline verifies Homebrew candidate installation before publication. `review-candidate-check` accepts unpublished bundles; `artifact-check --package-id=review` verifies the published formula.
+
 ## Dagger Platform
 
 When GitHub releases are unavailable, build a local recovery export without installing any packages first:

@@ -207,6 +207,15 @@ export function codexDesktopBuildVersion(
 
 export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
   {
+    id: "review",
+    kind: "http_binary_formula",
+    homebrewPath: "Formula/review.rb",
+    supportsPrCi: true,
+    supportsReleaseBundle: false,
+    autoUpdate: { kind: "manual", reason: "Published from verified native Review release bundles." },
+    upstream: { kind: "github_release", repo: "https://github.com/joshyorko/review" },
+  },
+  {
     id: "t3code-cli-main",
     kind: "source_build_node_formula",
     homebrewPath: "Formula/t3code-cli-main.rb",
@@ -577,6 +586,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     "codex-desktop-linux",
     ["Casks/codex-desktop.rb", "config/codex-desktop-linux-features.json"],
   ],
+  ["review", ["Formula/review.rb", "scripts/render-review-formula.mjs", "scripts/smoke-review-sif.sh"]],
   ["codex-memoryd", ["Formula/codex-memoryd.rb", "scripts/fill-codex-memoryd-checksums.mjs", "scripts/codex-memoryd-update.mjs", "scripts/smoke-codex-memoryd-homebrew.sh", ".github/workflows/codex-memoryd-update.yml"]],
   ["headroom-self-hosted", ["Formula/headroom-self-hosted.rb"]],
   ["devsy", ["Formula/devsy.rb"]],
