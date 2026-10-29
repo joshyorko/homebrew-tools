@@ -6,6 +6,8 @@ on:
     - .github/workflows/codex-memoryd-update.yml
     - scripts/codex-memoryd-update.mjs
     - scripts/codex-memoryd-update.test.mjs
+    - scripts/verify_codex_memoryd_release.py
+    - scripts/test_verify_codex_memoryd_release.py
     - Formula/codex-memoryd.rb
     - scripts/smoke-codex-memoryd-homebrew.sh
     - .github/workflows/codex-memoryd-homebrew.yml
@@ -16,6 +18,8 @@ on:
     - .github/workflows/codex-memoryd-update.yml
     - scripts/codex-memoryd-update.mjs
     - scripts/codex-memoryd-update.test.mjs
+    - scripts/verify_codex_memoryd_release.py
+    - scripts/test_verify_codex_memoryd_release.py
     - Formula/codex-memoryd.rb
     - scripts/smoke-codex-memoryd-homebrew.sh
     - .github/workflows/codex-memoryd-homebrew.yml
@@ -25,6 +29,29 @@ permissions:
   contents: read
 
 jobs:
+  release-guards:
+    name: Signed-release comparison guards
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Exercise synthetic release verification
+      run: python3 -B -m unittest discover -s scripts -p test_verify_codex_memoryd_release.py -v
+
+  macos-homebrew:
+    name: macOS Homebrew foreground smoke
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_FROM_API: 1
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Install and test the checked-out formula
+      run: |
+        set -euo pipefail
+        brew install --formula ./Formula/codex-memoryd.rb
+        brew test ./Formula/codex-memoryd.rb
+
   wolfi-linuxbrew:
     name: Work-JATT Wolfi Linuxbrew smoke
     runs-on: ubuntu-latest

@@ -776,37 +776,54 @@ The tap-pipeline test suite covers:
 
 ## Codex MemoryD
 
-`joshyorko/tools/codex-memoryd` tracks merged commits on
+`joshyorko/tools/codex-memoryd` publishes an approved, released commit from
 `joshyorko/codex-memoryd`'s default branch, `master`. The
 `codex-memoryd-daily` Tap Auto Update slot runs at 10:37 UTC daily and can
-also be dispatched immediately after a merge:
+also be dispatched immediately after an approved source commit is configured:
 
 ```sh
 gh workflow run tap-auto-update.yml --repo joshyorko/homebrew-tools -f slot_id=codex-memoryd-daily
 ```
 
-The native builder pins one source commit, builds Linux x86_64/ARM64 and
-macOS Intel/Apple Silicon archives, runs source regressions and each native
-lifecycle check, then tests the candidate through Wolfi Linuxbrew. Publication
-uses the shared `tap-publish` queue and refuses to advance the formula if
-upstream `master` moved during the build. A subsequent scheduled run picks up
-the newer commit. Unchanged commits skip rebuilding.
+The updater builds and publishes only when the repository variable
+`CODEX_MEMORYD_APPROVED_SOURCE_SHA` equals the full current upstream `master`
+commit. An unset or different value leaves the formula unchanged. The native
+builder checks that the approved source includes the PID-safety fix, builds
+Linux x86_64/ARM64 and macOS Intel/Apple Silicon archives, and tests Linux
+managed lifecycle and macOS fail-closed/foreground behavior. Publication uses
+the shared `tap-publish` queue and refuses to advance the formula if upstream
+`master` moved during the build. It also requires an immutable upstream release
+for that exact commit, verifies its signed attestations, and compares each tap
+build with the signed upstream binary. The tap archives contain the exact
+verified upstream archive bytes. Unchanged commits skip rebuilding.
 
 ```sh
 brew update
 brew install joshyorko/tools/codex-memoryd
-# For an existing installation:
-codex-memoryd down
+# For an existing installation, first stop the old daemon through its trusted
+# supervisor or original terminal, and confirm that it has stopped.
 brew upgrade joshyorko/tools/codex-memoryd
-codex-memoryd up
 ```
+
+Older native binaries can signal an unrelated process through a stale PID file.
+Do not use their PID-file shutdown or restart commands to perform the upgrade.
+If ownership cannot be established, leave the runtime untouched. After the old
+daemon is confirmed stopped and its endpoint is unused, remove only its stale
+PID file and adjacent `.identity` file; preserve the database and configuration.
+On Linux, start the verified new binary with `codex-memoryd up` after confirming
+its source includes the PID-safety fix. On macOS, managed native `up`, `down`,
+and `restart` fail closed; run foreground `codex-memoryd serve` under a trusted
+supervisor or use the container. The currently published tap version may predate
+the fix until an approved update is published.
 
 Homebrew versions use the source commit's UTC timestamp plus its short SHA,
 so merged builds upgrade from the original 0.1.0 formula. The binary's
 `--version` still reports the upstream Cargo package version; the tap release's
-per-target provenance records identify the exact merged commit. Artifacts and
-SHA256SUMS are retained in this tap's releases and never overwritten. Upgrade
-and uninstall smoke checks verify that the user's database survives.
+per-target provenance records identify the exact merged commit and upstream
+release archive. Those JSON records are unsigned; the byte-identical upstream
+archives carry the signed provenance. Artifacts and SHA256SUMS are retained in
+this tap's releases and never overwritten. Upgrade and uninstall smoke checks
+verify that the user's database survives.
 
 The Dagger registry exposes the slot and source status, but its single-platform
 `release-bundle` method does not build this package. Use Tap Auto Update's

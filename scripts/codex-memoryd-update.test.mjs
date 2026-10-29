@@ -27,15 +27,38 @@ test("commit-derived versions are deterministic and reject malformed source iden
   assert.throws(() => sourceVersion({ sha: commit, commit: { committer: { date: "invalid" } } }), /date/)
 })
 
-test("formula rendering preserves native lifecycle and all four platforms", () => {
+test("formula rendering preserves safe foreground testing and all four platforms", () => {
   const rendered = renderFormula(formula, version, checksums)
   assert.match(rendered, new RegExp(`version "${version}"`))
   assert.equal((rendered.match(/homebrew-tools\/releases\/download/g) ?? []).length, 4)
   for (const target of TARGETS) assert.ok(rendered.includes(`codex-memoryd-#{version}-${target}.tar.gz`))
-  assert.ok(rendered.includes('system bin/"codex-memoryd", "up"'))
+  assert.ok(rendered.includes('"serve", "--bind"'))
+  assert.ok(!rendered.includes('system bin/"codex-memoryd", "down"'))
   assert.ok(rendered.includes('assert_path_exists testpath/"runtime/memory.db"'))
-  assert.ok(rendered.includes("tracks merged master commits"))
+  assert.ok(rendered.includes("tracks approved released master commits"))
   assert.ok(!rendered.includes("Pinned to the immutable"))
+})
+
+test("scheduled publication requires the exact operator-approved source commit", () => {
+  const publisher = readFileSync(new URL("../.github/workflows/codex-memoryd-update.yml", import.meta.url), "utf8")
+  const guards = publisher.match(/vars\.CODEX_MEMORYD_APPROVED_SOURCE_SHA != '' &&\s+needs\.resolve\.outputs\.commit == vars\.CODEX_MEMORYD_APPROVED_SOURCE_SHA/g) ?? []
+  assert.equal(guards.length, 2)
+  assert.match(publisher, /python3 scripts\/smoke_release_candidate\.py/)
+  assert.match(publisher, /fea268928b197b09ca602a73e8f26bf867fd2e9e/)
+  const verified = publisher.indexOf("Verify signed immutable upstream release and compare tap builds")
+  const published = publisher.indexOf("Publish retained artifacts and advance the main formula")
+  assert.ok(verified >= 0 && verified < published)
+  assert.match(publisher, /gh release verify-asset/)
+  assert.match(publisher, /gh attestation verify/)
+  assert.match(publisher, /python3 scripts\/verify_codex_memoryd_release\.py/)
+})
+
+test("consumer smoke and upgrade guidance do not call legacy PID-file shutdown", () => {
+  const smoke = readFileSync(new URL("./smoke-codex-memoryd-homebrew.sh", import.meta.url), "utf8")
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8")
+  const section = readme.split("## Codex MemoryD\n")[1].split("\n## License")[0]
+  assert.doesNotMatch(smoke, /codex-memoryd\s+(?:down|restart)/)
+  assert.doesNotMatch(section, /^codex-memoryd\s+(?:down|restart)/m)
 })
 
 test("a partial or ambiguous artifact set cannot update the formula", () => {

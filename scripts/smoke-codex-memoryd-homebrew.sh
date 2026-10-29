@@ -17,47 +17,54 @@ brew tap-new --no-git joshyorko/tools >/dev/null
 mkdir -p "$tap_dir/Formula"
 cp "$formula_path" "$tap_dir/Formula/codex-memoryd.rb"
 
-stop_daemon() {
-  local stop_output pid state
-  stop_output="$(mktemp)"
-  if codex-memoryd down >"$stop_output" 2>&1; then
-    cat "$stop_output"
-    rm -f "$stop_output"
-    return 0
-  fi
-
-  pid="$(jq -r '.pid // empty' < <(codex-memoryd status 2>/dev/null) || true)"
-  state=""
-  if [[ -n "$pid" && -r "/proc/$pid/stat" ]]; then
-    state="$(awk '{print $3}' "/proc/$pid/stat")"
-  fi
-  if [[ "$state" != Z ]]; then
-    cat "$stop_output" >&2
-    rm -f "$stop_output"
-    return 1
-  fi
-
-  rm -f "$HOME/.codex-memoryd/codex-memoryd.pid"
-  rm -f "$stop_output"
-}
-
-assert_stopped() {
-  local status
-  status="$(codex-memoryd status)"
-  jq -e '.process == "stopped" and .pid == null' <<<"$status" >/dev/null
-}
-
-trap 'stop_daemon || true' EXIT
-
 brew install joshyorko/tools/codex-memoryd
 codex-memoryd --version
+brew test joshyorko/tools/codex-memoryd
 codex-memoryd init --bind 127.0.0.1:8989
-codex-memoryd up
-codex-memoryd status
-stop_daemon
-assert_stopped
-
 db="$HOME/.codex-memoryd/memory.db"
+export MEMORYD_TEST_DB="$db"
+python3 - <<'PY'
+import json
+import os
+import socket
+import subprocess
+import time
+import urllib.error
+import urllib.request
+
+with socket.socket() as listener:
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+bind = f"127.0.0.1:{port}"
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+child = subprocess.Popen(
+    ["codex-memoryd", "--db", os.environ["MEMORYD_TEST_DB"], "serve", "--bind", bind],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+)
+try:
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if child.poll() is not None:
+            raise RuntimeError("foreground MemoryD exited before health check")
+        try:
+            with opener.open(f"http://{bind}/healthz", timeout=1) as response:
+                if json.load(response).get("ok") is True:
+                    break
+        except (OSError, urllib.error.URLError):
+            time.sleep(0.1)
+    else:
+        raise RuntimeError("foreground MemoryD health check timed out")
+finally:
+    # This is the unreaped child started above, never a PID read from disk.
+    if child.poll() is None:
+        child.terminate()
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        if child.poll() is None:
+            child.kill()
+        child.wait(timeout=5)
+PY
 test -s "$db"
 db_sha="$(sha256sum "$db" | awk '{print $1}')"
 

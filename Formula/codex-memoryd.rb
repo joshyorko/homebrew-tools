@@ -5,7 +5,7 @@ class CodexMemoryd < Formula
   license "MIT"
 
   livecheck do
-    skip "Tap auto-update tracks merged master commits."
+    skip "Tap auto-update tracks approved released master commits."
   end
 
   on_linux do
@@ -37,15 +37,62 @@ class CodexMemoryd < Formula
   end
 
   test do
+    require "net/http"
+    require "socket"
+
     ENV["HOME"] = (testpath/"home").to_s
     ENV["CODEX_MEMORYD_HOME"] = (testpath/"runtime").to_s
     system bin/"codex-memoryd", "--version"
+    listener = TCPServer.new("127.0.0.1", 0)
+    port = listener.addr[1]
+    listener.close
+    bind = "127.0.0.1:#{port}"
+    system bin/"codex-memoryd", "init", "--bind", bind
+    pid = spawn (bin/"codex-memoryd").to_s, "--db", (testpath/"runtime/memory.db").to_s,
+                "serve", "--bind", bind, out: File::NULL, err: File::NULL
+    reaped = false
     begin
-      system bin/"codex-memoryd", "init", "--bind", "127.0.0.1:8989"
-      system bin/"codex-memoryd", "up"
-      assert_match '"ok":true', shell_output("#{bin}/codex-memoryd status")
+      response = nil
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
+      while Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        if Process.waitpid(pid, Process::WNOHANG)
+          reaped = true
+          raise "foreground MemoryD exited before the health check"
+        end
+        begin
+          http = Net::HTTP.new("127.0.0.1", port, nil)
+          http.open_timeout = http.read_timeout = 1
+          response = http.get("/healthz")
+          break if response.code == "200"
+        rescue Errno::ECONNREFUSED, Errno::ECONNRESET, Net::OpenTimeout, Net::ReadTimeout, IOError
+          # Wait only for the owned foreground process to become ready.
+        end
+        sleep 0.1
+      end
+      assert response, "foreground MemoryD health check timed out"
+      assert_equal "200", response.code
+      assert_match(/"ok"\s*:\s*true/, response.body)
     ensure
-      system bin/"codex-memoryd", "down"
+      unless reaped
+        begin
+          if Process.waitpid(pid, Process::WNOHANG).nil?
+            Process.kill("TERM", pid)
+            50.times do
+              if Process.waitpid(pid, Process::WNOHANG)
+                reaped = true
+                break
+              end
+              sleep 0.1
+            end
+            unless reaped
+              Process.kill("KILL", pid)
+              Process.waitpid(pid)
+            end
+          end
+        rescue Errno::ESRCH, Errno::ECHILD
+          # The child has exited; do not signal any PID from a state file.
+        end
+      end
     end
     assert_path_exists testpath/"runtime/memory.db"
   end
