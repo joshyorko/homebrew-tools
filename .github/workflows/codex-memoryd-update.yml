@@ -88,6 +88,7 @@ jobs:
         rustup default 1.88.0
         rustup target add "$TARGET"
         export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+        source scripts/release-native-build-env.sh
         cargo build --locked --release --target "$TARGET" --bin codex-memoryd
     - name: Run source regressions
       if: matrix.target == 'x86_64-unknown-linux-gnu'
