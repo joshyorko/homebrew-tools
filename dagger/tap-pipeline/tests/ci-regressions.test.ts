@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -41,6 +41,51 @@ test("Devsy Desktop package CI styles the local cask fixture", () => {
 
   assert.match(devsyDesktopCi, /brew style --cask test\/tap\/devsy-desktop/)
   assert.doesNotMatch(devsyDesktopCi, /brew audit --cask test\/tap\/devsy-desktop/)
+})
+
+test("Devsy package CI trusts only staged fixtures before auditing and installing them", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const cases = [
+    ["devsy", 'case "devsy": {', 'case "devsy-desktop": {'],
+    ["devsy-desktop", 'case "devsy-desktop": {', 'case "fizzy-cli-master": {'],
+  ]
+
+  for (const [packageId, start, end] of cases) {
+    const tempRoot = mkdtempSync(join(tmpdir(), "devsy-brew-trust-"))
+    try {
+      const brew = join(tempRoot, "brew")
+      writeFileSync(brew, [
+        "#!/usr/bin/env bash",
+        "set -eu",
+        'case "$*" in',
+        '  "trust --formula test/tap/devsy") touch "$FAKE_BREW_STATE/formula" ;;',
+        '  "trust --cask test/tap/devsy-desktop") touch "$FAKE_BREW_STATE/cask" ;;',
+        '  "audit --formula test/tap/devsy"|"install test/tap/devsy"|"test --verbose test/tap/devsy") test -f "$FAKE_BREW_STATE/formula" ;;',
+        '  "style --cask test/tap/devsy-desktop"|"install --cask test/tap/devsy-desktop") test -f "$FAKE_BREW_STATE/cask" ;;',
+        '  *) printf "unexpected brew command: %s\\n" "$*" >&2; exit 2 ;;',
+        "esac",
+      ].join("\n"))
+      chmodSync(brew, 0o755)
+      const commands: string[] = []
+      for (const line of section(pipeline, start, end).split("\n")) {
+        const match = line.match(/^\s*"(brew [^"]+)",\s*$/)
+        if (match) commands.push(match[1])
+      }
+      assert.ok(commands.includes("brew audit --formula test/tap/devsy"), packageId)
+      assert.ok(commands.includes("brew install test/tap/devsy"), packageId)
+      if (packageId === "devsy-desktop") {
+        assert.ok(commands.includes("brew style --cask test/tap/devsy-desktop"))
+        assert.ok(commands.includes("brew install --cask test/tap/devsy-desktop"))
+      }
+      const result = spawnSync("bash", ["-e", "-c", commands.join("\n")], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${tempRoot}:${process.env.PATH ?? ""}`, FAKE_BREW_STATE: tempRoot },
+      })
+      assert.equal(result.status, 0, `${packageId}: ${result.stderr}`)
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
+  }
 })
 
 test("Headroom follows the pushed self-hosted branch and installs the bundled proxy wheelhouse", () => {

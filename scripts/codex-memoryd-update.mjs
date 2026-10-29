@@ -38,7 +38,7 @@ export function renderFormula(formula, version, checksums) {
     digests.set(match[2], match[1])
   }
   let rendered = formula.replace(/^  version "[^"]+"$/m, `  version "${version}"`)
-    .replace(/^    skip "[^"]+"$/m, '    skip "Tap auto-update tracks merged master commits."')
+    .replace(/^    skip "[^"]+"$/m, '    skip "Tap auto-update tracks approved released master commits."')
   for (const target of TARGETS) {
     const asset = `codex-memoryd-${version}-${target}.tar.gz`
     const digest = digests.get(asset)

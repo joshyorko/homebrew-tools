@@ -10,54 +10,25 @@ command -v brew >/dev/null
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALL_FROM_API=1
-export HOME="$(mktemp -d)"
+runtime_dir="$(mktemp -d)"
+export CODEX_MEMORYD_HOME="$runtime_dir/runtime"
+export HOMEBREW_CACHE="$runtime_dir/homebrew-cache"
+export HOMEBREW_LOGS="$runtime_dir/homebrew-logs"
+export XDG_CACHE_HOME="$runtime_dir/xdg-cache"
+export XDG_CONFIG_HOME="$runtime_dir/xdg-config"
 
 tap_dir="$(brew --repository)/Library/Taps/joshyorko/homebrew-tools"
 brew tap-new --no-git joshyorko/tools >/dev/null
 mkdir -p "$tap_dir/Formula"
 cp "$formula_path" "$tap_dir/Formula/codex-memoryd.rb"
 
-stop_daemon() {
-  local stop_output pid state
-  stop_output="$(mktemp)"
-  if codex-memoryd down >"$stop_output" 2>&1; then
-    cat "$stop_output"
-    rm -f "$stop_output"
-    return 0
-  fi
-
-  pid="$(jq -r '.pid // empty' < <(codex-memoryd status 2>/dev/null) || true)"
-  state=""
-  if [[ -n "$pid" && -r "/proc/$pid/stat" ]]; then
-    state="$(awk '{print $3}' "/proc/$pid/stat")"
-  fi
-  if [[ "$state" != Z ]]; then
-    cat "$stop_output" >&2
-    rm -f "$stop_output"
-    return 1
-  fi
-
-  rm -f "$HOME/.codex-memoryd/codex-memoryd.pid"
-  rm -f "$stop_output"
-}
-
-assert_stopped() {
-  local status
-  status="$(codex-memoryd status)"
-  jq -e '.process == "stopped" and .pid == null' <<<"$status" >/dev/null
-}
-
-trap 'stop_daemon || true' EXIT
-
 brew install joshyorko/tools/codex-memoryd
 codex-memoryd --version
+brew test joshyorko/tools/codex-memoryd
 codex-memoryd init --bind 127.0.0.1:8989
-codex-memoryd up
-codex-memoryd status
-stop_daemon
-assert_stopped
-
-db="$HOME/.codex-memoryd/memory.db"
+db="$CODEX_MEMORYD_HOME/memory.db"
+# The formula test above owns a disposable foreground child and checks health.
+# The initialized database below independently checks upgrade persistence.
 test -s "$db"
 db_sha="$(sha256sum "$db" | awk '{print $1}')"
 
@@ -70,7 +41,7 @@ brew upgrade joshyorko/tools/codex-memoryd
 test -s "$db"
 test "$(sha256sum "$db" | awk '{print $1}')" = "$db_sha"
 
-brew uninstall codex-memoryd
+brew uninstall --force joshyorko/tools/codex-memoryd
 test -s "$db"
 test "$(sha256sum "$db" | awk '{print $1}')" = "$db_sha"
 
