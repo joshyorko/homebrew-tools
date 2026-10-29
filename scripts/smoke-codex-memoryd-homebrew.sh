@@ -12,6 +12,10 @@ export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALL_FROM_API=1
 runtime_dir="$(mktemp -d)"
 export CODEX_MEMORYD_HOME="$runtime_dir/runtime"
+export HOMEBREW_CACHE="$runtime_dir/homebrew-cache"
+export HOMEBREW_LOGS="$runtime_dir/homebrew-logs"
+export XDG_CACHE_HOME="$runtime_dir/xdg-cache"
+export XDG_CONFIG_HOME="$runtime_dir/xdg-config"
 
 tap_dir="$(brew --repository)/Library/Taps/joshyorko/homebrew-tools"
 brew tap-new --no-git joshyorko/tools >/dev/null
