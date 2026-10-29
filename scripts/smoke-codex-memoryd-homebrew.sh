@@ -37,7 +37,7 @@ brew upgrade joshyorko/tools/codex-memoryd
 test -s "$db"
 test "$(sha256sum "$db" | awk '{print $1}')" = "$db_sha"
 
-brew uninstall codex-memoryd
+brew uninstall --force joshyorko/tools/codex-memoryd
 test -s "$db"
 test "$(sha256sum "$db" | awk '{print $1}')" = "$db_sha"
 
