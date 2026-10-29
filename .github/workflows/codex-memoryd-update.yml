@@ -19,6 +19,7 @@ jobs:
       version: ${{ steps.source.outputs.version }}
       source_version: ${{ steps.source.outputs.source_version }}
       needs_update: ${{ steps.source.outputs.needs_update }}
+      released_source: ${{ steps.source.outputs.released_source }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -39,20 +40,33 @@ jobs:
         [[ "$source_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
         gh api 'repos/joshyorko/homebrew-tools/contents/Formula/codex-memoryd.rb?ref=main' --jq .content | base64 -d > "$RUNNER_TEMP/current.rb"
         current="$(sed -n 's/^  version "\([^"]*\)"$/\1/p' "$RUNNER_TEMP/current.rb")"
+        # A published immutable release is the publication approval. An absent,
+        # mutable, ambiguous, or differently sourced release must not build.
+        tag="v$source_version"
+        releases="$(gh api --paginate --slurp 'repos/joshyorko/codex-memoryd/releases?per_page=100')"
+        released_source=false
+        if jq -e --arg tag "$tag" \
+          'add | map(select(.tag_name == $tag)) | length == 1 and (.[0] | .draft == false and .prerelease == false and .immutable == true)' \
+          <<<"$releases" >/dev/null; then
+          tag_commit="$(gh api "repos/joshyorko/codex-memoryd/commits/$tag" --jq .sha)"
+          if [ "$tag_commit" = "$commit" ]; then released_source=true; fi
+        fi
         {
           echo "commit=$commit"
           echo "version=$version"
           echo "source_version=$source_version"
           echo "needs_update=$([ "$current" != "$version" ] && echo true || echo false)"
+          echo "released_source=$released_source"
         } >> "$GITHUB_OUTPUT"
-        echo "Codex MemoryD master $commit: installed formula $current, build $version" >> "$GITHUB_STEP_SUMMARY"
+        echo "Codex MemoryD master $commit: installed formula $current, build $version, matching immutable release $released_source" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: resolve
     if: >-
       needs.resolve.outputs.needs_update == 'true' &&
-      vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA != '' &&
-      needs.resolve.outputs.commit == vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA
+      needs.resolve.outputs.released_source == 'true' &&
+      (vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA == '' ||
+       needs.resolve.outputs.commit == vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA)
     strategy:
       fail-fast: false
       matrix:
@@ -132,8 +146,9 @@ jobs:
   publish:
     needs: [resolve, build]
     if: >-
-      vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA != '' &&
-      needs.resolve.outputs.commit == vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA
+      needs.resolve.outputs.released_source == 'true' &&
+      (vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA == '' ||
+       needs.resolve.outputs.commit == vars.CODEX_MEMORYD_APPROVED_SOURCE_SHA)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

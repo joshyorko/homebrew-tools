@@ -43,10 +43,12 @@ test("formula rendering preserves safe foreground testing and all four platforms
   assert.ok(!rendered.includes("Pinned to the immutable"))
 })
 
-test("scheduled publication requires the exact operator-approved source commit", () => {
+test("scheduled publication requires a matching released source", () => {
   const publisher = readFileSync(new URL("../.github/workflows/codex-memoryd-update.yml", import.meta.url), "utf8")
-  const guards = publisher.match(/vars\.CODEX_MEMORYD_APPROVED_SOURCE_SHA != '' &&\s+needs\.resolve\.outputs\.commit == vars\.CODEX_MEMORYD_APPROVED_SOURCE_SHA/g) ?? []
+  const guards = publisher.match(/needs\.resolve\.outputs\.released_source == 'true'/g) ?? []
   assert.equal(guards.length, 2)
+  const optionalPins = publisher.match(/\(vars\.CODEX_MEMORYD_APPROVED_SOURCE_SHA == '' \|\|\s+needs\.resolve\.outputs\.commit == vars\.CODEX_MEMORYD_APPROVED_SOURCE_SHA\)/g) ?? []
+  assert.equal(optionalPins.length, 2)
   assert.match(publisher, /python3 scripts\/smoke_release_candidate\.py/)
   assert.match(publisher, /fea268928b197b09ca602a73e8f26bf867fd2e9e/)
   const verified = publisher.indexOf("Verify signed immutable upstream release and compare tap builds")
@@ -55,6 +57,70 @@ test("scheduled publication requires the exact operator-approved source commit",
   assert.match(publisher, /gh release verify-asset/)
   assert.match(publisher, /gh attestation verify/)
   assert.match(publisher, /python3 scripts\/verify_codex_memoryd_release\.py/)
+})
+
+test("resolver gates updates on one immutable stable release of the exact source", () => {
+  const publisher = readFileSync(new URL("../.github/workflows/codex-memoryd-update.yml", import.meta.url), "utf8")
+  const step = publisher.split("    - name: Pin the latest merged source\n")[1].split("\n  build:\n")[0]
+  const script = step.split("      run: |\n")[1].split("\n").map((line) => line.slice(8)).join("\n")
+  const fixture = mkdtempSync(join(tmpdir(), "memoryd-release-resolver-"))
+  const fakeGh = join(fixture, "gh")
+  const fakeGhSource = [
+    "#!/usr/bin/env node",
+    "const a = process.argv.slice(2)",
+    "if (a[0] !== 'api') process.exit(2)",
+    "if (a.includes('--paginate')) {",
+    "  if (process.env.FIXTURE_API_FAILURE === '1') process.exit(1)",
+    "  console.log(JSON.stringify([JSON.parse(process.env.FIXTURE_RELEASES)])); process.exit(0)",
+    "}",
+    "const target = a[1]",
+    "const commit = process.env.FIXTURE_COMMIT",
+    "if (target.endsWith('/commits/master')) console.log(JSON.stringify({sha:commit,commit:{committer:{date:'2026-10-02T15:46:24Z'}}}))",
+    "else if (target.includes('/contents/Cargo.toml?ref=')) console.log(Buffer.from('[package]\\nversion = \"0.1.1\"\\n').toString('base64'))",
+    "else if (target.includes('/contents/Formula/codex-memoryd.rb?ref=main')) console.log(Buffer.from('  version \"old\"\\n').toString('base64'))",
+    "else if (target.endsWith('/commits/v0.1.1')) console.log(process.env.FIXTURE_TAG_COMMIT)",
+    "else process.exit(2)",
+  ].join("\n") + "\n"
+  writeFileSync(fakeGh, fakeGhSource)
+  chmodSync(fakeGh, 0o755)
+  const release = {tag_name: "v0.1.1", draft: false, prerelease: false, immutable: true}
+  const cases = [
+    {name: "matching", releases: [release], expected: "true"},
+    {name: "no release", releases: [], expected: "false"},
+    {name: "wrong source", releases: [release], tagCommit: "b".repeat(40), expected: "false"},
+    {name: "draft", releases: [{...release, draft: true}], expected: "false"},
+    {name: "prerelease", releases: [{...release, prerelease: true}], expected: "false"},
+    {name: "mutable", releases: [{...release, immutable: false}], expected: "false"},
+    {name: "wrong version", releases: [{...release, tag_name: "v0.1.0"}], expected: "false"},
+    {name: "ambiguous", releases: [release, {...release, immutable: false}], expected: "false"},
+  ]
+  try {
+    for (const entry of cases) {
+      const output = join(fixture, "output")
+      const summary = join(fixture, "summary")
+      writeFileSync(output, "")
+      writeFileSync(summary, "")
+      const result = spawnSync("bash", ["-c", script], {
+        env: {...process.env, PATH: fixture + ":" + process.env.PATH, RUNNER_TEMP: fixture,
+          GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, FIXTURE_COMMIT: commit,
+          FIXTURE_TAG_COMMIT: entry.tagCommit ?? commit, FIXTURE_RELEASES: JSON.stringify(entry.releases)},
+        encoding: "utf8",
+      })
+      assert.equal(result.status, 0, entry.name + ": " + result.stderr)
+      assert.match(readFileSync(output, "utf8"), new RegExp("^released_source=" + entry.expected + "$", "m"), entry.name)
+    }
+    const output = join(fixture, "output")
+    writeFileSync(output, "")
+    const failed = spawnSync("bash", ["-c", script], {
+      env: {...process.env, PATH: fixture + ":" + process.env.PATH, RUNNER_TEMP: fixture,
+        GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: join(fixture, "summary"), FIXTURE_COMMIT: commit,
+        FIXTURE_TAG_COMMIT: commit, FIXTURE_RELEASES: "[]", FIXTURE_API_FAILURE: "1"},
+      encoding: "utf8",
+    })
+    assert.notEqual(failed.status, 0, "a release API failure must not allow publication")
+  } finally {
+    rmSync(fixture, {recursive: true, force: true})
+  }
 })
 
 test("consumer smoke and upgrade guidance do not call legacy PID-file shutdown", () => {

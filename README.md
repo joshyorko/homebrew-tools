@@ -779,15 +779,16 @@ The tap-pipeline test suite covers:
 `joshyorko/tools/codex-memoryd` publishes an approved, released commit from
 `joshyorko/codex-memoryd`'s default branch, `master`. The
 `codex-memoryd-daily` Tap Auto Update slot runs at 10:37 UTC daily and can
-also be dispatched immediately after an approved source commit is configured:
+also be dispatched after the approved source is released:
 
 ```sh
 gh workflow run tap-auto-update.yml --repo joshyorko/homebrew-tools -f slot_id=codex-memoryd-daily
 ```
 
-The updater builds and publishes only when the repository variable
-`CODEX_MEMORYD_APPROVED_SOURCE_SHA` equals the full current upstream `master`
-commit. An unset or different value leaves the formula unchanged. The native
+The updater builds and publishes only when a stable, immutable upstream release
+has a tag resolving to the current upstream `master` commit. If the optional
+repository variable `CODEX_MEMORYD_APPROVED_SOURCE_SHA` is set, the commit must
+also match that pin; an unset variable does not block a released commit. The native
 builder checks that the approved source includes the PID-safety fix, builds
 Linux x86_64/ARM64 and macOS Intel/Apple Silicon archives, and tests Linux
 managed lifecycle and macOS fail-closed/foreground behavior. Publication uses
