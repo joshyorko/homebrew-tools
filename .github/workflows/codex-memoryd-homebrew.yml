@@ -49,8 +49,12 @@ jobs:
     - name: Install and test the checked-out formula
       run: |
         set -euo pipefail
-        brew install --formula ./Formula/codex-memoryd.rb
-        brew test ./Formula/codex-memoryd.rb
+        brew tap-new --no-git joshyorko/tools
+        tap_dir="$(brew --repository)/Library/Taps/joshyorko/homebrew-tools"
+        mkdir -p "$tap_dir/Formula"
+        cp Formula/codex-memoryd.rb "$tap_dir/Formula/codex-memoryd.rb"
+        brew install joshyorko/tools/codex-memoryd
+        brew test joshyorko/tools/codex-memoryd
 
   wolfi-linuxbrew:
     name: Work-JATT Wolfi Linuxbrew smoke

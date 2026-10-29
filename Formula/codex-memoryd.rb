@@ -40,7 +40,6 @@ class CodexMemoryd < Formula
     require "net/http"
     require "socket"
 
-    ENV["HOME"] = (testpath/"home").to_s
     ENV["CODEX_MEMORYD_HOME"] = (testpath/"runtime").to_s
     system bin/"codex-memoryd", "--version"
     listener = TCPServer.new("127.0.0.1", 0)

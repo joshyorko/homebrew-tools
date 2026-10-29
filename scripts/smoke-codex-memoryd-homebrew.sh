@@ -10,7 +10,8 @@ command -v brew >/dev/null
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALL_FROM_API=1
-export HOME="$(mktemp -d)"
+runtime_dir="$(mktemp -d)"
+export CODEX_MEMORYD_HOME="$runtime_dir/runtime"
 
 tap_dir="$(brew --repository)/Library/Taps/joshyorko/homebrew-tools"
 brew tap-new --no-git joshyorko/tools >/dev/null
@@ -21,50 +22,9 @@ brew install joshyorko/tools/codex-memoryd
 codex-memoryd --version
 brew test joshyorko/tools/codex-memoryd
 codex-memoryd init --bind 127.0.0.1:8989
-db="$HOME/.codex-memoryd/memory.db"
-export MEMORYD_TEST_DB="$db"
-python3 - <<'PY'
-import json
-import os
-import socket
-import subprocess
-import time
-import urllib.error
-import urllib.request
-
-with socket.socket() as listener:
-    listener.bind(("127.0.0.1", 0))
-    port = listener.getsockname()[1]
-bind = f"127.0.0.1:{port}"
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-child = subprocess.Popen(
-    ["codex-memoryd", "--db", os.environ["MEMORYD_TEST_DB"], "serve", "--bind", bind],
-    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-)
-try:
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline:
-        if child.poll() is not None:
-            raise RuntimeError("foreground MemoryD exited before health check")
-        try:
-            with opener.open(f"http://{bind}/healthz", timeout=1) as response:
-                if json.load(response).get("ok") is True:
-                    break
-        except (OSError, urllib.error.URLError):
-            time.sleep(0.1)
-    else:
-        raise RuntimeError("foreground MemoryD health check timed out")
-finally:
-    # This is the unreaped child started above, never a PID read from disk.
-    if child.poll() is None:
-        child.terminate()
-    try:
-        child.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        if child.poll() is None:
-            child.kill()
-        child.wait(timeout=5)
-PY
+db="$CODEX_MEMORYD_HOME/memory.db"
+# The formula test above owns a disposable foreground child and checks health.
+# The initialized database below independently checks upgrade persistence.
 test -s "$db"
 db_sha="$(sha256sum "$db" | awk '{print $1}')"
 
