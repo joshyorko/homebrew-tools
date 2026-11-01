@@ -1,17 +1,17 @@
 class Review < Formula
   desc "Review GitHub repositories with OMP in an isolated appliance"
   homepage "https://github.com/joshyorko/review"
-  version "0.1.8"
+  version "0.1.9"
   license "Apache-2.0"
 
   on_linux do
     on_intel do
-      url "https://github.com/joshyorko/review/releases/download/v0.1.8/review-x86_64.tar.gz"
-      sha256 "9737d6b7871466be35d144584ba3e9e3ed89409e4a27668781ba10666bddbf9b"
+      url "https://github.com/joshyorko/review/releases/download/v0.1.9/review-x86_64.tar.gz"
+      sha256 "860edfc098c262e86898a44cf9cbc88621422902743426d9c7dccd0c871ab823"
     end
     on_arm do
-      url "https://github.com/joshyorko/review/releases/download/v0.1.8/review-aarch64.tar.gz"
-      sha256 "371711d2eeea06c1d5375827a9a1aea98ba19ae87103e9951482d3ff5eb7ab44"
+      url "https://github.com/joshyorko/review/releases/download/v0.1.9/review-aarch64.tar.gz"
+      sha256 "a8c0aa3032892fe119582aa634dac4b6db783fa088e4219615541801d9df26c5"
     end
   end
 
