@@ -42,6 +42,7 @@ jobs:
     - name: Run pipeline and Buzz regression suites
       run: |
         set -euo pipefail
+        python3 scripts/test-rcc-maintenance-pin.py
         node scripts/test-t3-dagger-cli.mjs
         npm test --prefix dagger/tap-pipeline
         node --test scripts/render-review-formula.test.mjs scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
