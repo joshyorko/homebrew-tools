@@ -29,20 +29,6 @@
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver",
       "extractVersionTemplate": "^v?(?<version>.*)$"
-    },
-    {
-      "customType": "regex",
-      "description": "Track the RCC version exported inside workflow run blocks.",
-      "managerFilePatterns": [
-        "/^\\.github/workflows/.+\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "RCC_VERSION=(?<currentValue>v?\\d+\\.\\d+\\.\\d+)"
-      ],
-      "depNameTemplate": "joshyorko/rcc",
-      "datasourceTemplate": "github-releases",
-      "versioningTemplate": "semver",
-      "extractVersionTemplate": "^v?(?<version>.*)$"
     }
   ],
 

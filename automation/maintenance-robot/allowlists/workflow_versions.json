@@ -9,16 +9,6 @@
       "value_prefix": ""
     }
   },
-  "run_exports": {
-    "RCC_VERSION": {
-      "repo": "joshyorko/rcc",
-      "source": "release",
-      "max_major": 18,
-      "include_prerelease": false,
-      "pin_to_sha": false,
-      "value_prefix": "v"
-    }
-  },
   "with": {
     "node-version": {
       "repo": "nodejs/node",
