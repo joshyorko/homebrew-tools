@@ -8,13 +8,15 @@ from pathlib import Path
 def resolve_pin(contents: str) -> str:
     versions = re.findall(r'^  version "(\d+\.\d+\.\d+)"$', contents, re.M)
     linux = re.findall(r'^  on_linux do\n(.*?)^  end$', contents, re.M | re.S)
-    if len(versions) != 1 or len(linux) != 1:
+    if len(versions) != 1 or len(linux) != 1 or len(re.findall(r"^\s*version\b", contents, re.M)) != 1:
         raise ValueError("Expected one RCC version and Linux block")
     digests = re.findall(r'^    sha256 "([a-f0-9]{64})"$', linux[0], re.M)
     urls = re.findall(r'^    url "([^"\n]+)"$', linux[0], re.M)
     version = versions[0]
     expected_url = f"https://github.com/joshyorko/homebrew-tools/releases/download/rcc-{version}/rcc-linux64"
-    if len(digests) != 1 or urls != [expected_url]:
+    if (len(digests) != 1 or urls != [expected_url]
+            or len(re.findall(r"^\s*sha256\b", linux[0], re.M)) != 1
+            or len(re.findall(r"^\s*url\b", linux[0], re.M)) != 1):
         raise ValueError("Expected a pinned RCC Linux digest and matching release URL")
     return f"RCC_VERSION={version}\nRCC_SHA256={digests[0]}\nRCC_URL={expected_url}\n"
 
