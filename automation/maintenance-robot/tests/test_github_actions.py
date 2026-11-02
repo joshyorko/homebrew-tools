@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import re
 import subprocess
 import sys
@@ -155,7 +156,9 @@ printf '#!/usr/bin/env bash\\nexit 0\\n' > "$output"
                     "GITHUB_PATH": str(github_path),
                     "GITHUB_WORKSPACE": str(root),
                     "PATH": f"{fake_bin_dir}:{environment['PATH']}",
-                    "RCC_VERSION": "v18.19.3",
+                    "RCC_VERSION": "18.19.3",
+                    "RCC_SHA256": hashlib.sha256(b"#!/usr/bin/env bash\nexit 0\n").hexdigest(),
+                    "RCC_URL": "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.3/rcc-linux64",
                 }
             )
 
@@ -168,9 +171,9 @@ printf '#!/usr/bin/env bash\\nexit 0\\n' > "$output"
             )
 
             self.assertEqual(0, result.returncode, result.stderr)
-            expected_dir = root / ".tools" / "rcc" / "v18.19.3"
+            expected_dir = root / ".tools" / "rcc" / "18.19.3"
             self.assertEqual(
-                "https://github.com/joshyorko/rcc/releases/download/v18.19.3/rcc-linux64",
+                "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.3/rcc-linux64",
                 curl_url_path.read_text(encoding="utf-8").strip(),
             )
             self.assertTrue((expected_dir / "rcc").is_file())

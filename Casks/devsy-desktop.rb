@@ -40,9 +40,18 @@ cask "devsy-desktop" do
         exit 1
       fi
 
-      desktop_source="squashfs-root/devsy-desktop.desktop"
-      if [ ! -f "$desktop_source" ]; then
-        echo "No desktop entry found in extracted Devsy AppImage" >&2
+      desktop_source=""
+      for candidate in squashfs-root/devsy-desktop.desktop squashfs-root/sh.devsy.app.desktop; do
+        if [ -f "$candidate" ]; then
+          if [ -n "$desktop_source" ]; then
+            echo "Ambiguous desktop entries in extracted Devsy AppImage" >&2
+            exit 1
+          fi
+          desktop_source="$candidate"
+        fi
+      done
+      if [ -z "$desktop_source" ]; then
+        echo "No supported desktop entry found in extracted Devsy AppImage" >&2
         exit 1
       fi
       /bin/cp "$desktop_source" "devsy-desktop.desktop"

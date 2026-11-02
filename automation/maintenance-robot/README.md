@@ -44,3 +44,9 @@ In practice that means either:
 - a fine-grained token with `Contents: Read and write`, `Pull requests: Read and write`, and `Workflows: Read and write`
 
 Artifacts are written to `output/`.
+
+RCC itself is pinned by `Casks/rcc.rb`, maintained by the tap release pipeline.
+The maintenance workflow reads its Linux version, release URL, and SHA-256 together
+with `scripts/rcc-maintenance-pin.py` and verifies the downloaded bytes before
+execution (including cached binaries). Do not add a separate version-only RCC
+Renovate rule or maintenance allowlist entry.
