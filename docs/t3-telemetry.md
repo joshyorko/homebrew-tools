@@ -35,7 +35,9 @@ Homebrew paths and probe executables. It verifies the child receives `false` wit
 an absent, true or false parent value, and preserves argument boundaries. This is
 an executable inheritance test, not a live network-silence test. Dagger package CI
 and artifact install checks also require the export in each installed launcher,
-in addition to existing CLI help/formula and desktop integration checks.
+in addition to existing CLI help/formula and desktop integration checks. The formula
+also preloads an environment assertion into the real installed Node CLI during
+`brew test`, starting with telemetry enabled in the parent process.
 
 The paired T3 PR acceptance job builds both packages from one resolved immutable
 upstream source. PR CI does not publish releases. `Tap Manual` actions `release`

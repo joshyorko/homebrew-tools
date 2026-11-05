@@ -30,7 +30,14 @@ class T3codeCliMain < Formula
   end
 
   test do
-    output = shell_output("#{bin}/t3 --help")
-    assert_match "USAGE", output
+    (testpath/"telemetry-check.cjs").write <<~JS
+      if (process.env.T3CODE_TELEMETRY_ENABLED !== "false") {
+        throw new Error("T3 Homebrew launcher did not disable telemetry");
+      }
+    JS
+    with_env("T3CODE_TELEMETRY_ENABLED" => "true", "NODE_OPTIONS" => "--require=#{testpath}/telemetry-check.cjs") do
+      output = shell_output("#{bin}/t3 --help")
+      assert_match "USAGE", output
+    end
   end
 end
