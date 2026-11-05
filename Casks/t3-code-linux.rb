@@ -3,7 +3,7 @@ cask "t3-code-linux" do
   os linux: "linux"
 
   version "main.20261105084937.337c5858c33b"
-  sha256 x86_64_linux: "3cd7b4f4d4589eca52cd6c5a37a9dcfecbd0f39d608565d1c9f270aec61b1967"
+  sha256 x86_64_linux: "a483df33378db8f3c882aca77c5cc377ea48178c15bc0ab3f673f639da904159"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-main.20261105084937.337c5858c33b/T3-Code-main.20261105084937.337c5858c33b-x86_64.AppImage"
   name "T3 Code"
