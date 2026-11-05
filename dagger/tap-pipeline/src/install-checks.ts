@@ -34,6 +34,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "test -x \"$monitor\"",
     "hello=\"$(\"$monitor\" </dev/null | head -n 1)\"",
     "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
+    "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3\"",
     "brew test test/tap/t3code-cli-main",
     "t3 --help",
   ]),
@@ -221,6 +222,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     trustFormulas: ["devpod-appindicator-runtime-tools"],
   },
   "t3-code-linux": cask("Casks/t3-code-linux.rb", "t3-code-linux", [
+    "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3-code-linux\"",
     "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
     "installed_dir=$(dirname \"$(readlink -f \"$(brew --prefix)/bin/t3-code-linux\")\")",
     "test -x \"$installed_dir/squashfs-root/AppRun\"",
