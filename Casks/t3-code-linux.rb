@@ -77,6 +77,8 @@ cask "t3-code-linux" do
 
     write_file "t3-code-linux-wrapper", <<~'SH'
       #!/bin/bash
+      # Runtime opt-out: build environment variables do not persist into installed apps.
+      export T3CODE_TELEMETRY_ENABLED=false
       path_prepend_if_dir() {
         local dir="$1"
         [ -d "$dir" ] || return 0

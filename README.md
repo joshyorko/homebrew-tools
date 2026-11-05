@@ -211,6 +211,23 @@ dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3-code-linux
 dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3-code-linux
 ```
 
+Both Homebrew launchers (`t3` and `t3-code-linux`, including the desktop menu entry)
+export `T3CODE_TELEMETRY_ENABLED=false` before starting the application. This disables
+T3 product analytics (including token counts) and relay tracing for their local server,
+even if the parent environment sets the variable to `true`. This is a runtime setting;
+setting it only in the build workflow would not opt installed applications out.
+After updating the tap, reinstall existing packages and restart running T3 processes:
+
+```bash
+brew reinstall joshyorko/tools/t3code-cli-main
+brew reinstall --cask joshyorko/tools/t3-code-linux
+```
+
+This policy belongs to the Homebrew launchers, not the unmodified release tarball or
+AppImage: running the embedded server/AppRun directly bypasses it. Remote servers must
+set the variable separately. It does not change AI providers' own telemetry or explicitly
+configured diagnostic exporters. See [the source audit](docs/t3-telemetry.md).
+
 ### T3 Code CLI (Main Formula)
 
 T3 Code CLI packaged from the latest upstream `main` commit for Linux/devcontainer use.

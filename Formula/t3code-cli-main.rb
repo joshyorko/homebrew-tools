@@ -19,6 +19,8 @@ class T3codeCliMain < Formula
 
     (bin/"t3").write <<~SH
       #!/bin/bash
+      # Runtime opt-out: build environment variables do not persist into installed apps.
+      export T3CODE_TELEMETRY_ENABLED=false
       entry="#{libexec}/dist/bin.mjs"
       if [ ! -f "$entry" ]; then
         entry="#{libexec}/dist/index.mjs"
