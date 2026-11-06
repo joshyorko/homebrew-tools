@@ -3376,7 +3376,8 @@ end
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", smokeTap)
+          .withDirectory("/tap", tap)
+          .withDirectory("/built-tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
             "bash",
@@ -3386,6 +3387,8 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3code-cli-main"),
+              "brew audit --formula test/tap/t3code-cli-main",
+              "cp /built-tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
               "brew install test/tap/t3code-cli-main",
               "monitor=\"$(brew --prefix t3code-cli-main)/libexec/dist/resource-monitor/linux-x64/t3-resource-monitor\"",
               "test -x \"$monitor\"",
@@ -3591,7 +3594,8 @@ end
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", smokeTap)
+          .withDirectory("/tap", tap)
+          .withDirectory("/built-tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
             "bash",
@@ -3718,6 +3722,8 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3-code-linux"),
+              "brew audit --cask test/tap/t3-code-linux",
+              "cp /built-tap/Casks/t3-code-linux.rb \"$tap_dir/Casks/\"",
               "brew install --cask test/tap/t3-code-linux",
               "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3-code-linux\"",
               "test -x \"$(brew --prefix)/bin/t3-code-linux\"",

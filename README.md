@@ -216,12 +216,8 @@ export `T3CODE_TELEMETRY_ENABLED=false` before starting the application. This di
 T3 product analytics (including token counts) and relay tracing for their local server,
 even if the parent environment sets the variable to `true`. This is a runtime setting;
 setting it only in the build workflow would not opt installed applications out.
-After updating the tap, reinstall existing packages and restart running T3 processes:
-
-```bash
-brew reinstall joshyorko/tools/t3code-cli-main
-brew reinstall --cask joshyorko/tools/t3-code-linux
-```
+Upgrade the CLI and Desktop together, verify their pinned source commit matches, and
+restart only the Homebrew service with the [paired lifecycle procedure](docs/t3-homebrew-lifecycle.md#upgrade-the-cli-and-desktop-together).
 
 This policy belongs to the Homebrew launchers, not the unmodified release tarball or
 AppImage: running the embedded server/AppRun directly bypasses it. Remote servers must
@@ -231,6 +227,10 @@ configured diagnostic exporters. See [the source audit](docs/t3-telemetry.md).
 Both build paths supply the audited public production T3 Connect identifiers from
 upstream's `.env.example` before compilation. Built-artifact acceptance is pending;
 see [the public configuration policy](docs/t3-connect.md).
+
+The CLI formula owns the Homebrew-managed Linux user service, and the CLI/Desktop
+packages must be upgraded as a matching pair. See [the T3 Homebrew lifecycle guide](docs/t3-homebrew-lifecycle.md)
+for safe migration, upgrade, rollback, and Desktop updater limitations.
 
 ### T3 Code CLI (Main Formula)
 
