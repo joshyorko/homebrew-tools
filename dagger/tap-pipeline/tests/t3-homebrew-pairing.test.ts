@@ -24,7 +24,7 @@ test("T3 CLI and Desktop packages encode the same upstream source commit", () =>
   assert.ok(cliCommit, "CLI version includes the pinned upstream short commit")
   assert.equal(desktopCommit, cliCommit, "Desktop version includes the same upstream short commit")
   assert.ok(formula.includes(`/t3code-cli-main-${cliVersion}/`), "formula URL matches its pinned version")
-  assert.ok(cask.includes(`/t3-code-linux-${desktopVersion}/`), "cask URL matches its pinned version")
+  assert.ok(cask.replaceAll("#{version}", desktopVersion).includes(`/t3-code-linux-${desktopVersion}/`), "cask URL matches its pinned version")
 })
 
 test("paired T3 acceptance builds both packages from one resolved immutable source", () => {

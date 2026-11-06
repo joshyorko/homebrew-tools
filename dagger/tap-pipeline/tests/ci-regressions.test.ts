@@ -596,3 +596,17 @@ test("T3 source acceptance trusts each isolated fixture before audit and checks 
   }
   assert.match(pipeline, /test -x.*app_dir\/resources\/t3-homebrew-update\.sh/)
 })
+
+test("T3 Desktop immutable URLs retain audit-visible version interpolation and checksums", () => {
+  const cask = read("Casks/t3-code-linux.rb")
+  const version = cask.match(/version "([^"]+)"/)?.[1]
+  const url = cask.match(/url "([^"]+)"/)?.[1]
+  assert.ok(version && url)
+  assert.match(url, /t3-code-linux-#\{version\}\/T3-Code-#\{version\}-#\{arch\}\.AppImage$/)
+  assert.equal(url.replaceAll("#{version}", version).replace("#{arch}", "x86_64"),
+    `https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-${version}/T3-Code-${version}-x86_64.AppImage`)
+  assert.match(cask, /sha256 x86_64_linux: "[0-9a-f]{64}"/)
+  const renderer = section(read("dagger/tap-pipeline/src/index.ts"), "private renderT3CodeCask", "/** Install an unpublished")
+  assert.match(renderer, /downloadUrl\.replaceAll\(version, "#\{version\}"\)/)
+  assert.doesNotMatch(renderer, /sha256.*:no_check.*`sha256.*:no_check/)
+})

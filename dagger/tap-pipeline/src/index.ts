@@ -3007,7 +3007,7 @@ end
       baseContents
         .replace(/version ".*"/, `version "${version}"`)
         .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`),
-      downloadUrl,
+      downloadUrl.replaceAll(version, "#{version}").replace("-x86_64.AppImage", "-#{arch}.AppImage"),
     )
 
     return updatedContents.replace(
