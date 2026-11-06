@@ -2669,6 +2669,7 @@ end
           "git -C /upstream apply /tap/patches/t3-homebrew-desktop-update.patch",
         ].join("\n"),
       ])
+      .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-build.json", JSON.stringify({ packageVersion: resolvedVersion, sourceCommit: commit }))
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
@@ -3764,6 +3765,7 @@ end
               "app_dir=\"$installed_dir/squashfs-root\"",
               "asar=\"$app_dir/resources/app.asar\"",
               "test -x \"$app_dir/resources/t3-homebrew-update.sh\"",
+              `node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (value.packageVersion !== process.argv[2] || value.sourceCommit !== process.argv[3]) process.exit(1)' "$app_dir/resources/t3-homebrew-build.json" "${build.version}" "${build.commit}"`,
               ...t3PublicConnectAsarChecks(),
             ].join("\n"),
           ])

@@ -1,5 +1,5 @@
 diff --git a/apps/desktop/src/updates/DesktopUpdates.test.ts b/apps/desktop/src/updates/DesktopUpdates.test.ts
-index 3b45d80..3feca6f 100644
+index 3b45d80..11fbb3e 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.test.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.test.ts
 @@ -1,5 +1,7 @@
@@ -87,7 +87,7 @@ index 3b45d80..3feca6f 100644
 +    let backendStopped = false;
 +    const harness = makeHarness({
 +      platform: "linux",
-+      appVersion: HOMEBREW_CURRENT_VERSION,
++      appVersion: "0.1.7",
 +      homebrewResourcePath: root,
 +      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
 +      stopBackend: Effect.sync(() => {
@@ -224,10 +224,10 @@ index 3b45d80..3feca6f 100644
 +  });
  });
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 14688e5..5ecb026 100644
+index 14688e5..481cdf5 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
-@@ -31,11 +31,19 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
+@@ -31,11 +31,20 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
@@ -239,6 +239,7 @@ index 14688e5..5ecb026 100644
  import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
 +import {
 +  createHomebrewDesktopUpdateProvider,
++  parseHomebrewBuildIdentity,
 +  sourceVersionOfPackageVersion,
 +  type HomebrewUpdateCheck,
 +  type HomebrewUpdatePrepared,
@@ -247,7 +248,7 @@ index 14688e5..5ecb026 100644
  import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
  import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
  import { compareSemverVersions } from "@t3tools/shared/semver";
-@@ -297,6 +305,7 @@ function createBaseUpdateState(
+@@ -297,6 +306,7 @@ function createBaseUpdateState(
    channel: DesktopUpdateChannel,
    disabledReason: Option.Option<string>,
    environment: DesktopEnvironment.DesktopEnvironment["Service"],
@@ -255,7 +256,7 @@ index 14688e5..5ecb026 100644
  ): DesktopUpdateState {
    const enabled = Option.isNone(disabledReason);
    return {
-@@ -304,6 +313,7 @@ function createBaseUpdateState(
+@@ -304,6 +314,7 @@ function createBaseUpdateState(
      enabled,
      status: enabled ? "idle" : "disabled",
      message: Option.getOrNull(disabledReason),
@@ -263,7 +264,7 @@ index 14688e5..5ecb026 100644
    };
  }
 
-@@ -372,6 +382,25 @@ export const make = Effect.gen(function* () {
+@@ -372,6 +383,32 @@ export const make = Effect.gen(function* () {
    const fileSystem = yield* FileSystem.FileSystem;
    const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
    const policy = yield* DesktopUpdatePolicy.DesktopUpdatePolicy;
@@ -276,6 +277,13 @@ index 14688e5..5ecb026 100644
 +    environment.isPackaged &&
 +    !config.mockUpdates &&
 +    (yield* fileSystem.exists(homebrewHelperPath).pipe(Effect.orElseSucceed(() => false)));
++  const homebrewIdentity = homebrewManaged
++    ? yield* fileSystem.readFileString(environment.path.join(environment.resourcesPath, "t3-homebrew-build.json")).pipe(
++        Effect.flatMap((raw) => Effect.try({ try: () => parseHomebrewBuildIdentity(raw), catch: () => new Error("Invalid packaged Homebrew build identity.") })),
++        Effect.option,
++      )
++    : Option.none<string>();
++  const homebrewPackageVersion = Option.getOrElse(homebrewIdentity, () => environment.appVersion);
 +  const stateHome =
 +    process.env.XDG_STATE_HOME?.trim() ||
 +    environment.path.join(environment.homeDirectory, ".local", "state");
@@ -289,7 +297,7 @@ index 14688e5..5ecb026 100644
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
 
-@@ -384,6 +413,17 @@ export const make = Effect.gen(function* () {
+@@ -384,6 +421,17 @@ export const make = Effect.gen(function* () {
    const updaterConfiguredRef = yield* Ref.make(false);
    const lastLoggedDownloadMilestoneRef = yield* Ref.make(-1);
    const notAppliedVersionRef = yield* Ref.make(Option.none<string>());
@@ -307,15 +315,16 @@ index 14688e5..5ecb026 100644
    // The release a track switch's database check cleared. A build crosses to another track only
    // through such a switch, and never below that release: version order alone cannot tell whether
    // a Stable knows a Nightly's migrations.
-@@ -398,13 +438,14 @@ export const make = Effect.gen(function* () {
+@@ -398,13 +446,14 @@ export const make = Effect.gen(function* () {
              : desktopUpdateChannelOf(environment.appVersion) === state.channel),
        ),
      );
 -  const updateStateRef = yield* Ref.make<DesktopUpdateState>(
 -    createInitialDesktopUpdateState(
+-      environment.appVersion,
 +  const updateStateRef = yield* Ref.make<DesktopUpdateState>({
 +    ...createInitialDesktopUpdateState(
-       environment.appVersion,
++      homebrewManaged ? homebrewPackageVersion : environment.appVersion,
        environment.runtimeInfo,
        environment.defaultDesktopSettings.updateChannel,
      ),
@@ -325,7 +334,7 @@ index 14688e5..5ecb026 100644
 
    const stateChanges = yield* PubSub.sliding<DesktopUpdateState>(16);
    // Serialize writes and publishes against subscription so snapshots cannot overlap the first change.
-@@ -460,6 +501,14 @@ export const make = Effect.gen(function* () {
+@@ -460,6 +509,15 @@ export const make = Effect.gen(function* () {
    );
 
    const resolveDisabledReason = Effect.gen(function* () {
@@ -333,6 +342,7 @@ index 14688e5..5ecb026 100644
 +      if (policy.message !== null || policy.mode === "off" || policy.feedUrl !== undefined) {
 +        return Option.some(policy.message ?? "Your administrator manages T3 Code updates.");
 +      }
++      if (Option.isNone(homebrewIdentity)) return Option.some("The packaged Homebrew build identity is missing or invalid.");
 +      return config.disableAutoUpdate
 +        ? Option.some("Automatic updates are disabled by the T3CODE_DISABLE_AUTO_UPDATE setting.")
 +        : Option.none<string>();
@@ -340,7 +350,7 @@ index 14688e5..5ecb026 100644
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -528,6 +577,65 @@ export const make = Effect.gen(function* () {
+@@ -528,6 +586,65 @@ export const make = Effect.gen(function* () {
      });
    });
 
@@ -352,11 +362,11 @@ index 14688e5..5ecb026 100644
 +      const checkedAt = yield* currentIsoTimestamp;
 +      yield* updateState((state) => reduceDesktopUpdateStateOnCheckStart(state, checkedAt));
 +      return yield* Effect.tryPromise({
-+        try: () => homebrewUpdateProvider.check(environment.appVersion),
++        try: () => homebrewUpdateProvider.check(homebrewPackageVersion),
 +        catch: (cause) => new Error("Homebrew could not check the paired T3 packages.", { cause }),
 +      }).pipe(
 +        Effect.flatMap((result) => {
-+          if (sourceVersionOfPackageVersion(result.currentVersion) !== environment.appVersion) {
++          if (sourceVersionOfPackageVersion(result.currentVersion) !== homebrewPackageVersion) {
 +            return Effect.fail(new Error("Homebrew package version does not match this Desktop."));
 +          }
 +          if (result.status === "available" && result.availableVersion === result.currentVersion) {
@@ -406,7 +416,7 @@ index 14688e5..5ecb026 100644
    const checkForUpdates = Effect.fn("desktop.updates.checkForUpdates")(function* (
      reason: string,
      actionReservation: "acquire" | "held" = "acquire",
-@@ -588,7 +696,58 @@ export const make = Effect.gen(function* () {
+@@ -588,7 +705,58 @@ export const make = Effect.gen(function* () {
          );
    });
 
@@ -421,12 +431,12 @@ index 14688e5..5ecb026 100644
 +    const version = state.availableVersion;
 +    yield* setState({ ...reduceDesktopUpdateStateOnDownloadStart(state), downloadPercent: null });
 +    return yield* Effect.tryPromise({
-+      try: () => homebrewUpdateProvider.prepare(environment.appVersion, version),
++      try: () => homebrewUpdateProvider.prepare(homebrewPackageVersion, version),
 +      catch: (cause) => new Error("Homebrew could not prepare the paired T3 packages.", { cause }),
 +    }).pipe(
 +      Effect.flatMap((prepared: HomebrewUpdatePrepared) => {
 +        if (
-+          sourceVersionOfPackageVersion(prepared.currentVersion) !== environment.appVersion ||
++          sourceVersionOfPackageVersion(prepared.currentVersion) !== homebrewPackageVersion ||
 +          prepared.availableVersion !== version ||
 +          prepared.formula !== version ||
 +          prepared.cask !== version
@@ -465,7 +475,7 @@ index 14688e5..5ecb026 100644
      const state = yield* Ref.get(updateStateRef);
      if (!(yield* Ref.get(updaterConfiguredRef)) || state.status !== "available") {
        return { accepted: false, completed: false };
-@@ -696,9 +855,13 @@ export const make = Effect.gen(function* () {
+@@ -696,9 +864,14 @@ export const make = Effect.gen(function* () {
    );
 
    const baseUpdateState = (channel: DesktopUpdateChannel, disabledReason: Option.Option<string>) =>
@@ -479,10 +489,11 @@ index 14688e5..5ecb026 100644
 +    ]).pipe(
 +      Effect.map(([notAppliedVersion, homebrewUpdate, homebrewUpdateResult]) => ({
 +        ...createBaseUpdateState(channel, disabledReason, environment, homebrewManaged),
++        ...(homebrewManaged ? { currentVersion: homebrewPackageVersion } : {}),
          // Callers fall back to the channel's reason only when nothing else turns updates off.
          ...(Option.isSome(disabledReason) &&
          disabledReason.value === Option.getOrUndefined(channelBlockedReason(channel))
-@@ -708,19 +871,26 @@ export const make = Effect.gen(function* () {
+@@ -708,19 +881,26 @@ export const make = Effect.gen(function* () {
            onNone: () => ({}),
            onSome: (version) => ({ notAppliedVersion: version }),
          }),
@@ -519,7 +530,7 @@ index 14688e5..5ecb026 100644
 
    const recoverFailedInstall = Effect.fn("desktop.updates.recoverFailedInstall")(function* (
      message: string,
-@@ -733,8 +903,10 @@ export const make = Effect.gen(function* () {
+@@ -733,8 +913,10 @@ export const make = Effect.gen(function* () {
      if (!ownsRecovery) return;
 
      yield* Ref.set(desktopState.quitting, false);
@@ -532,7 +543,7 @@ index 14688e5..5ecb026 100644
      yield* Effect.gen(function* () {
        const runningInstances = yield* Ref.getAndSet(installRunningBackendsRef, []);
        const instances = (yield* pool.list).filter((instance) =>
-@@ -771,7 +943,7 @@ export const make = Effect.gen(function* () {
+@@ -771,7 +953,7 @@ export const make = Effect.gen(function* () {
                  (expectedVersion === undefined || state.downloadedVersion === expectedVersion);
                if (
                  (yield* Ref.get(desktopState.quitting)) ||
@@ -541,7 +552,7 @@ index 14688e5..5ecb026 100644
                  !hasExpectedDownload
                ) {
                  return "refused" as const;
-@@ -808,9 +980,11 @@ export const make = Effect.gen(function* () {
+@@ -808,9 +990,11 @@ export const make = Effect.gen(function* () {
          yield* Ref.set(installRunningBackendsRef, []);
 
          return yield* Effect.gen(function* () {
@@ -555,7 +566,7 @@ index 14688e5..5ecb026 100644
            // Stop pooled backends before quitAndInstall can outrun their scope finalizers.
            const instances = yield* pool.list;
            // stop clears desiredRunning, so retain the recovery set beforehand.
-@@ -824,6 +998,22 @@ export const make = Effect.gen(function* () {
+@@ -824,6 +1008,22 @@ export const make = Effect.gen(function* () {
                instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
              { concurrency: "unbounded" },
            );
@@ -569,7 +580,7 @@ index 14688e5..5ecb026 100644
 +            }
 +            yield* Effect.tryPromise({
 +              try: () =>
-+                homebrewUpdateProvider.apply(environment.appVersion, downloadedVersion, process.pid),
++                homebrewUpdateProvider.apply(homebrewPackageVersion, downloadedVersion, process.pid),
 +              catch: (cause) => new Error("Homebrew could not accept the paired update.", { cause }),
 +            });
 +            yield* electronApp.value.quit;
@@ -578,7 +589,7 @@ index 14688e5..5ecb026 100644
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -1119,6 +1309,21 @@ export const make = Effect.gen(function* () {
+@@ -1119,6 +1319,21 @@ export const make = Effect.gen(function* () {
          void Effect.runPromiseWith(context)(effect);
        };
 
@@ -600,7 +611,7 @@ index 14688e5..5ecb026 100644
        const appUpdateYmlConfig = yield* readAppUpdateYml;
        yield* Ref.set(appUpdateYmlConfigRef, appUpdateYmlConfig);
 
-@@ -1200,6 +1405,12 @@ export const make = Effect.gen(function* () {
+@@ -1200,6 +1415,12 @@ export const make = Effect.gen(function* () {
        options?: { readonly minimumVersion?: string | undefined },
      ) {
        yield* Effect.annotateCurrentSpan({ channel: nextChannel });
@@ -613,7 +624,7 @@ index 14688e5..5ecb026 100644
        if (Option.isSome(channelBlockedReason(nextChannel))) {
          return yield* new DesktopUpdateChannelManagedError({
            channel: nextChannel,
-@@ -1265,6 +1476,13 @@ export const make = Effect.gen(function* () {
+@@ -1265,6 +1486,13 @@ export const make = Effect.gen(function* () {
        options?: { readonly allowDowngrade?: boolean },
      ) {
        yield* Effect.annotateCurrentSpan({ reason });
@@ -629,10 +640,10 @@ index 14688e5..5ecb026 100644
            checked: false,
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts
 new file mode 100644
-index 0000000..eea8b63
+index 0000000..7e114b8
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,111 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import * as Effect from "effect/Effect";
 +import { rejects } from "node:assert/strict";
@@ -640,13 +651,18 @@ index 0000000..eea8b63
 +import { tmpdir } from "node:os";
 +import { join } from "node:path";
 +
-+import { createHomebrewDesktopUpdateProvider } from "./HomebrewDesktopUpdateProvider.ts";
++import { createHomebrewDesktopUpdateProvider, parseHomebrewBuildIdentity } from "./HomebrewDesktopUpdateProvider.ts";
 +
 +const version = "main.20261106111159.6577c6b61851";
 +const nextVersion = "main.20261107111159.abcdef123456";
 +const updateFields = `"currentVersion":"${version}","availableVersion":"${nextVersion}","source":"joshyorko/tools","sourceCommit":"abcdef123456","formula":"${nextVersion}","cask":"${nextVersion}"`;
 +
 +describe("HomebrewDesktopUpdateProvider", () => {
++  it("uses the embedded package identity independently of Electron semver", () => {
++    assert.equal(parseHomebrewBuildIdentity(JSON.stringify({ packageVersion: version, sourceCommit: "6577c6b6185167c0e502fa01f9e8e8f2dee6ff25" })), version);
++    assert.throws(() => parseHomebrewBuildIdentity(JSON.stringify({ packageVersion: version, sourceCommit: "0".repeat(40) })));
++  });
++
 +  it.effect("passes fixed argv to check, prepare, and supervised apply", () =>
 +    Effect.promise(async () => {
 +      const root = await mkdtemp(join(tmpdir(), "t3-homebrew-provider-"));
@@ -741,10 +757,10 @@ index 0000000..eea8b63
 +});
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
 new file mode 100644
-index 0000000..779d9d1
+index 0000000..e7d1abf
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,382 @@
 +import { execFile, spawn } from "node:child_process";
 +import { chmod, copyFile, lstat, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 +import { tmpdir } from "node:os";
@@ -798,6 +814,15 @@ index 0000000..779d9d1
 +    throw new Error("Homebrew update helper returned an invalid version.");
 +  }
 +  return value;
++}
++
++export function parseHomebrewBuildIdentity(raw: string): string {
++  const value: unknown = JSON.parse(raw);
++  if (typeof value !== "object" || value === null || !("packageVersion" in value) || !("sourceCommit" in value)) throw new Error("Missing Homebrew build identity.");
++  const version = checkedVersion(value.packageVersion);
++  if (typeof value.sourceCommit !== "string" || !/^[a-f0-9]{40}$/.test(value.sourceCommit)) throw new Error("Invalid Homebrew build source.");
++  assertVersionSource(version, value.sourceCommit.slice(0, 12));
++  return sourceVersionOfPackageVersion(version);
 +}
 +
 +function safeMessage(value: string): string {
@@ -1119,7 +1144,7 @@ index 0000000..779d9d1
 +  };
 +}
 diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index 226f00f..e42f244 100644
+index 226f00f..2e5510e 100644
 --- a/apps/desktop/src/updates/updatesTestHarness.ts
 +++ b/apps/desktop/src/updates/updatesTestHarness.ts
 @@ -10,6 +10,7 @@ import * as Option from "effect/Option";
@@ -1168,16 +1193,18 @@ index 226f00f..e42f244 100644
      runningUnderArm64Translation: false,
    }).pipe(
      Layer.provide(
-@@ -242,6 +251,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -242,7 +251,10 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
    const isInstallRecord = (path: string) =>
      path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
    const layerFileSystem = FileSystem.layerNoop({
 +    exists: (path) =>
 +      Effect.succeed(path === `${options.homebrewResourcePath}/t3-homebrew-update.sh`),
      readFileString: (path) => {
++      if (options.homebrewResourcePath && path === `${options.homebrewResourcePath}/t3-homebrew-build.json`) return Effect.succeed(JSON.stringify({ packageVersion: "main.20261106111159.6577c6b61851", sourceCommit: "6577c6b6185167c0e502fa01f9e8e8f2dee6ff25" }));
        const installRecord = isInstallRecord(path)
          ? (installRecords.get(path) ?? previousInstallRecord)
-@@ -277,6 +288,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+         : undefined;
+@@ -277,6 +289,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      Layer.provide(DesktopUpdatePolicy.layerTest(options.policy)),
      Layer.provideMerge(layerUpdater),
      Layer.provideMerge(layerWindow),
@@ -1466,14 +1493,15 @@ index 6f1354d..85f791b 100644
  });
 
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b8..de3debb 100644
+index 599c6b8..03930b8 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -1091,6 +1091,7 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1091,6 +1091,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
  export const DESKTOP_EXTRA_RESOURCES = [
 +  { from: "apps/desktop/resources/t3-homebrew-update.sh", to: "t3-homebrew-update.sh" },
++  { from: "apps/desktop/resources/t3-homebrew-build.json", to: "t3-homebrew-build.json" },
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
      to: "node_modules/@cursor",

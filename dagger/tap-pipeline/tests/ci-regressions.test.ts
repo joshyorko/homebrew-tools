@@ -610,3 +610,14 @@ test("T3 Desktop immutable URLs retain audit-visible version interpolation and c
   assert.match(renderer, /downloadUrl\.replaceAll\(version, "#\{version\}"\)/)
   assert.doesNotMatch(renderer, /sha256.*:no_check.*`sha256.*:no_check/)
 })
+
+test("T3 Desktop embeds and verifies Homebrew identity independently of Electron semver", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const build = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  assert.match(build, /withNewFile\("\/upstream\/apps\/desktop\/resources\/t3-homebrew-build\.json", JSON\.stringify\(\{ packageVersion: resolvedVersion, sourceCommit: commit \}\)\)/)
+  const patch = read("patches/t3-homebrew-desktop-update.patch")
+  assert.match(patch, /homebrewUpdateProvider\.check\(homebrewPackageVersion\)/)
+  assert.match(patch, /appVersion: "0\.1\.7"/)
+  assert.match(patch, /to: "t3-homebrew-build\.json"/)
+  assert.match(pipeline, /value\.packageVersion !== process\.argv\[2\].*value\.sourceCommit !== process\.argv\[3\]/)
+})
