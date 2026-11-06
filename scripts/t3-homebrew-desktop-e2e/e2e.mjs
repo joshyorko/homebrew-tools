@@ -40,7 +40,9 @@ try {
   await page.getByRole('button', {name: /^Check for updates/}).click({timeout:5000})
   const available = page.getByRole('button', {name: /Homebrew update available for/})
   await available.waitFor({timeout:30000})
-  console.log('AVAILABLE', await available.getAttribute('aria-label'))
+  const label = await available.getAttribute('aria-label')
+  for (const value of [fake.old.packageVersion, fake.next, 't3code-cli-main', 't3-code-linux', 'joshyorko/tools', '111122223333']) assert.ok(label.includes(value), value)
+  console.log('AVAILABLE', label)
   await available.click()
   const prepared = page.getByRole('button', {name: /Homebrew packages.*are prepared/})
   await prepared.waitFor({timeout:30000})
@@ -70,6 +72,12 @@ try {
   assert.equal(state.homebrewUpdateResult.outcome,outcome)
   await second.screenshot({path:root+'/result.png'})
   console.log('RESULT',JSON.stringify(state.homebrewUpdateResult))
+  const commands = await readFile(root+'/commands.log','utf8')
+  const stopped = commands.indexOf('--user stop sh.brew.t3code-cli-main.service')
+  const upgraded = commands.indexOf('upgrade --formula')
+  const started = commands.indexOf('--user start sh.brew.t3code-cli-main.service')
+  assert.ok(stopped >= 0 && upgraded > stopped && started > upgraded, 'Homebrew service lifecycle ordering')
+  if (outcome === 'failed') { assert.ok(commands.includes('uninstall --formula')); assert.ok(commands.includes('link --overwrite')) }
   const socket = second.waitForEvent('websocket',{predicate:ws=>['127.0.0.1','localhost'].includes(new URL(ws.url()).hostname),timeout:30000})
   await second.reload()
   const ws=await socket
