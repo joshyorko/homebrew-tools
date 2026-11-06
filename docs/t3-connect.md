@@ -69,21 +69,27 @@ standalone CLI bundle, the Desktop frontend, and the Desktop's embedded server f
   timeout. It asserts the real `t3 connect` command is present and the placeholder is not,
   without signing in or starting a service.
 - `ci-check --package-id=t3-code-linux` installs the just-built cask and inspects the
-  extracted `squashfs-root/resources/app.asar`, asserting the bundled web client is present
-  and every audited public value occurs somewhere in the archive. This archive-wide
-  check does not independently prove that both the frontend and server consume each value.
+  extracted `squashfs-root/resources/app.asar` with
+  `scripts/check-t3-connect-asar.mjs`. The verifier parses the ASAR header and file tree,
+  then checks the compiled frontend assets and embedded server output independently.
+  It excludes source maps and unrelated entries; the frontend must contain all four
+  settings, while the server must contain the three settings consumed by its build config.
 - The published-artifact plans in `install-checks.ts` carry the same checks so a released
   artifact is validated after publication.
-- `tests/t3-public-config.test.ts` executes the drift guard, gate, and AppImage-shell checks
-  against fixtures; it fails if the guard stops rejecting drift or the checks stop requiring
-  the compiled values.
+- `tests/t3-public-config.test.ts` checks the verifier against ASAR-format fixtures,
+  including missing component values, decoys, malformed headers/offsets, and missing entries.
+
+For manual paired qualification, resolve the upstream commit and version once and pass that
+same pair to both the CLI and Desktop checks. Independent `main` resolutions in separate
+calls are not evidence that the two artifacts were built from the same source.
 
 These checks target build feature availability. Only fixture tests have run locally;
 the candidate builds, real Homebrew installation checks, and frontend/server parity
 acceptance remain pending. They do not prove external reachability, authenticated cloud
 use, Android/Desktop-close durability, or thread integrity.
 
-Local verification for this change: all five public-config tests passed. The full pipeline
+Local verification after the archive repair: all five public-config tests and 21 selected
+T3, launcher, and routing tests passed. Before that repair, the full pipeline
 suite reported 156 passed, eight failed, and one skipped. Failures reported a missing Ruby
 command and host shell-profile errors in the Buzz and Devsy checks. Tests ran sequentially
 in a systemd cgroup capped at 64 tasks, 768 MiB, one CPU, and 30 seconds. A separate

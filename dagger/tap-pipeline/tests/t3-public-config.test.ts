@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import test from "node:test"
 
 import {
@@ -11,7 +12,6 @@ import {
   T3_PUBLIC_CONNECT_ENV,
   T3_PUBLIC_CONNECT_UPSTREAM_MARKERS,
   t3CliConnectGateChecks,
-  t3PublicConnectAsarChecks,
   t3PublicConnectDriftGuardCommand,
   t3PublicConnectEnv,
   validateT3PublicConnectConfig,
@@ -21,6 +21,53 @@ function run(command: string, env: NodeJS.ProcessEnv = process.env) {
   return spawnSync("bash", ["-c", command], {
     encoding: "utf8",
     env: { ...env, BASH_ENV: undefined },
+    maxBuffer: 1024 * 1024,
+    timeout: 5_000,
+  })
+}
+
+const asarVerifier = fileURLToPath(new URL("../../../scripts/check-t3-connect-asar.mjs", import.meta.url))
+
+function makeAsar(files: Readonly<Record<string, string>>, offsetOverride?: string): Buffer {
+  type AsarEntry = { files?: Record<string, AsarEntry>; size?: number; offset?: string }
+  const tree: Record<string, AsarEntry> = {}
+  const contents: Buffer[] = []
+  let offset = 0
+  for (const [path, text] of Object.entries(files)) {
+    const parts = path.split("/")
+    let directory = tree
+    for (const part of parts.slice(0, -1)) {
+      const child = directory[part] ?? { files: {} }
+      directory[part] = child
+      if (!child.files) throw new Error(`ASAR fixture path collides with file: ${path}`)
+      directory = child.files
+    }
+    const content = Buffer.from(text)
+    const leaf = parts.at(-1)
+    assert.ok(leaf)
+    directory[leaf] = {
+      size: content.length,
+      offset: offsetOverride ?? String(offset),
+    }
+    contents.push(content)
+    offset += content.length
+  }
+
+  const header = Buffer.from(JSON.stringify({ files: tree }))
+  const alignedHeaderLength = Math.ceil(header.length / 4) * 4
+  const headerPickle = Buffer.alloc(8 + alignedHeaderLength)
+  headerPickle.writeUInt32LE(headerPickle.length - 4, 0)
+  headerPickle.writeUInt32LE(header.length, 4)
+  header.copy(headerPickle, 8)
+  const sizePickle = Buffer.alloc(8)
+  sizePickle.writeUInt32LE(4, 0)
+  sizePickle.writeUInt32LE(headerPickle.length, 4)
+  return Buffer.concat([sizePickle, headerPickle, ...contents])
+}
+
+function checkAsar(asar: string) {
+  return spawnSync(process.execPath, [asarVerifier, asar, JSON.stringify(T3_PUBLIC_CONNECT_CONFIG)], {
+    encoding: "utf8",
     maxBuffer: 1024 * 1024,
     timeout: 5_000,
   })
@@ -146,7 +193,7 @@ test("installed CLI Connect gate check passes only when the command is compiled 
 
     writeFileSync(
       t3,
-      "#!/bin/bash\nprintf '%s\\n' \"$0\" >> \"$T3_INVOCATION_LOG\"\nprintf '%s\\n' 'Set up T3 Connect for this machine. Same as `t3 up --connect`.' '' 'COMMANDS' '  login'\n",
+      "#!/bin/bash\nif [[ $# -ne 2 || $1 != connect || $2 != --help ]]; then printf 'unexpected t3 args: %s\\n' \"$*\" >&2; exit 2; fi\nprintf '%s\\n' \"$0\" >> \"$T3_INVOCATION_LOG\"\nprintf '%s\\n' 'Set up T3 Connect for this machine. Same as `t3 up --connect`.' '' 'COMMANDS' '  login'\n",
     )
     chmodSync(t3, 0o755)
     const invocationLog = join(root, "invocations.txt")
@@ -170,23 +217,58 @@ test("installed CLI Connect gate check passes only when the command is compiled 
   })
 })
 
-test("shipped AppImage check requires the bundled client and every public value", () => {
+test("ASAR verifier checks frontend and server component outputs independently", () => {
   withScratch((root) => {
     const asar = join(root, "app.asar")
-    const checks = t3PublicConnectAsarChecks().join("\n")
-    const body = [
-      "apps/server/dist/client/index.html",
-      ...T3_PUBLIC_CONNECT_CONFIG.map(({ value }) => value),
-      "",
-    ].join("\n")
-    writeFileSync(asar, body)
+    const clientPath = "apps/server/dist/client/assets/index.js"
+    const serverPath = "apps/server/dist/bin.mjs"
+    const clientValues = T3_PUBLIC_CONNECT_CONFIG.map(({ value }) => value).join("\n")
+    const serverValues = T3_PUBLIC_CONNECT_CONFIG
+      .filter(({ name }) => name !== "T3CODE_CLERK_JWT_TEMPLATE")
+      .map(({ value }) => value)
+      .join("\n")
+    const write = (files: Readonly<Record<string, string>>) => writeFileSync(asar, makeAsar(files))
+    const ok = (files: Readonly<Record<string, string>>) => {
+      write(files)
+      const result = checkAsar(asar)
+      assert.equal(result.status, 0, result.stderr)
+    }
+    const fails = (files: Readonly<Record<string, string>>, pattern: RegExp) => {
+      write(files)
+      const result = checkAsar(asar)
+      assert.equal(result.status, 1, result.stderr)
+      assert.match(result.stderr, pattern)
+    }
 
-    const present = run(`asar=${JSON.stringify(asar)}\n${checks}`)
-    assert.equal(present.status, 0, present.stderr)
+    ok({ [clientPath]: clientValues, [serverPath]: serverValues })
+    fails(
+      {
+        [clientPath]: clientValues.replace("t3-relay", "missing-template"),
+        [serverPath]: serverValues,
+        "apps/server/dist/client/assets/index.js.map": clientValues,
+        "unrelated/config.js": clientValues,
+      },
+      /frontend is missing public T3CODE_CLERK_JWT_TEMPLATE/,
+    )
+    fails(
+      {
+        [clientPath]: clientValues,
+        [serverPath]: serverValues.replace("https://relay.t3.codes", "missing-relay"),
+        "apps/server/dist/bin.mjs.map": serverValues,
+        "apps/server/dist/client/decoy.js": serverValues,
+      },
+      /server is missing public T3CODE_RELAY_URL/,
+    )
+    fails({ [serverPath]: serverValues }, /missing compiled frontend JavaScript entry/)
+    fails({ [clientPath]: clientValues }, /missing compiled server JavaScript entry/)
 
-    writeFileSync(asar, body.replace("https://relay.t3.codes", "https://disabled.invalid"))
-    const missing = run(`asar=${JSON.stringify(asar)}\n${checks}`)
-    assert.equal(missing.status, 1)
-    assert.match(missing.stderr, /missing embedded public T3CODE_RELAY_URL/)
+    write({ [clientPath]: clientValues, [serverPath]: serverValues })
+    const malformedHeader = readFileSync(asar)
+    malformedHeader.writeUInt32LE(0xffff, 0)
+    writeFileSync(asar, malformedHeader)
+    assert.match(checkAsar(asar).stderr, /invalid archive size pickle/)
+
+    writeFileSync(asar, makeAsar({ [clientPath]: clientValues, [serverPath]: serverValues }, "999999"))
+    assert.match(checkAsar(asar).stderr, /extends past archive data/)
   })
 })

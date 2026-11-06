@@ -628,7 +628,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["action-server", ["Casks/action-server.rb"]],
   ["devpod-linux", ["Casks/devpod-linux.rb", "Formula/devpod-appindicator-runtime-tools.rb"]],
   ["buzz-linux", ["Casks/buzz-linux.rb", "dagger/buzz-linux-smoke/"]],
-  ["t3-code-linux", ["Casks/t3-code-linux.rb"]],
+  ["t3-code-linux", ["Casks/t3-code-linux.rb", "scripts/check-t3-connect-asar.mjs"]],
 ]
 
 const PLATFORM_PATH_PREFIXES = [

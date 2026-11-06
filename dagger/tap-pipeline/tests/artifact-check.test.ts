@@ -46,8 +46,8 @@ test("published T3 artifact checks exercise the compiled Connect configuration",
   assert.match(cli, /t3 connect --help/)
   assert.match(cli, /-u T3CODE_RELAY_URL/)
   assert.match(desktop, /resources\/app\.asar/)
-  assert.match(desktop, /apps\/server\/dist\/client\/index\.html/)
-  assert.match(desktop, /relay\.t3\.codes/)
+  assert.match(desktop, /node \/tap\/scripts\/check-t3-connect-asar\.mjs/)
+  assert.ok(artifactCheckPlan("t3-code-linux").systemPackages.includes("nodejs"))
 })
 
 test("forbidden checksum markers stop an artifact check", () => {

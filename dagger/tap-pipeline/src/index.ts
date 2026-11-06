@@ -3041,6 +3041,10 @@ end
       const legacyFixture = "dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"
       tap = tap.withFile(legacyFixture, this.source.file(legacyFixture))
     }
+    if (packageId === "t3-code-linux") {
+      const verifier = "scripts/check-t3-connect-asar.mjs"
+      tap = tap.withFile(verifier, this.source.file(verifier))
+    }
 
     const metadataCommands = plan.homebrewPaths.flatMap((path, index) => {
       const kind = path.startsWith("Formula/") ? "formula" : "cask"
@@ -3694,6 +3698,13 @@ end
         return dag
           .container()
           .from(BREW_IMAGE)
+          .withUser("root")
+          .withExec([
+            "bash",
+            "-lc",
+            "set -euo pipefail\nrm -f /etc/apt/sources.list.d/github-cli.list\napt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*",
+          ])
+          .withUser("linuxbrew")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")

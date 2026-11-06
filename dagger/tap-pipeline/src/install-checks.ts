@@ -171,19 +171,16 @@ export function t3CliConnectGateChecks(
 }
 
 /**
- * Runtime proof that the shipped Desktop AppImage embeds the public Connect
- * configuration in its bundled web client and server. The caller defines
- * `$asar` as the extracted `resources/app.asar`.
+ * Runtime proof that the shipped Desktop AppImage embeds public Connect
+ * configuration in its compiled frontend and embedded server. The caller
+ * defines `$asar` as the extracted `resources/app.asar` and mounts the verifier
+ * from the tap at `/tap/scripts/check-t3-connect-asar.mjs`.
  */
 export function t3PublicConnectAsarChecks(asarVariable = "asar"): readonly string[] {
   const asar = `"$${asarVariable}"`
   return [
     `test -s ${asar} || { echo "T3 Code AppImage has no app.asar" >&2; exit 1; }`,
-    `grep -aFq ${shellQuote("apps/server/dist/client/index.html")} ${asar} || { echo "T3 Code AppImage is missing the bundled web client" >&2; exit 1; }`,
-    ...validateT3PublicConnectConfig().map(
-      ({ name, value }) =>
-        `grep -aFq ${shellQuote(value)} ${asar} || { echo "T3 Code AppImage is missing embedded public ${name}" >&2; exit 1; }`,
-    ),
+    `node /tap/scripts/check-t3-connect-asar.mjs ${asar} ${shellQuote(JSON.stringify(validateT3PublicConnectConfig()))}`,
   ]
 }
 
@@ -417,7 +414,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "app_dir=\"$installed_dir/squashfs-root\"",
     "asar=\"$app_dir/resources/app.asar\"",
     ...t3PublicConnectAsarChecks(),
-  ], ["desktop-file-utils", "xdg-utils"]),
+  ], ["desktop-file-utils", "xdg-utils", "nodejs"]),
 }
 
 export function artifactCheckPlan(packageId: string): ArtifactCheckPlan {

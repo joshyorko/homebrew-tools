@@ -164,6 +164,10 @@ test("resource monitor build helper schedules t3code CLI CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
 })
 
+test("T3 ASAR verifier changes schedule Desktop CI", () => {
+  assert.deepEqual(changedCiPackagesFromPaths(["scripts/check-t3-connect-asar.mjs"]), ["t3-code-linux"])
+})
+
 test("T3 pnpm patch helper schedules t3code CLI CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/lib/apply-pnpm-package-patch.mjs"]), ["t3code-cli-main"])
 })
