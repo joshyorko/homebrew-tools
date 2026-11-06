@@ -46,7 +46,7 @@ if $apply; then
     }
   done
 
-  lock_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}"
+  lock_dir="${XDG_STATE_HOME:-$HOME/.local/state}/t3code/homebrew-update"
   if [[ ! -d "$lock_dir" ]]; then
     mkdir -p "$lock_dir"
     chmod 700 "$lock_dir"
@@ -55,7 +55,7 @@ if $apply; then
     echo "The migration lock directory must be writable and owned by this user: $lock_dir" >&2
     exit 1
   fi
-  exec 9>"$lock_dir/t3code-homebrew-service-migration.lock"
+  exec 9>"$lock_dir/update.lock"
   flock -n 9 || {
     echo "Another T3 Homebrew migration is running; no service was changed." >&2
     exit 1

@@ -150,6 +150,7 @@ case "$command" in
       exit 37
     fi ;;
   uninstall)
+    [[ "$HOMEBREW_NO_AUTOREMOVE" == 1 ]] || exit 91
     version="$(cat "$FAKE_STATE_DIR/available_full")"
     rm -rf -- "$FAKE_CELLAR/t3code-cli-main/$version"
     grep -Fvx "$version" "$FAKE_STATE_DIR/installed_formula_versions" > "$FAKE_STATE_DIR/installed_formula_versions.tmp" || true
@@ -526,4 +527,22 @@ test("a same-version cask from a foreign tap is refused", () => {
     assert.notEqual(result.status, 0)
     assert.doesNotMatch(fixture.events().join("\n"), /brew\|(?:update|upgrade|fetch) /)
   } finally { rmSync(fixture.root, { recursive: true, force: true }) }
+})
+
+test("migration refuses the lifecycle lock held by the updater", async () => {
+  const fixture = makeFixture()
+  const ready = join(fixture.root, "lock-ready")
+  let holder: ReturnType<typeof spawn> | undefined
+  try {
+    check(fixture)
+    const lock = join(fixture.state, "t3code", "homebrew-update", "update.lock")
+    holder = spawn("bash", ["-c", 'exec 9>"$1"; flock 9; touch "$2"; sleep 3', "holder", lock, ready], { stdio: "ignore" })
+    for (let i = 0; i < 100 && !existsSync(ready); i++) await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.ok(existsSync(ready))
+    const migration = new URL("scripts/migrate-t3-homebrew-service.sh", repoRoot)
+    const result = spawnSync("bash", [migration.pathname, "--apply"], { encoding: "utf8", env: { ...process.env, ...fixture.env } })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Another T3 Homebrew migration/)
+    assert.doesNotMatch(fixture.events().join("\n"), /service\.(?:start|stop)|brew\|upgrade/)
+  } finally { holder?.kill("SIGTERM"); rmSync(fixture.root, { recursive: true, force: true }) }
 })

@@ -34,8 +34,9 @@ services, apply it:
 bash scripts/migrate-t3-homebrew-service.sh --apply
 ```
 
-The script serializes migration runs with a lock in `XDG_RUNTIME_DIR`, or
-`XDG_STATE_HOME`/`~/.local/state` when no runtime directory is available. It
+Migration and Desktop updates share the lock at
+`${XDG_STATE_HOME:-$HOME/.local/state}/t3code/homebrew-update/update.lock`,
+so neither can start or replace the service during the other operation. It
 recognizes only `t3code-homebrew.service` and `t3code.service` in the current
 user's systemd unit directories. Before stopping the active service, it saves
 the exact unit as a same-filesystem hard link, with its original path/state, under
