@@ -43,7 +43,7 @@ esac
 `
   const systemctl = `#!/bin/bash\nset -eu\n${setup}\nshift\ncase "$1" in is-active) [[ " $* " == *" sh.brew.t3code-cli-main.service "* ]] && test -f "$state/active" || exit 3 ;; stop) rm "$state/active" ;; start) touch "$state/active" ;; daemon-reload) exit 0 ;; *) exit 2 ;; esac\n`
   for (const [name,contents] of [['brew',brew],['systemctl',systemctl],['ss','#!/bin/sh\nexit 0\n'],['pgrep','#!/bin/sh\nexit 1\n']]) { await writeFile(bin+'/'+name,contents); await chmod(bin+'/'+name,0o700) }
-  await writeFile(prefix+'/bin/t3-code-linux',`#!/bin/bash\nprintf relaunched > '${root}/relaunched'\nexport T3CODE_TELEMETRY_ENABLED=false\nexec '${appDir}/AppRun' --no-sandbox --remote-debugging-port=9223\n`)
+  await writeFile(prefix+'/bin/t3-code-linux',`#!/bin/bash\nprintf relaunched > '${root}/relaunched'\nprintf '%s' "$T3CODE_HOME" > '${root}/relaunch-t3-home' \nexport T3CODE_TELEMETRY_ENABLED=false\nexec '${appDir}/AppRun' --no-sandbox --remote-debugging-port=9223\n`)
   await chmod(prefix+'/bin/t3-code-linux',0o700)
   return { bin, prefix, old, next }
 }

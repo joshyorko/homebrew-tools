@@ -19,7 +19,7 @@ const fake = await fixture(root, root + '/squashfs-root', process.env.CASE === '
 const app = await electron.launch({ executablePath: root + '/squashfs-root/AppRun', args: ['--no-sandbox'], env: {
   PATH: fake.bin + ':' + process.env.PATH, HOME: root + '/home', DISPLAY: ':99',
   XDG_CONFIG_HOME: root + '/config', XDG_STATE_HOME: root + '/state', XDG_RUNTIME_DIR: root + '/runtime', XDG_DATA_HOME: root + '/data',
-  T3CODE_HOME: root + '/home/.t3', T3CODE_TELEMETRY_ENABLED: 'false',
+  T3CODE_HOME: root + '/custom-t3-home', T3CODE_TELEMETRY_ENABLED: 'false',
 }, timeout: 90_000 })
 await writeFile(root + '/desktop.pid', String(app.process().pid))
 const runtime = await app.evaluate(({app}) => ({ version: app.getVersion(), packaged: app.isPackaged }))
@@ -51,6 +51,8 @@ try {
   await page.screenshot({path:root+'/confirmation.png'})
   console.log('CONFIRMATION_SHOWN')
   assert.doesNotMatch(await readFile(root+'/commands.log','utf8'), /(?:^|\n)upgrade /)
+  await mkdir(root+'/custom-t3-home/userdata',{recursive:true})
+  await writeFile(root+'/custom-t3-home/userdata/e2e-preserved','synthetic user data marker')
   await page.getByRole('button',{name:'Cancel',exact:true}).click()
   assert.doesNotMatch(await readFile(root+'/commands.log','utf8'), /(?:^|\n)upgrade /)
   await prepared.click()
@@ -82,8 +84,10 @@ try {
   await second.reload()
   const ws=await socket
   await ws.waitForEvent('framereceived',{timeout:30000})
+  assert.equal(await readFile(root+'/relaunch-t3-home','utf8'),root+'/custom-t3-home')
+  assert.equal(await readFile(root+'/custom-t3-home/userdata/e2e-preserved','utf8'),'synthetic user data marker')
   console.log('RECONNECTED_TO_LOCAL_BACKEND')
-  await writeFile(root+'/report.json',JSON.stringify({outcome,packageVersion:state.currentVersion,electronVersion:runtime.version,sourceCommit:fake.old.sourceCommit,cancelledFirst:true,confirmed:true,relaunched:true,reconnected:true,network:'none',homebrew:'fake',systemd:'fake'},null,2))
+  await writeFile(root+'/report.json',JSON.stringify({outcome,packageVersion:state.currentVersion,electronVersion:runtime.version,sourceCommit:fake.old.sourceCommit,profileHomePreserved:true,cancelledFirst:true,confirmed:true,relaunched:true,reconnected:true,network:'none',homebrew:'fake',systemd:'fake'},null,2))
   await Promise.race([browser.close(),new Promise(resolve=>setTimeout(resolve,2000))])
 } finally { await Promise.race([app.close().catch(()=>{}),new Promise(resolve=>setTimeout(resolve,2000))]) }
 

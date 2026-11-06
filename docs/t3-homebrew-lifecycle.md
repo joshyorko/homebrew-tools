@@ -209,3 +209,6 @@ output directory retains the artifact checksum, report, logs and screenshots.
 The updater selects one active known Homebrew service label, including current
 `sh.brew` and older Homebrew labels. Multiple active labels are refused before
 Desktop quits. Relaunch preserves the user's explicit T3 home and XDG paths.
+
+Recorded packaged GUI results and test boundaries are in
+[the acceptance report](t3-homebrew-desktop-acceptance.md).
