@@ -45,7 +45,6 @@ slots run regression checks rather than rebuilding PR packages.
 Examples verified against actual source diffs in `tests/impact.test.ts` and native
 Git fixtures in `tests/planner.test.ts`:
 
-- A Codex MemoryD `ciCheck` case edit selects Codex MemoryD, not Buzz or 15 other packages.
 - An RCC registry URL edit selects RCC. Mixed recipe/build inputs keep build mode.
 - A `t3BaseContainer` edit selects the T3 CLI and Desktop consumers.
 - A shared Homebrew image edit selects all PR packages.
@@ -119,7 +118,6 @@ the engine cache as part of this measurement.
 ## Baseline and measurement
 
 The completed [Tap CI run 34601090760](https://github.com/joshyorko/homebrew-tools/actions/runs/34601090760)
-used roughly 128 combined job-minutes. Its Buzz job took 35 minutes, VS Code
 21 minutes, DevPod 14 minutes, and Codex Desktop 11 minutes. These are total
 job durations, including setup, downloads and checks, not compiler-only timings.
 
