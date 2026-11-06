@@ -228,6 +228,10 @@ AppImage: running the embedded server/AppRun directly bypasses it. Remote server
 set the variable separately. It does not change AI providers' own telemetry or explicitly
 configured diagnostic exporters. See [the source audit](docs/t3-telemetry.md).
 
+Both build paths supply the audited public production T3 Connect identifiers from
+upstream's `.env.example` before compilation. Built-artifact acceptance is pending;
+see [the public configuration policy](docs/t3-connect.md).
+
 ### T3 Code CLI (Main Formula)
 
 T3 Code CLI packaged from the latest upstream `main` commit for Linux/devcontainer use.

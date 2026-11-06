@@ -39,6 +39,17 @@ test("artifact plans fail closed instead of selecting a fallback package", () =>
   }
 })
 
+test("published T3 artifact checks exercise the compiled Connect configuration", () => {
+  const cli = artifactCheckPlan("t3code-cli-main").commands.join("\n")
+  const desktop = artifactCheckPlan("t3-code-linux").commands.join("\n")
+
+  assert.match(cli, /t3 connect --help/)
+  assert.match(cli, /-u T3CODE_RELAY_URL/)
+  assert.match(desktop, /resources\/app\.asar/)
+  assert.match(desktop, /node \/tap\/scripts\/check-t3-connect-asar\.mjs/)
+  assert.ok(artifactCheckPlan("t3-code-linux").systemPackages.includes("nodejs"))
+})
+
 test("forbidden checksum markers stop an artifact check", () => {
   const root = mkdtempSync(join(tmpdir(), "artifact-check-negative-"))
   const recipe = join(root, "recipe.rb")

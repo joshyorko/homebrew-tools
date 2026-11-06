@@ -156,6 +156,35 @@ test("T3 desktop disables V8 functions without changing the CLI builder", () => 
   assert.doesNotMatch(cliBuild, /ENABLE_V8_FUNCTIONS/)
 })
 
+test("T3 builds inject one shared audited public Connect config before compilation", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const cliBuild = section(pipeline, "private async buildT3Artifact", "private async buildFizzyArtifact")
+  const desktopBuild = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+
+  for (const build of [cliBuild, desktopBuild]) {
+    assert.match(build, /this\.withT3PublicConnectConfig\(/)
+    assert.match(build, /t3PublicConnectDriftGuardCommand\(\)/)
+    assert.ok(
+      build.indexOf("withT3PublicConnectConfig") < build.indexOf('.withExec(["pnpm", "install"'),
+      "public Connect config must be applied before dependency installation",
+    )
+    assert.ok(
+      build.indexOf("t3PublicConnectDriftGuardCommand()") < build.indexOf('.withExec(["pnpm", "install"'),
+      "the drift guard must run before dependency installation",
+    )
+    assert.doesNotMatch(build, /T3CODE_CLERK_PUBLISHABLE_KEY/)
+  }
+})
+
+test("T3 acceptance proves compiled Connect in the CLI and the shipped Desktop app", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const cliCi = section(pipeline, 'case "t3code-cli-main": {', 'case "chatgpt": {')
+  const desktopCi = section(pipeline, 'case "t3-code-linux": {', 'case "headroom-self-hosted": {')
+
+  assert.match(cliCi, /t3CliConnectGateChecks\(\)/)
+  assert.match(desktopCi, /t3PublicConnectAsarChecks\(\)/)
+})
+
 test("T3 release bundles reuse one immutable source ref and version across CI and packaging", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const resolver = section(pipeline, "async resolveT3Source(", "private setGithubToken(")

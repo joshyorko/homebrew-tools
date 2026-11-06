@@ -36,7 +36,15 @@ import {
 import { resolveReviewRelease, verifyReviewArtifact } from "./review-release.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
-import { artifactCheckPlan, buzzArtifactVerificationCommands, rejectForbiddenShaCommand } from "./install-checks.js"
+import {
+  artifactCheckPlan,
+  buzzArtifactVerificationCommands,
+  rejectForbiddenShaCommand,
+  t3CliConnectGateChecks,
+  t3PublicConnectAsarChecks,
+  t3PublicConnectDriftGuardCommand,
+  t3PublicConnectEnv,
+} from "./install-checks.js"
 
 const TAP_DIR = "/tap"
 const BREW_IMAGE = "ghcr.io/homebrew/brew:main"
@@ -748,6 +756,15 @@ export class TapPipeline {
       .withEnvVariable("PATH", "/root/.bun/bin:/root/.local/share/pnpm:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
   }
 
+  // One audited public Connect source for both T3 builds. Upstream loadRepoEnv
+  // prefers the process environment, so these must be set before compilation.
+  private withT3PublicConnectConfig(container: Container): Container {
+    return t3PublicConnectEnv().reduce(
+      (current, [name, value]) => current.withEnvVariable(name, value),
+      container,
+    )
+  }
+
   private codexDesktopBaseContainer(): Container {
     const rustToolchain = dag.container().from(RUST_IMAGE)
 
@@ -1376,7 +1393,7 @@ end
     const assetName = `t3code-cli-main-${resolvedVersion}.tar.gz`
     const artifactPath = `/tmp/${assetName}`
 
-    const container = this.t3BaseContainer()
+    const container = this.withT3PublicConnectConfig(this.t3BaseContainer())
       .withDirectory("/tap", tap)
       .withMountedCache(
         "/upstream/native/resource-monitor/target",
@@ -1397,6 +1414,7 @@ end
         ].join("\n"),
       ])
       .withWorkdir("/upstream")
+      .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
       .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
       .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])
@@ -2623,8 +2641,9 @@ end
     const assetName = `T3-Code-${resolvedVersion}-x86_64.AppImage`
     const artifactPath = `/tmp/${assetName}`
 
-    const container = this.t3BaseContainer()
-      .withEnvVariable("ENABLE_V8_FUNCTIONS", "false")
+    const container = this.withT3PublicConnectConfig(
+      this.t3BaseContainer().withEnvVariable("ENABLE_V8_FUNCTIONS", "false"),
+    )
       .withDirectory("/tap", tap)
       .withExec([
         "bash",
@@ -2640,6 +2659,7 @@ end
         ].join("\n"),
       ])
       .withWorkdir("/upstream")
+      .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
       .withExec([
         "pnpm",
@@ -3021,6 +3041,10 @@ end
       const legacyFixture = "dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"
       tap = tap.withFile(legacyFixture, this.source.file(legacyFixture))
     }
+    if (packageId === "t3-code-linux") {
+      const verifier = "scripts/check-t3-connect-asar.mjs"
+      tap = tap.withFile(verifier, this.source.file(verifier))
+    }
 
     const metadataCommands = plan.homebrewPaths.flatMap((path, index) => {
       const kind = path.startsWith("Formula/") ? "formula" : "cask"
@@ -3370,6 +3394,7 @@ end
               "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3\"",
               "brew test test/tap/t3code-cli-main",
               "t3 --help",
+              ...t3CliConnectGateChecks(),
             ].join("\n"),
           ])
           .stdout()
@@ -3673,6 +3698,13 @@ end
         return dag
           .container()
           .from(BREW_IMAGE)
+          .withUser("root")
+          .withExec([
+            "bash",
+            "-lc",
+            "set -euo pipefail\nrm -f /etc/apt/sources.list.d/github-cli.list\napt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*",
+          ])
+          .withUser("linuxbrew")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
@@ -3698,6 +3730,9 @@ end
               "grep -qx 'Icon=t3-code-linux' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
               "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
+              "app_dir=\"$installed_dir/squashfs-root\"",
+              "asar=\"$app_dir/resources/app.asar\"",
+              ...t3PublicConnectAsarChecks(),
             ].join("\n"),
           ])
           .stdout()
