@@ -86,8 +86,9 @@ test("systemd honors a mask at the original unit path over a runtime mask", (con
 })
 
 test("upgrade rollback definitions are recovered by the installed pair version", () => {
-  assert.match(guide, /brew list --versions t3code-cli-main/)
-  assert.match(guide, /brew list --cask --versions t3-code-linux/)
+  assert.match(guide, /brew info --json=v2 --installed --formula t3code-cli-main/)
+  assert.match(guide, /formulae\[0\]\.linked_keg/)
+  assert.match(guide, /source\.version/)
   assert.match(guide, /brew --cellar t3code-cli-main/)
   assert.match(guide, /INSTALL_RECEIPT\.json/)
   assert.match(guide, /source\.tap_git_head/)
@@ -131,15 +132,14 @@ test("upgrade snapshot uses installed formula and cask receipt definitions", () 
     mkdirSync(formulaKeg, { recursive: true })
     mkdirSync(caskMetadata, { recursive: true })
     writeFileSync(join(formulaKeg, "t3code-cli-main.rb"), `class T3codeCliMain < Formula\n  version "${installedVersion}"\n  # INSTALLED_FORMULA_RECEIPT\nend\n`)
-    writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap_git_head: installedTapRevision } }))
+    writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { version: installedVersion, tap_git_head: installedTapRevision } }))
 
     writeFileSync(join(bin, "brew"), `#!/bin/bash
 case "$*" in
   "--repo joshyorko/tools") printf '%s\\n' "$TAP_REPO" ;;
   "--cellar t3code-cli-main") printf '%s\\n' "$TAP_CELLAR" ;;
   "--caskroom") printf '%s\\n' "$TAP_CASKROOM" ;;
-  "list --versions t3code-cli-main") printf '%s\\n' "t3code-cli-main ${installedVersion}" ;;
-  "list --cask --versions t3-code-linux") printf '%s\\n' "t3-code-linux ${installedVersion}" ;;
+  "info --json=v2 --installed --formula t3code-cli-main") printf '{"formulae":[{"linked_keg":"%s"}]}\\n' "${installedVersion}" ;;
   *) exit 0 ;;
 esac
 `, { mode: 0o755 })
@@ -160,6 +160,7 @@ esac
     assert.equal(result.status, 0, result.stderr)
     const rollbackDir = result.stdout.match(/Saved rollback definitions in ([^\n]+)/)?.[1]
     assert.ok(rollbackDir, "snapshot command prints its rollback directory")
+    assert.equal(readFileSync(join(home, ".local/state/t3code-homebrew-rollback/latest"), "utf8").trim(), rollbackDir)
     const savedFormula = readFileSync(join(rollbackDir, "t3code-cli-main.rb"), "utf8")
     const savedCask = readFileSync(join(rollbackDir, "t3-code-linux.rb"), "utf8")
     assert.match(savedFormula, /INSTALLED_FORMULA_RECEIPT/)
@@ -182,11 +183,12 @@ case "$*" in
   "--repo joshyorko/tools") printf '%s\\n' "$TAP_REPO" ;;
   "--cellar t3code-cli-main") printf '%s\\n' "$TAP_CELLAR" ;;
   "--caskroom") printf '%s\\n' "$TAP_CASKROOM" ;;
-  "list --versions t3code-cli-main")
-    if [[ -f "$HOME/upgrade-started" ]]; then printf '%s\\n' "t3code-cli-main $POST_CLI_VERSION"; else printf '%s\\n' "t3code-cli-main $CLI_VERSION"; fi ;;
-  "list --cask --versions t3-code-linux")
-    if [[ -f "$HOME/upgrade-started" ]]; then printf '%s\\n' "t3-code-linux $POST_DESKTOP_VERSION"; else printf '%s\\n' "t3-code-linux $DESKTOP_VERSION"; fi ;;
-  "upgrade joshyorko/tools/t3code-cli-main"|"upgrade --cask joshyorko/tools/t3-code-linux") touch "$HOME/upgrade-started" ;;
+  "info --json=v2 --installed --formula t3code-cli-main")
+    if [[ -f "$HOME/upgrade-started" ]]; then version="$POST_CLI_VERSION"; else version="$CLI_VERSION"; fi
+    printf '{"formulae":[{"linked_keg":"%s"}]}\\n' "$version" ;;
+  "upgrade joshyorko/tools/t3code-cli-main") touch "$HOME/upgrade-started" ;;
+  "upgrade --cask joshyorko/tools/t3-code-linux")
+    printf '{"source":{"version":"%s","tap_git_head":"%s"}}\\n' "$POST_DESKTOP_VERSION" "$TAP_REVISION" > "$TAP_CASK_RECEIPT" ;;
 esac
 exit 0
 `, { mode: 0o755 })
@@ -207,14 +209,14 @@ esac
       { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", caskRevisionMissing: false, formulaReceiptVersion: "main.20260202000000.222222222222", historyDesktop: "main.20260101000000.111111111111", postCli: "main.20260101000000.111111111111", postDesktop: "main.20260101000000.111111111111", upgraded: false },
       { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", caskRevisionMissing: false, formulaReceiptVersion: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111", postCli: "main.20260101000000.111111111111", postDesktop: "main.20260202000000.222222222222", upgraded: true },
     ]) {
-      const tap = join(home, "tap")
       const tapCellar = join(home, "Cellar", "t3code-cli-main")
       const tapCaskroom = join(home, "Caskroom")
       const caskMetadata = join(tapCaskroom, "t3-code-linux", ".metadata")
       mkdirSync(join(tapCellar, scenario.cli, ".brew"), { recursive: true })
       mkdirSync(caskMetadata, { recursive: true })
       writeFileSync(join(tapCellar, scenario.cli, ".brew/t3code-cli-main.rb"), `  version "${scenario.formulaReceiptVersion}"\n`)
-      writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap_git_head: "a".repeat(40) } }))
+      const caskReceipt = join(caskMetadata, "INSTALL_RECEIPT.json")
+      writeFileSync(caskReceipt, JSON.stringify({ source: { version: scenario.desktop, tap_git_head: "a".repeat(40) } }))
 
       const commandLog = join(home, "commands.log")
       const result = spawnSync("bash", ["-c", upgradeBlock], {
@@ -226,6 +228,8 @@ esac
           TAP_REPO: home,
           TAP_CELLAR: tapCellar,
           TAP_CASKROOM: tapCaskroom,
+          TAP_CASK_RECEIPT: caskReceipt,
+          TAP_REVISION: "a".repeat(40),
           COMMAND_LOG: commandLog,
           CLI_VERSION: scenario.cli,
           DESKTOP_VERSION: scenario.desktop,
@@ -255,14 +259,24 @@ test("rollback stops after a failed stop or reinstall command", () => {
   try {
     const bin = join(home, "bin")
     mkdirSync(bin)
+    const rollbackDir = join(home, "rollback")
+    const caskroom = join(home, "Caskroom")
+    const caskReceipt = join(caskroom, "t3-code-linux", ".metadata", "INSTALL_RECEIPT.json")
+    mkdirSync(rollbackDir)
+    mkdirSync(join(home, ".local/state/t3code-homebrew-rollback"), { recursive: true })
+    mkdirSync(join(caskroom, "t3-code-linux", ".metadata"), { recursive: true })
+    writeFileSync(join(rollbackDir, "t3code-cli-main.rb"), "formula backup")
+    writeFileSync(join(rollbackDir, "t3-code-linux.rb"), "cask backup")
+    writeFileSync(join(home, ".local/state/t3code-homebrew-rollback/latest"), `${rollbackDir}\n`)
+    writeFileSync(caskReceipt, JSON.stringify({ source: { version: "main.20260101000000.111111111111" } }))
     writeFileSync(join(bin, "brew"), `#!/bin/bash
 printf 'brew %s\\n' "$*" >> "$COMMAND_LOG"
 case "$*" in
   "services stop t3code-cli-main") [[ $FAIL_COMMAND != stop ]] ;;
   "reinstall $ROLLBACK_DIR/t3code-cli-main.rb") [[ $FAIL_COMMAND != formula ]] ;;
   "reinstall --cask $ROLLBACK_DIR/t3-code-linux.rb") [[ $FAIL_COMMAND != cask ]] ;;
-  "list --versions t3code-cli-main") printf '%s\\n' 't3code-cli-main main.20260101000000.111111111111' ;;
-  "list --cask --versions t3-code-linux") printf '%s\\n' 't3-code-linux main.20260101000000.111111111111' ;;
+  "info --json=v2 --installed --formula t3code-cli-main") printf '%s\\n' '{"formulae":[{"linked_keg":"main.20260101000000.111111111111"}]}' ;;
+  "--caskroom") printf '%s\\n' "$TAP_CASKROOM" ;;
 esac
 `, { mode: 0o755 })
     const rollbackBlock = guide.match(/## Roll back[\s\S]*?```bash\n([\s\S]*?)```/)?.[1]
@@ -278,8 +292,8 @@ esac
           PATH: `${bin}:${process.env.PATH}`,
           COMMAND_LOG: commandLog,
           FAIL_COMMAND: failure,
-          ROLLBACK_DIR: home,
-          rollback_dir: home,
+          ROLLBACK_DIR: rollbackDir,
+          TAP_CASKROOM: caskroom,
         },
       })
       assert.notEqual(result.status, 0, `${failure}: ${result.stderr}`)

@@ -86,8 +86,10 @@ do not install a missing package:
 ```bash
 set -euo pipefail
 tap_repo="$(brew --repo joshyorko/tools)"
-cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
-desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
+formula_info="$(brew info --json=v2 --installed --formula t3code-cli-main)"
+cli_version="$(jq -er '.formulae[0].linked_keg // empty' <<<"$formula_info")"
+cask_receipt="$(brew --caskroom)/t3-code-linux/.metadata/INSTALL_RECEIPT.json"
+desktop_version="$(jq -er '.source.version // empty' "$cask_receipt")"
 if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
   echo "Installed T3 CLI/Desktop versions do not match; restore parity before upgrading." >&2
   exit 1
@@ -110,13 +112,18 @@ git -C "$tap_repo" show "$jq_revision:Casks/t3-code-linux.rb" > "$rollback_dir/t
 grep -Fqx "  version \"$cli_version\"" "$rollback_dir/t3code-cli-main.rb"
 grep -Fqx "  version \"$desktop_version\"" "$rollback_dir/t3-code-linux.rb"
 printf 'Saved rollback definitions in %s\n' "$rollback_dir"
+latest_path="$HOME/.local/state/t3code-homebrew-rollback/latest"
+latest_temp="${latest_path}.tmp.$$"
+printf '%s\n' "$rollback_dir" > "$latest_temp"
+mv -f -- "$latest_temp" "$latest_path"
 
 brew update
 brew upgrade joshyorko/tools/t3code-cli-main
 brew upgrade --cask joshyorko/tools/t3-code-linux
 
-cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
-desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
+formula_info="$(brew info --json=v2 --installed --formula t3code-cli-main)"
+cli_version="$(jq -er '.formulae[0].linked_keg // empty' <<<"$formula_info")"
+desktop_version="$(jq -er '.source.version // empty' "$cask_receipt")"
 printf 'CLI: %s\nDesktop: %s\n' "$cli_version" "$desktop_version"
 if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
   echo "Upgraded T3 CLI/Desktop versions do not match; do not restart the service." >&2
@@ -151,12 +158,19 @@ server can own the T3 data and port:
 
 ```bash
 set -euo pipefail
+rollback_dir="$(cat "$HOME/.local/state/t3code-homebrew-rollback/latest")"
+if [[ ! -f "$rollback_dir/t3code-cli-main.rb" || ! -f "$rollback_dir/t3-code-linux.rb" ]]; then
+  echo "The saved T3 rollback definitions are incomplete; do not reinstall or restart." >&2
+  exit 1
+fi
 brew services stop t3code-cli-main
 brew reinstall "$rollback_dir/t3code-cli-main.rb"
 brew reinstall --cask "$rollback_dir/t3-code-linux.rb"
 
-cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
-desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
+formula_info="$(brew info --json=v2 --installed --formula t3code-cli-main)"
+cli_version="$(jq -er '.formulae[0].linked_keg // empty' <<<"$formula_info")"
+cask_receipt="$(brew --caskroom)/t3-code-linux/.metadata/INSTALL_RECEIPT.json"
+desktop_version="$(jq -er '.source.version // empty' "$cask_receipt")"
 if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
   echo "Rolled-back T3 CLI/Desktop versions do not match; do not restart the service." >&2
   exit 1
