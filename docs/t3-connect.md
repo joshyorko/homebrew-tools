@@ -99,12 +99,13 @@ No fixture or test-cgroup processes remained afterward.
 ## Runtime and service behavior
 
 - The Homebrew `t3` launcher runs the bundled entry with Homebrew `node@24` and
-  unconditionally exports `T3CODE_TELEMETRY_ENABLED=false`; the cask launcher does the same
-  and runs the extracted `AppRun` with `--no-sandbox`. Package names and service behavior are
-  unchanged.
-- Build defaults are intended to travel with the bundle into service startup. The service
-  runtime selection and propagation of the telemetry policy still need verification at
-  the selected upstream commit. Launcher tests do not prove managed-service behavior.
+  unconditionally exports `T3CODE_TELEMETRY_ENABLED=false`; the formula's Homebrew `service do`
+  uses the stable `opt_bin/t3` launcher and passes the same telemetry opt-out, `T3CODE_HOME`,
+  and a non-interactive PATH. The cask launcher exports the same opt-out and runs the extracted
+  `AppRun` with `--no-sandbox`.
+- Homebrew owns CLI service installation and restart. Do not run upstream `t3 update` or
+  `t3 service install`; see [the T3 Homebrew lifecycle guide](t3-homebrew-lifecycle.md) for
+  migration, paired upgrades, rollback, and Desktop update limits.
 - `~/.t3/service.env` is an operator override layer parsed by the service launcher. Because
   upstream reads `process.env` ahead of the embedded build defaults, a value such as
   `T3CODE_RELAY_URL` or `T3CODE_HOST` in `service.env` overrides the packaged default for

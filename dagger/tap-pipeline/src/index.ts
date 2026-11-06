@@ -2658,9 +2658,33 @@ end
           "rm -rf /upstream/.git",
         ].join("\n"),
       ])
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /upstream/apps/desktop/resources",
+          "install -m 0755 /tap/scripts/t3-homebrew-update.sh /upstream/apps/desktop/resources/t3-homebrew-update.sh",
+          "git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch",
+          "git -C /upstream apply /tap/patches/t3-homebrew-desktop-update.patch",
+        ].join("\n"),
+      ])
+      .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-build.json", JSON.stringify({ packageVersion: resolvedVersion, sourceCommit: commit }))
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withExec([
+        "pnpm",
+        "exec",
+        "vp",
+        "test",
+        "run",
+        "--passWithNoTests",
+        "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
+        "apps/desktop/src/updates/DesktopUpdates.test.ts",
+        "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
+        "apps/web/src/components/desktopUpdate.logic.test.ts",
+      ])
       .withExec([
         "pnpm",
         "dist:desktop:linux",
@@ -2984,7 +3008,7 @@ end
       baseContents
         .replace(/version ".*"/, `version "${version}"`)
         .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`),
-      downloadUrl,
+      downloadUrl.replaceAll(version, "#{version}").replace("-x86_64.AppImage", "-#{arch}.AppImage"),
     )
 
     return updatedContents.replace(
@@ -3376,7 +3400,8 @@ end
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", smokeTap)
+          .withDirectory("/tap", tap)
+          .withDirectory("/built-tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
             "bash",
@@ -3386,6 +3411,9 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3code-cli-main"),
+              "brew trust --formula test/tap/t3code-cli-main",
+              "brew audit --formula test/tap/t3code-cli-main",
+              "cp /built-tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
               "brew install test/tap/t3code-cli-main",
               "monitor=\"$(brew --prefix t3code-cli-main)/libexec/dist/resource-monitor/linux-x64/t3-resource-monitor\"",
               "test -x \"$monitor\"",
@@ -3708,7 +3736,8 @@ end
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", smokeTap)
+          .withDirectory("/tap", tap)
+          .withDirectory("/built-tap", smokeTap)
           .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withExec([
             "bash",
@@ -3718,6 +3747,9 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3-code-linux"),
+              "brew trust --cask test/tap/t3-code-linux",
+              "brew audit --cask test/tap/t3-code-linux",
+              "cp /built-tap/Casks/t3-code-linux.rb \"$tap_dir/Casks/\"",
               "brew install --cask test/tap/t3-code-linux",
               "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3-code-linux\"",
               "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
@@ -3732,6 +3764,8 @@ end
               "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
               "app_dir=\"$installed_dir/squashfs-root\"",
               "asar=\"$app_dir/resources/app.asar\"",
+              "test -x \"$app_dir/resources/t3-homebrew-update.sh\"",
+              `node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (value.packageVersion !== process.argv[2] || value.sourceCommit !== process.argv[3]) process.exit(1)' "$app_dir/resources/t3-homebrew-build.json" "${build.version}" "${build.commit}"`,
               ...t3PublicConnectAsarChecks(),
             ].join("\n"),
           ])

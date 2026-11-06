@@ -23,7 +23,7 @@ for (const desktop of [false, true]) {
         const probe = join(root, desktop ? "squashfs-root/AppRun" : "node")
         writeFileSync(probe, '#!/bin/bash\nprintf "%s\\n" "$T3CODE_TELEMETRY_ENABLED" "$@"\n', { mode: 0o755 })
         const launcher = body.replace(/^      /gm, "")
-          .replaceAll('#{Formula["node@24"].opt_bin}', root)
+          .replaceAll('#{formula_opt_bin("node@24")}', root)
           .replaceAll("#{libexec}", root)
           .replaceAll("{{staged_path}}", root)
           .replaceAll("{{HOMEBREW_PREFIX}}", root)
