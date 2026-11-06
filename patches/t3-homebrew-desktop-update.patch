@@ -781,10 +781,10 @@ index 0000000..7e114b8
 +});
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
 new file mode 100644
-index 0000000..e7d1abf
+index 0000000..d3c6287
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
-@@ -0,0 +1,382 @@
+@@ -0,0 +1,385 @@
 +import { execFile, spawn } from "node:child_process";
 +import { chmod, copyFile, lstat, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 +import { tmpdir } from "node:os";
@@ -999,6 +999,9 @@ index 0000000..e7d1abf
 +  if (input.runtimeDirectory !== undefined) env.XDG_RUNTIME_DIR = input.runtimeDirectory;
 +  for (const name of [
 +    "XDG_CONFIG_HOME",
++    "XDG_DATA_HOME",
++    "XDG_CACHE_HOME",
++    "T3CODE_HOME",
 +    "DISPLAY",
 +    "WAYLAND_DISPLAY",
 +    "XAUTHORITY",

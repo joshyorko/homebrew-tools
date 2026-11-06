@@ -18,6 +18,7 @@ type FixtureOptions = {
   readonly availableFormulaRevision?: number
   readonly availableCask?: string
   readonly activeService?: boolean
+  readonly activeUnit?: string
   readonly failCask?: boolean
   readonly mismatchInstalledCask?: boolean
 }
@@ -167,7 +168,7 @@ if [[ "$1" == --user ]]; then shift; fi
 case "$1" in
   show-environment|daemon-reload) exit 0 ;;
   is-active)
-    if [[ -f "$FAKE_STATE_DIR/service-active" ]]; then exit 0; fi
+    if [[ -f "$FAKE_STATE_DIR/service-active" && ( "$ACTIVE_UNIT" == "*" || " $* " == *" $ACTIVE_UNIT "* ) ]]; then exit 0; fi
     exit 3 ;;
   is-enabled)
     if [[ -f "$FAKE_STATE_DIR/service-enabled" ]]; then exit 0; fi
@@ -212,6 +213,7 @@ printf 'desktop.relaunch\\n' >> "$EVENT_LOG"
     FAKE_PREFIX: prefix,
     FAKE_CELLAR: cellar,
     NODE_BINARY: process.execPath,
+    ACTIVE_UNIT: options.activeUnit ?? "sh.brew.t3code-cli-main.service",
     ORIGINAL_VERSION: currentFormula,
     AVAILABLE_VERSION: availableFull,
     FAIL_CASK: options.failCask ? "true" : "false",
@@ -545,4 +547,33 @@ test("migration refuses the lifecycle lock held by the updater", async () => {
     assert.match(result.stderr, /Another T3 Homebrew migration/)
     assert.doesNotMatch(fixture.events().join("\n"), /service\.(?:start|stop)|brew\|upgrade/)
   } finally { holder?.kill("SIGTERM"); rmSync(fixture.root, { recursive: true, force: true }) }
+})
+
+test("updater preserves a previously active legacy Homebrew label", async () => {
+  const unit = "homebrew.mxcl.t3code-cli-main.service"
+  const fixture = makeFixture({ activeService: true, activeUnit: unit })
+  const desktop = await startDesktopProcess(fixture)
+  try {
+    check(fixture)
+    const result = fixture.run(["apply", "--app-version", originalVersion, "--version", availableVersion, "--wait-for-pid", String(desktop.pid)])
+    await desktop.exited
+    assert.equal(result.status, 0, result.stderr)
+    const events = fixture.events().join("\n")
+    assert.match(events, new RegExp(`systemctl\\|--user stop ${unit.replaceAll(".", "\\.")}`))
+    assert.match(events, new RegExp(`systemctl\\|--user start ${unit.replaceAll(".", "\\.")}`))
+  } finally { rmSync(fixture.root, { recursive: true, force: true }) }
+})
+
+test("updater refuses multiple active Homebrew labels without changing packages", async () => {
+  const fixture = makeFixture({ activeService: true, activeUnit: "*" })
+  const desktop = await startDesktopProcess(fixture)
+  try {
+    check(fixture)
+    const result = fixture.run(["apply", "--app-version", originalVersion, "--version", availableVersion, "--wait-for-pid", String(desktop.pid)])
+    await desktop.exited
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Multiple Homebrew T3 service labels/)
+    assert.doesNotMatch(fixture.events().join("\n"), /service\.(?:stop|start)|brew\|upgrade/)
+    assert.equal(readResult(fixture.resultPath).outcome, "failed")
+  } finally { rmSync(fixture.root, { recursive: true, force: true }) }
 })

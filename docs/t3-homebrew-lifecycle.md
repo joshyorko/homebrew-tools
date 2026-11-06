@@ -139,7 +139,7 @@ service status before retrying:
 
 ```bash
 brew services info t3code-cli-main
-systemctl --user status homebrew.mxcl.t3code-cli-main.service
+systemctl --user status sh.brew.t3code-cli-main.service
 ```
 
 If you are also rolling back to a tap revision from before Homebrew service
@@ -185,3 +185,27 @@ policy ([pinned CLI policy check](https://github.com/pingdotgg/t3code/blob/6577c
 Homebrew does not create, overwrite, or merge the admin policy. Coordinate
 policy changes with the administrator; never replace an existing policy to
 enable the Homebrew button.
+
+## Isolated packaged Desktop acceptance
+
+Run the actual candidate AppImage against disposable Homebrew and systemd fakes:
+
+```bash
+bash scripts/t3-homebrew-desktop-e2e/run.sh /path/to/candidate.AppImage /tmp/t3-ui-success success
+bash scripts/t3-homebrew-desktop-e2e/run.sh /path/to/candidate.AppImage /tmp/t3-ui-failure failure
+```
+
+The runner builds a local test image, then launches the packaged Electron UI as
+an unprivileged user in a container with no network and no host Home mount.
+It clicks Check, Prepare, Cancel, and Confirm, checks that package actions do
+not run before confirmation or while the old Desktop is alive, then verifies
+relaunch, result feedback, and a local backend WebSocket reconnection. The
+failure scenario rejects the cask operation and checks recovery of the prior
+pair. Reports explicitly identify the fake package/systemd boundary; this is
+not a live workstation upgrade or a real systemd acceptance test. Docker
+containers and image tags created by the runner are removed on exit. The chosen
+output directory retains the artifact checksum, report, logs and screenshots.
+
+The updater selects one active known Homebrew service label, including current
+`sh.brew` and older Homebrew labels. Multiple active labels are refused before
+Desktop quits. Relaunch preserves the user's explicit T3 home and XDG paths.

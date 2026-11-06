@@ -5,7 +5,8 @@ umask 077
 readonly TAP="joshyorko/tools"
 readonly FORMULA="t3code-cli-main"
 readonly CASK="t3-code-linux"
-readonly UNIT="homebrew.mxcl.t3code-cli-main.service"
+UNIT="sh.brew.t3code-cli-main.service"
+readonly SERVICE_UNITS=(sh.brew.t3code-cli-main.service homebrew.t3code-cli-main.service homebrew.mxcl.t3code-cli-main.service)
 readonly SERVICE_PORT="3773"
 
 STATE_HOME="${XDG_STATE_HOME:-${HOME:?HOME is required}/.local/state}"
@@ -360,6 +361,22 @@ service_active() {
   esac
 }
 
+select_service_unit() {
+  local candidate state active_count=0 selected=""
+  for candidate in "${SERVICE_UNITS[@]}"; do
+    UNIT="$candidate"
+    if service_active; then
+      active_count=$((active_count + 1))
+      selected="$candidate"
+    else
+      state=$?
+      [[ "$state" -eq 1 ]] || fail "Could not determine the Homebrew service state; no packages were changed."
+    fi
+  done
+  [[ "$active_count" -le 1 ]] || fail "Multiple Homebrew T3 service labels are active; no packages were changed."
+  UNIT="${selected:-sh.brew.t3code-cli-main.service}"
+}
+
 port_is_clear() {
   local listeners
   command -v ss >/dev/null 2>&1 || return 2
@@ -458,6 +475,7 @@ apply_update() {
     launch_desktop || fail "The T3 packages are current, but the Desktop launcher could not be started."
     return 0
   }
+  select_service_unit
   if service_active; then
     service_was_active=true
   else
@@ -606,6 +624,7 @@ main() {
       ;;
     apply)
       verify_snapshot
+      select_service_unit
       if [[ -n "$READY_FILE" ]]; then printf ready > "$READY_FILE"; fi
       wait_for_desktop_exit
       RELAUNCH_SAFE=true
