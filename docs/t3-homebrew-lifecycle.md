@@ -37,27 +37,32 @@ bash scripts/migrate-t3-homebrew-service.sh --apply
 The script serializes migration runs with a lock in `XDG_RUNTIME_DIR`, or
 `XDG_STATE_HOME`/`~/.local/state` when no runtime directory is available. It
 recognizes only `t3code-homebrew.service` and `t3code.service` in the current
-user's systemd unit directories. It runtime-masks those units before stopping
-and disabling them, so they cannot restart during the handoff. It then checks
-for other T3 CLI processes and listeners on port 3773, starts
+user's systemd unit directories. Before stopping the active service, it saves
+the exact unit as a same-filesystem hard link, with its original path/state, under
+`XDG_STATE_HOME`/`~/.local/state/t3code-homebrew-service-migration/legacy`, then
+atomically replaces the unit at its original path with a `/dev/null` mask. This
+masks at the same, highest-priority path that contained the original unit, so
+systemd cannot restart it during the handoff. It then checks for other T3 CLI
+processes and listeners on port 3773, starts
 `brew services start t3code-cli-main`, and verifies that systemd reports its
-unit active. The legacy unit files remain in place; nothing under `~/.t3` is
-read, moved, or deleted.
+unit active. The original files are preserved in the migration state directory;
+nothing under `~/.t3` is read, moved, or deleted.
 
 If Homebrew activation fails and no other T3 server is found, the script stops
-and disables any partially registered Homebrew unit, removes the runtime masks,
-and restores the previous active and enabled legacy states. If another T3
-process, listener, or unverifiable state remains, it leaves the legacy units
-stopped, disabled, and runtime-masked; identify the conflict before restoring a
-legacy unit. Do not start the Homebrew service manually while a legacy T3
-service is active.
+and unregisters any partially registered Homebrew unit, restores the original
+legacy unit files, reloads systemd, and restarts the previously active unit. If
+another T3 process, listener, or unverifiable state remains, it leaves the
+legacy unit masked at its original path with the original file preserved in the
+migration state directory. Identify the conflict before restoring a legacy
+unit. Do not start the Homebrew service manually while a legacy T3 service is
+active.
 
 The script refuses to reconcile two active legacy units or an already active or
-enabled Homebrew unit alongside a legacy unit. It also checks for a T3 CLI
-process on any port and checks port 3773 after stopping legacy services. If
-another listener remains, it leaves the legacy units stopped, disabled, and
-runtime-masked so it cannot start a second server; identify and stop that
-listener before manually restoring the one service you intend to keep.
+enabled Homebrew unit alongside a legacy unit. It also serializes concurrent
+migrations, checks for a T3 CLI process on any port, and checks port 3773 after
+stopping legacy services. If another listener remains, the legacy unit stays
+masked at its original path, so it cannot start a second server. Identify and
+stop that listener before restoring the saved unit.
 
 Check the resulting service state with:
 
@@ -68,7 +73,7 @@ systemctl --user is-active t3code.service
 ```
 
 The Homebrew service should be running; both legacy units should be inactive
-and disabled. `systemctl` may report an inactive or unknown unit when a legacy
+and masked. `systemctl` may report an inactive or unknown unit when a legacy
 unit was not installed.
 
 ## Upgrade the CLI and Desktop together
@@ -77,17 +82,24 @@ Run as the T3 user. These commands upgrade the already-installed packages; they
 do not install a missing package:
 
 ```bash
+set -euo pipefail
 tap_repo="$(brew --repo joshyorko/tools)"
 cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
 desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
-test -n "$cli_version" && test "$cli_version" = "$desktop_version"
+if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
+  echo "Installed T3 CLI/Desktop versions do not match; restore parity before upgrading." >&2
+  exit 1
+fi
 
 rollback_dir="$HOME/.local/state/t3code-homebrew-rollback/$(date +%Y%m%d%H%M%S)"
 mkdir -p "$rollback_dir"
 chmod 700 "$rollback_dir"
 cli_revision="$(git -C "$tap_repo" log --all --reverse --format=%H -S "version \"$cli_version\"" -- Formula/t3code-cli-main.rb | head -n 1)"
 desktop_revision="$(git -C "$tap_repo" log --all --reverse --format=%H -S "version \"$desktop_version\"" -- Casks/t3-code-linux.rb | head -n 1)"
-test -n "$cli_revision" && test -n "$desktop_revision"
+if [[ -z "$cli_revision" || -z "$desktop_revision" ]]; then
+  echo "Tap history does not contain both installed T3 package definitions; stop before upgrading." >&2
+  exit 1
+fi
 git -C "$tap_repo" show "$cli_revision:Formula/t3code-cli-main.rb" > "$rollback_dir/t3code-cli-main.rb"
 git -C "$tap_repo" show "$desktop_revision:Casks/t3-code-linux.rb" > "$rollback_dir/t3-code-linux.rb"
 grep -Fqx "  version \"$cli_version\"" "$rollback_dir/t3code-cli-main.rb"
@@ -147,20 +159,26 @@ brew services start t3code-cli-main
 ```
 
 If you are also rolling back to a tap revision from before Homebrew service
-support, unmask and restore only the legacy unit that was active before
-migration, and re-enable it only if it was previously enabled. For example, if
-`t3code-homebrew.service` was the sole active, enabled unit:
+support, restore only the saved legacy unit that was active before migration.
+For example, if `t3code-homebrew.service` was the sole active unit:
 
 ```bash
-systemctl --user unmask t3code-homebrew.service
-systemctl --user enable t3code-homebrew.service
-systemctl --user start t3code-homebrew.service
+set -euo pipefail
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/t3code-homebrew-service-migration/legacy"
+unit=t3code-homebrew.service
+unit_path="$(cat "$state_dir/$unit.path")"
+restore_temp="${unit_path}.restore.$$"
+ln -P -- "$state_dir/$unit" "$restore_temp"
+mv -Tf -- "$restore_temp" "$unit_path"
+systemctl --user daemon-reload
+active="$(sed -n 's/^active=//p' "$state_dir/$unit.state")"
+if [ "$active" = true ]; then systemctl --user start "$unit"; fi
 ```
 
 If both legacy units were active before migration, leave them stopped until you
-identify the single unit to restore. The migration keeps their unit files for
-this recovery. Never run `brew services start` while the restored legacy server
-is active.
+identify the single unit to restore. The original unit and its enabled/active
+state are saved alongside the path. Never run `brew services start` while the
+restored legacy server is active.
 
 ## Update ownership and limitations
 

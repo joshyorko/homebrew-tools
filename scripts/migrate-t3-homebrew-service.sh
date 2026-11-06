@@ -71,6 +71,19 @@ legacy_units=(t3code-homebrew.service t3code.service)
 active_units=()
 enabled_units=()
 units_to_mask=()
+backup_dir="${XDG_STATE_HOME:-$HOME/.local/state}/t3code-homebrew-service-migration/legacy"
+same_unit_file() {
+  local current="$1" backup="$2"
+  if [[ -L "$current" && -L "$backup" ]]; then
+    [[ "$(readlink "$current")" == "$(readlink "$backup")" ]]
+  else
+    [[ -f "$current" && -f "$backup" ]] && cmp -s -- "$current" "$backup"
+  fi
+}
+declare -A unit_fragment_paths=()
+declare -A unit_backup_paths=()
+declare -A unit_active_state=()
+declare -A unit_enabled_state=()
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 target_units=(
   sh.brew.t3code-cli-main.service
@@ -123,6 +136,10 @@ for unit in "${legacy_units[@]}"; do
   $is_active && active_units+=("$unit")
   $is_enabled && enabled_units+=("$unit")
   units_to_mask+=("$unit")
+  unit_fragment_paths["$unit"]="$fragment"
+  unit_backup_paths["$unit"]="$backup_dir/$unit"
+  unit_active_state["$unit"]="$is_active"
+  unit_enabled_state["$unit"]="$is_enabled"
 done
 
 if ((${#units_to_mask[@]} > 0)) && $target_was_active; then
@@ -140,11 +157,34 @@ fi
 
 if ! $apply; then
   printf 'Legacy units to stop: %s\n' "${active_units[*]:-none}"
-  printf 'Legacy units to disable: %s\n' "${enabled_units[*]:-none}"
-  printf 'Legacy units to runtime-mask: %s\n' "${units_to_mask[*]:-none}"
+  printf 'Legacy units to preserve and mask in place: %s\n' "${units_to_mask[*]:-none}"
   printf '%s\n' "Next: brew services start t3code-cli-main"
   printf '%s\n' "Review this plan, then rerun with --apply to perform it."
   exit 0
+fi
+
+if ((${#units_to_mask[@]} > 0)); then
+  if [[ ! -d "$backup_dir" ]]; then
+    mkdir -p "$backup_dir"
+    chmod 700 "$backup_dir"
+  fi
+  if [[ ! -O "$backup_dir" || ! -w "$backup_dir" ]]; then
+    echo "The legacy-unit backup directory must be writable and owned by this user: $backup_dir" >&2
+    exit 1
+  fi
+  for unit in "${units_to_mask[@]}"; do
+    backup="${unit_backup_paths[$unit]}"
+    if [[ -e "$backup" || -L "$backup" ]]; then
+      if [[ -f "$backup.path" && "$(cat "$backup.path")" == "${unit_fragment_paths[$unit]}" ]] && same_unit_file "${unit_fragment_paths[$unit]}" "$backup"; then
+        continue
+      fi
+      echo "A prior legacy-unit backup exists for $unit and does not match the current unit; inspect it before migrating again." >&2
+      exit 1
+    elif [[ -e "$backup.path" || -e "$backup.state" ]]; then
+      echo "An incomplete prior legacy-unit backup exists for $unit; inspect it before migrating again." >&2
+      exit 1
+    fi
+  done
 fi
 
 changed=false
@@ -171,58 +211,101 @@ restore_legacy_services() {
   fi
 
   if $port_conflict || $server_conflict; then
-    echo "Another server or listener remains; legacy units remain stopped, disabled, and runtime-masked until it is identified." >&2
+    echo "Another server or listener remains; legacy units remain stopped and masked until it is identified." >&2
+    exit "$result"
+  fi
+
+  legacy_still_active=false
+  for unit in "${active_units[@]}"; do
+    systemctl --user is-active --quiet "$unit" && legacy_still_active=true
+  done
+  if $legacy_still_active && ! $homebrew_start_attempted; then
+    echo "Restoring legacy unit files; the prior service is still active and will not be restarted." >&2
+    restore_legacy_unit_files
     exit "$result"
   fi
 
   if pgrep -u "$UID" -f '(^|[ /])t3[[:space:]]+(serve|__service-launcher)([[:space:]]|$)|t3code-cli-main|@t3tools/cli' >/dev/null 2>&1; then
-    echo "Another T3 server is still running; legacy units remain stopped, disabled, and runtime-masked." >&2
+    echo "Another T3 server is still running; legacy units remain stopped and masked." >&2
     exit "$result"
   else
     process_status=$?
     if [[ "$process_status" -ne 1 ]]; then
-      echo "Could not verify T3 server processes; legacy units remain stopped, disabled, and runtime-masked." >&2
+      echo "Could not verify T3 server processes; legacy units remain stopped and masked." >&2
       exit "$result"
     fi
   fi
 
   listeners="$(ss -H -ltn 'sport = :3773')" || {
-    echo "Could not check port 3773; legacy units remain stopped, disabled, and runtime-masked." >&2
+    echo "Could not check port 3773; legacy units remain stopped and masked." >&2
     exit "$result"
   }
   if [[ -n "$listeners" ]]; then
-    echo "A listener remains on port 3773; legacy units remain stopped, disabled, and runtime-masked until the listener is identified." >&2
+    echo "A listener remains on port 3773; legacy units remain stopped and masked until the listener is identified." >&2
     exit "$result"
   fi
 
   echo "Homebrew service activation failed; restoring the previous legacy service states." >&2
-  for unit in "${units_to_mask[@]}"; do
-    systemctl --user unmask "$unit" || {
-      echo "Could not unmask $unit; legacy services remain stopped." >&2
-      exit "$result"
-    }
-  done
-  for unit in "${enabled_units[@]}"; do
-    systemctl --user enable "$unit" >/dev/null || echo "Could not re-enable $unit." >&2
-  done
+  restore_legacy_unit_files
   for unit in "${active_units[@]}"; do
     systemctl --user start "$unit" || echo "Could not restart $unit; see systemctl --user status $unit." >&2
   done
   exit "$result"
 }
+
+restore_legacy_unit_files() {
+  local unit fragment backup restore_temp
+  for unit in "${units_to_mask[@]}"; do
+    fragment="${unit_fragment_paths[$unit]}"
+    backup="${unit_backup_paths[$unit]}"
+    if [[ ! -e "$backup" && ! -L "$backup" ]]; then
+      continue
+    fi
+
+    if [[ -L "$fragment" && "$(readlink "$fragment")" == /dev/null ]]; then
+      restore_temp="${fragment}.restore.$$"
+      ln -P -- "$backup" "$restore_temp" || return 1
+      mv -Tf -- "$restore_temp" "$fragment" || return 1
+    elif [[ -L "$fragment" && -L "$backup" && "$(readlink "$fragment")" == "$(readlink "$backup")" ]]; then
+      :
+    elif [[ -f "$fragment" && -f "$backup" ]] && cmp -s -- "$fragment" "$backup"; then
+      :
+    elif [[ ! -e "$fragment" && ! -L "$fragment" ]]; then
+      restore_temp="${fragment}.restore.$$"
+      ln -P -- "$backup" "$restore_temp" || return 1
+      mv -Tf -- "$restore_temp" "$fragment" || return 1
+    else
+      echo "Refusing to overwrite a changed unit file at $fragment." >&2
+      return 1
+    fi
+
+    rm -f -- "$backup" "$backup.path" "$backup.state"
+  done
+  systemctl --user daemon-reload
+}
 trap restore_legacy_services EXIT
 
 for unit in "${units_to_mask[@]}"; do
   changed=true
-  systemctl --user mask --runtime "$unit"
+  fragment="${unit_fragment_paths[$unit]}"
+  backup="${unit_backup_paths[$unit]}"
+  if [[ ! -e "$backup" && ! -L "$backup" ]]; then
+    ln -P -- "$fragment" "$backup"
+  fi
+  printf '%s\n' "$fragment" > "$backup.path"
+  printf 'active=%s\nenabled=%s\n' "${unit_active_state[$unit]}" "${unit_enabled_state[$unit]}" > "$backup.state"
+  mask_temp="${fragment}.mask.$$"
+  if [[ -e "$mask_temp" || -L "$mask_temp" ]]; then
+    echo "Temporary unit-mask path already exists: $mask_temp" >&2
+    exit 1
+  fi
+  ln -s /dev/null "$mask_temp"
+  mv -Tf -- "$mask_temp" "$fragment"
 done
+systemctl --user daemon-reload
 for unit in "${active_units[@]}"; do
   changed=true
   systemctl --user stop "$unit"
-done
-for unit in "${enabled_units[@]}"; do
-  changed=true
-  systemctl --user disable "$unit"
 done
 
 if ! $target_was_active; then
@@ -264,4 +347,8 @@ if ! target_is_active; then
 fi
 changed=false
 trap - EXIT
-echo "Homebrew now owns the T3 Code server lifecycle. Legacy unit files and ~/.t3 data were preserved."
+if ((${#units_to_mask[@]} > 0)); then
+  echo "Homebrew now owns the T3 Code server lifecycle. Original legacy units are saved under $backup_dir and masked at their original paths; ~/.t3 data was not changed."
+else
+  echo "Homebrew now owns the T3 Code server lifecycle. No legacy unit needed migration; ~/.t3 data was not changed."
+fi

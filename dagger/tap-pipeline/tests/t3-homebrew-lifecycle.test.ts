@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync, spawnSync } from "node:child_process"
@@ -36,9 +36,53 @@ test("migration is reviewable by default and limits changes to named legacy unit
   assert.match(script, /brew services start t3code-cli-main/)
   assert.match(script, /--apply/)
   assert.match(script, /flock -n 9/)
-  assert.match(script, /systemctl --user mask --runtime/)
+  assert.match(script, /ln -s \/dev\/null/)
+  assert.match(script, /t3code-homebrew-service-migration\/legacy/)
   assert.match(script, /pgrep -u/)
   assert.doesNotMatch(script, /rm\s+-rf|\.t3\/(?:userdata|runtime)|service install/)
+})
+
+test("systemd honors a mask at the original unit path over a runtime mask", (context) => {
+  const version = spawnSync("systemd-analyze", ["--version"], { encoding: "utf8" })
+  if (version.error || version.status !== 0) {
+    context.skip("systemd-analyze is unavailable")
+    return
+  }
+
+  const home = mkdtempSync(join(tmpdir(), "t3-systemd-unit-mask-"))
+  try {
+    const configDir = join(home, ".config/systemd/user")
+    const runtimeDir = join(home, "runtime/systemd/user")
+    mkdirSync(configDir, { recursive: true })
+    mkdirSync(runtimeDir, { recursive: true })
+    const unitPath = join(configDir, "t3code-homebrew.service")
+    const runtimeMask = join(runtimeDir, "t3code-homebrew.service")
+    writeFileSync(unitPath, "[Unit]\nDescription=isolated T3 unit lookup\n[Service]\nExecStart=/usr/bin/true\n")
+    const env = {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, ".config"),
+      XDG_RUNTIME_DIR: join(home, "runtime"),
+    }
+
+    symlinkSync("/dev/null", runtimeMask)
+    const runtimeResult = spawnSync("systemd-analyze", ["--user", "verify", "t3code-homebrew.service"], {
+      encoding: "utf8",
+      env,
+    })
+    assert.equal(runtimeResult.status, 0, `${runtimeResult.stdout}\n${runtimeResult.stderr}`)
+
+    rmSync(unitPath)
+    symlinkSync("/dev/null", unitPath)
+    const sourcePathResult = spawnSync("systemd-analyze", ["--user", "verify", "t3code-homebrew.service"], {
+      encoding: "utf8",
+      env,
+    })
+    assert.notEqual(sourcePathResult.status, 0)
+    assert.match(`${sourcePathResult.stdout}\n${sourcePathResult.stderr}`, /is masked/)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })
 
 test("upgrade rollback definitions are recovered by the installed pair version", () => {
@@ -108,6 +152,63 @@ esac
   }
 })
 
+test("upgrade guards stop before brew update on pair or rollback snapshot errors", () => {
+  const home = mkdtempSync(join(tmpdir(), "t3-homebrew-upgrade-guards-"))
+  try {
+    const bin = join(home, "bin")
+    mkdirSync(bin)
+    writeFileSync(join(bin, "brew"), `#!/bin/bash
+printf 'brew %s\\n' "$*" >> "$COMMAND_LOG"
+case "$*" in
+  "--repo joshyorko/tools") printf '%s\\n' "$TAP_REPO" ;;
+  "list --versions t3code-cli-main") printf '%s\\n' "t3code-cli-main $CLI_VERSION" ;;
+  "list --cask --versions t3-code-linux") printf '%s\\n' "t3-code-linux $DESKTOP_VERSION" ;;
+esac
+exit 0
+`, { mode: 0o755 })
+    writeFileSync(join(bin, "git"), `#!/bin/bash
+printf 'git %s\\n' "$*" >> "$COMMAND_LOG"
+case "$*" in
+  *log*Formula/t3code-cli-main.rb*) [[ $MISSING_HISTORY == formula ]] || printf '%s\\n' formula-revision ;;
+  *log*Casks/t3-code-linux.rb*) [[ $MISSING_HISTORY == cask ]] || printf '%s\\n' cask-revision ;;
+  *show*Formula/t3code-cli-main.rb*) printf 'class T3codeCliMain < Formula\\n  version "%s"\\nend\\n' "$FORMULA_HISTORY_VERSION" ;;
+  *show*Casks/t3-code-linux.rb*) printf 'cask "t3-code-linux" do\\n  version "%s"\\nend\\n' "$DESKTOP_HISTORY_VERSION" ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 })
+    const upgradeBlock = guide.match(/## Upgrade the CLI and Desktop together[\s\S]*?```bash\n([\s\S]*?)```/)?.[1]
+    assert.ok(upgradeBlock)
+
+    for (const scenario of [
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260202000000.222222222222", missing: "", historyCli: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111" },
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", missing: "formula", historyCli: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111" },
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", missing: "", historyCli: "main.20260202000000.222222222222", historyDesktop: "main.20260101000000.111111111111" },
+    ]) {
+      const commandLog = join(home, "commands.log")
+      const result = spawnSync("bash", ["-c", upgradeBlock], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          TAP_REPO: home,
+          COMMAND_LOG: commandLog,
+          CLI_VERSION: scenario.cli,
+          DESKTOP_VERSION: scenario.desktop,
+          MISSING_HISTORY: scenario.missing,
+          FORMULA_HISTORY_VERSION: scenario.historyCli,
+          DESKTOP_HISTORY_VERSION: scenario.historyDesktop,
+        },
+      })
+      assert.notEqual(result.status, 0)
+      assert.doesNotMatch(readFileSync(commandLog, "utf8"), /brew update|brew upgrade/)
+      rmSync(commandLog, { force: true })
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
 function fakeCommands(home: string) {
   const bin = join(home, "bin")
   mkdirSync(bin, { recursive: true })
@@ -117,14 +218,24 @@ printf 'systemctl %s\\n' "$*" >> "$COMMAND_LOG"
 shift
 active_file="$HOME/active-units"
 enabled_file="$HOME/enabled-units"
-masked_file="$HOME/masked-units"
+unit_dir="$HOME/.config/systemd/user"
 if [[ ! -f "$active_file" ]]; then printf '%s\\n' "$LEGACY_ACTIVE" | tr ' ' '\\n' > "$active_file"; fi
 if [[ ! -f "$enabled_file" ]]; then printf '%s\\n' "$LEGACY_ENABLED" | tr ' ' '\\n' > "$enabled_file"; fi
-touch "$masked_file"
+mkdir -p "$unit_dir"
+for unit in t3code-homebrew.service t3code.service; do
+  if [[ ! -e "$unit_dir/$unit" && ! -L "$unit_dir/$unit" ]]; then
+    printf '[Service]\\nExecStart=/home/linuxbrew/.linuxbrew/bin/t3 serve\\n' > "$unit_dir/$unit"
+  fi
+done
 case "$1" in
   show-environment) exit 0 ;;
   is-active) grep -Fxq "$3" "$active_file" ;;
-  is-enabled) grep -Fxq "$3" "$enabled_file" ;;
+  is-enabled)
+    if [[ -L "$unit_dir/$3" && "$(readlink "$unit_dir/$3")" == /dev/null ]]; then exit 1; fi
+    grep -Fxq "$3" "$enabled_file" ;;
+  daemon-reload)
+    if [[ $FAIL_DAEMON_RELOAD == true && ! -f "$HOME/reload-failed" ]]; then touch "$HOME/reload-failed"; exit 1; fi
+    exit 0 ;;
   show)
     case "$3" in
       --property=FragmentPath)
@@ -133,21 +244,13 @@ case "$1" in
         if [[ $2 == t3code.service ]]; then printf '%s\\n' '/home/josh/.t3/runtime/versions/0.1.7/t3 __service-launcher'; else printf '%s\\n' '/home/linuxbrew/.linuxbrew/bin/t3 serve'; fi ;;
       *) exit 1 ;;
     esac ;;
-  mask|unmask)
-    unit="$2"
-    [[ "$1" == mask ]] && unit="$3"
-    if [[ "$1" == mask ]]; then printf '%s\\n' "$unit" >> "$masked_file"; else grep -Fvx "$unit" "$masked_file" > "$masked_file.tmp" || true; mv "$masked_file.tmp" "$masked_file"; fi
-    exit 0 ;;
-  stop|disable)
+  stop)
     file="$active_file"
-    [[ "$1" == disable ]] && file="$enabled_file"
     grep -Fvx "$2" "$file" > "$file.tmp" || true
     mv "$file.tmp" "$file"
-    if [[ "$1" == disable && $FAIL_DISABLE == true ]]; then exit 1; fi
     exit 0 ;;
-  start|enable)
+  start)
     file="$active_file"
-    [[ "$1" == enable ]] && file="$enabled_file"
     grep -Fxq "$2" "$file" || printf '%s\\n' "$2" >> "$file" ;;
   *) exit 1 ;;
 esac
@@ -219,10 +322,14 @@ test("migration dry run does not change either service", () => {
   }
 })
 
-test("migration disables the legacy server before starting Homebrew and is repeatable", () => {
+test("migration masks the legacy server before starting Homebrew and is repeatable", () => {
   const home = mkdtempSync(join(tmpdir(), "t3-homebrew-migration-"))
   try {
     const { bin, log } = fakeCommands(home)
+    const unitPath = join(home, ".config/systemd/user/t3code-homebrew.service")
+    mkdirSync(join(home, ".config/systemd/user"), { recursive: true })
+    writeFileSync(unitPath, "[Service]\nExecStart=/home/linuxbrew/.linuxbrew/bin/t3 serve\n")
+    const originalInode = statSync(unitPath).ino
     const script = readFileSync(migrationPath, "utf8")
     const result = spawnSync("bash", ["-c", script, "migration", "--apply"], {
       encoding: "utf8",
@@ -238,10 +345,13 @@ test("migration disables the legacy server before starting Homebrew and is repea
     assert.equal(result.status, 0, `${result.stderr}\n${readFileSync(log, "utf8")}`)
     const firstRunCommands = readFileSync(log, "utf8")
     assert.ok(firstRunCommands.indexOf("systemctl --user stop t3code-homebrew.service") < firstRunCommands.indexOf("brew services start t3code-cli-main"))
-    assert.ok(firstRunCommands.indexOf("systemctl --user disable t3code-homebrew.service") < firstRunCommands.indexOf("brew services start t3code-cli-main"))
     assert.equal((firstRunCommands.match(/brew services start t3code-cli-main/g) ?? []).length, 1)
-    assert.match(firstRunCommands, /systemctl --user mask --runtime t3code-homebrew\.service/)
-    assert.match(readFileSync(join(home, "masked-units"), "utf8"), /t3code-homebrew\.service/)
+    assert.equal(readlinkSync(unitPath), "/dev/null")
+    const backupPath = join(home, ".local/state/t3code-homebrew-service-migration/legacy/t3code-homebrew.service")
+    assert.equal(statSync(backupPath).ino, originalInode)
+    assert.equal(readFileSync(`${backupPath}.path`, "utf8").trim(), unitPath)
+    assert.match(readFileSync(`${backupPath}.state`, "utf8"), /active=true\nenabled=true/)
+    assert.match(readFileSync(backupPath, "utf8"), /ExecStart=\/home\/linuxbrew/)
     assert.match(readFileSync(join(home, "active-units"), "utf8"), /sh\.brew\.t3code-cli-main\.service/)
 
     const repeat = spawnSync("bash", ["-c", script, "migration", "--apply"], {
@@ -282,8 +392,40 @@ test("migration supports the upstream-installed t3code.service launcher", () => 
     assert.equal(result.status, 0, result.stderr)
     const commands = readFileSync(log, "utf8")
     assert.match(commands, /systemctl --user stop t3code\.service/)
-    assert.match(commands, /systemctl --user disable t3code\.service/)
     assert.match(commands, /brew services start t3code-cli-main/)
+    assert.equal(readlinkSync(join(home, ".config/systemd/user/t3code.service")), "/dev/null")
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test("migration reuses an exact preserved unit backup after operator restoration", () => {
+  const home = mkdtempSync(join(tmpdir(), "t3-homebrew-migration-"))
+  try {
+    const { bin, log } = fakeCommands(home)
+    const unitPath = join(home, ".config/systemd/user/t3code-homebrew.service")
+    const backupPath = join(home, ".local/state/t3code-homebrew-service-migration/legacy/t3code-homebrew.service")
+    mkdirSync(join(home, ".config/systemd/user"), { recursive: true })
+    mkdirSync(join(home, ".local/state/t3code-homebrew-service-migration/legacy"), { recursive: true })
+    writeFileSync(unitPath, "[Service]\nExecStart=/home/linuxbrew/.linuxbrew/bin/t3 serve\n")
+    writeFileSync(backupPath, readFileSync(unitPath))
+    writeFileSync(`${backupPath}.path`, `${unitPath}\n`)
+    writeFileSync(`${backupPath}.state`, "active=true\nenabled=true\n")
+
+    const result = spawnSync("bash", [migrationPath.pathname, "--apply"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${bin}:${process.env.PATH}`,
+        COMMAND_LOG: log,
+        LEGACY_ACTIVE: "t3code-homebrew.service",
+        LEGACY_ENABLED: "t3code-homebrew.service",
+      },
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(readlinkSync(unitPath), "/dev/null")
+    assert.match(readFileSync(backupPath, "utf8"), /ExecStart=/)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
@@ -310,16 +452,16 @@ test("migration restores the legacy server if Homebrew activation fails", () => 
     assert.notEqual(result.status, 0)
     const commands = readFileSync(log, "utf8")
     assert.match(commands, /brew services stop t3code-cli-main/)
-    assert.match(commands, /systemctl --user enable t3code-homebrew\.service/)
-    assert.ok(commands.indexOf("systemctl --user unmask t3code-homebrew.service") < commands.indexOf("systemctl --user start t3code-homebrew.service"))
     assert.match(commands, /systemctl --user start t3code-homebrew\.service/)
     assert.doesNotMatch(commands, /\.t3\/(?:userdata|runtime)/)
+    assert.equal(lstatSync(join(home, ".config/systemd/user/t3code-homebrew.service")).isSymbolicLink(), false)
+    assert.doesNotMatch(readFileSync(join(home, ".config/systemd/user/t3code-homebrew.service"), "utf8"), /\/dev\/null/)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
 })
 
-test("migration restores prior states after a disable command partially fails", () => {
+test("migration restores the original unit if systemd reload fails after masking", () => {
   const home = mkdtempSync(join(tmpdir(), "t3-homebrew-migration-"))
   try {
     const { bin, log } = fakeCommands(home)
@@ -332,14 +474,16 @@ test("migration restores prior states after a disable command partially fails", 
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
         LEGACY_ENABLED: "t3code-homebrew.service",
-        FAIL_DISABLE: "true",
+        FAIL_DAEMON_RELOAD: "true",
       },
     })
     assert.notEqual(result.status, 0)
     const commands = readFileSync(log, "utf8")
-    assert.match(commands, /systemctl --user enable t3code-homebrew\.service/)
-    assert.match(commands, /systemctl --user start t3code-homebrew\.service/)
+    assert.equal((commands.match(/systemctl --user daemon-reload/g) ?? []).length, 2)
+    assert.doesNotMatch(commands, /systemctl --user start t3code-homebrew\.service/)
     assert.doesNotMatch(commands, /brew services start t3code-cli-main/)
+    assert.match(readFileSync(join(home, ".config/systemd/user/t3code-homebrew.service"), "utf8"), /ExecStart=/)
+    assert.equal(existsSync(join(home, ".local/state/t3code-homebrew-service-migration/legacy/t3code-homebrew.service")), false)
     assert.match(readFileSync(join(home, "active-units"), "utf8"), /t3code-homebrew\.service/)
     assert.match(readFileSync(join(home, "enabled-units"), "utf8"), /t3code-homebrew\.service/)
   } finally {
@@ -366,8 +510,9 @@ test("migration rolls back if brew reports success without an active Homebrew un
     assert.notEqual(result.status, 0)
     assert.match(result.stderr, /Homebrew services reported success without an active T3 service/)
     const commands = readFileSync(log, "utf8")
-    assert.match(commands, /systemctl --user enable t3code-homebrew\.service/)
     assert.match(commands, /systemctl --user start t3code-homebrew\.service/)
+    assert.equal(lstatSync(join(home, ".config/systemd/user/t3code-homebrew.service")).isSymbolicLink(), false)
+    assert.equal(existsSync(join(home, ".local/state/t3code-homebrew-service-migration/legacy/t3code-homebrew.service")), false)
     assert.match(readFileSync(join(home, "active-units"), "utf8"), /t3code-homebrew\.service/)
     assert.match(readFileSync(join(home, "enabled-units"), "utf8"), /t3code-homebrew\.service/)
   } finally {
@@ -396,6 +541,8 @@ test("migration refuses to start beside an unexplained listener on port 3773", (
     assert.match(result.stderr, /T3's default port 3773/)
     assert.doesNotMatch(commands, /brew services start t3code-cli-main/)
     assert.doesNotMatch(commands, /systemctl --user start t3code-homebrew\.service/)
+    assert.equal(readlinkSync(join(home, ".config/systemd/user/t3code-homebrew.service")), "/dev/null")
+    assert.ok(existsSync(join(home, ".local/state/t3code-homebrew-service-migration/legacy/t3code-homebrew.service")))
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
@@ -551,8 +698,8 @@ test("migration refuses to start beside a T3 process on a non-default port", () 
     assert.match(result.stderr, /Another T3 server is still running/)
     const commands = readFileSync(log, "utf8")
     assert.doesNotMatch(commands, /brew services start t3code-cli-main/)
-    assert.doesNotMatch(commands, /systemctl --user unmask t3code-homebrew\.service/)
-    assert.match(readFileSync(join(home, "masked-units"), "utf8"), /t3code-homebrew\.service/)
+    assert.equal(readlinkSync(join(home, ".config/systemd/user/t3code-homebrew.service")), "/dev/null")
+    assert.ok(existsSync(join(home, ".local/state/t3code-homebrew-service-migration/legacy/t3code-homebrew.service")))
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
