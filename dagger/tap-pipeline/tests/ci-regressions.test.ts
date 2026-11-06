@@ -581,3 +581,18 @@ test("Codex MemoryD slot uses the four-platform native builder instead of Dagger
   const tags = section(pipeline, "private expectedTapReleaseTag", "private async tapReleaseExists")
   assert.match(tags, /case "codex-memoryd":\s*return `codex-memoryd-\$\{version\}`/)
 })
+
+test("T3 source acceptance trusts each isolated fixture before audit and checks the packaged helper", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  for (const [id, kind, end] of [
+    ["t3code-cli-main", "formula", 'case "chatgpt": {'],
+    ["t3-code-linux", "cask", 'case "headroom-self-hosted": {'],
+  ]) {
+    const source = section(pipeline, `case "${id}": {`, end)
+    const trust = source.indexOf(`brew trust --${kind} test/tap/${id}`)
+    const audit = source.indexOf(`brew audit --${kind} test/tap/${id}`)
+    assert.ok(trust >= 0 && audit > trust, `${id} must be trusted before Homebrew loads it for audit`)
+    assert.doesNotMatch(source, /HOMEBREW_NO_REQUIRE_TAP_TRUST/)
+  }
+  assert.match(pipeline, /test -x.*app_dir\/resources\/t3-homebrew-update\.sh/)
+})

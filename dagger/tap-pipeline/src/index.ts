@@ -3410,6 +3410,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3code-cli-main"),
+              "brew trust --formula test/tap/t3code-cli-main",
               "brew audit --formula test/tap/t3code-cli-main",
               "cp /built-tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
               "brew install test/tap/t3code-cli-main",
@@ -3745,6 +3746,7 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("t3-code-linux"),
+              "brew trust --cask test/tap/t3-code-linux",
               "brew audit --cask test/tap/t3-code-linux",
               "cp /built-tap/Casks/t3-code-linux.rb \"$tap_dir/Casks/\"",
               "brew install --cask test/tap/t3-code-linux",
@@ -3761,6 +3763,7 @@ end
               "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
               "app_dir=\"$installed_dir/squashfs-root\"",
               "asar=\"$app_dir/resources/app.asar\"",
+              "test -x \"$app_dir/resources/t3-homebrew-update.sh\"",
               ...t3PublicConnectAsarChecks(),
             ].join("\n"),
           ])
