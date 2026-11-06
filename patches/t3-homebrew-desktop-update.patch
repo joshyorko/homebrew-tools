@@ -1,5 +1,5 @@
 diff --git a/apps/desktop/src/updates/DesktopUpdates.test.ts b/apps/desktop/src/updates/DesktopUpdates.test.ts
-index 3b45d80..11fbb3e 100644
+index 3b45d80..9c7951d 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.test.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.test.ts
 @@ -1,5 +1,7 @@
@@ -76,7 +76,7 @@ index 3b45d80..11fbb3e 100644
  describe("DesktopUpdates", () => {
    it.effect("updates Linux .deb installs and leaves other non-AppImage installs off", () =>
      Effect.gen(function* () {
-@@ -1075,4 +1128,146 @@ describe("DesktopUpdates under a managed policy", () => {
+@@ -1075,4 +1128,164 @@ describe("DesktopUpdates under a managed policy", () => {
        }),
      ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
    });
@@ -222,6 +222,24 @@ index 3b45d80..11fbb3e 100644
 +      Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
 +    );
 +  });
++  for (const identity of [null, "invalid JSON"]) {
++    it.effect(`disables Homebrew updates for ${identity === null ? "missing" : "invalid"} build identity`, () => {
++      const root = mkdtempSync(join(tmpdir(), "t3-homebrew-identity-"));
++      writeHomebrewHelper(root, "available");
++      const harness = makeHarness({ platform: "linux", appVersion: "0.1.7", homebrewResourcePath: root, homebrewBuildIdentity: identity, env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" } });
++      return Effect.scoped(Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        yield* updates.configure;
++        const state = yield* updates.getState;
++        assert.isFalse(state.enabled);
++        assert.equal(state.status, "disabled");
++        assert.include(state.message ?? "", "identity");
++        assert.isFalse((yield* updates.check("manual")).checked);
++        assert.isFalse(existsSync(join(root, "calls.txt")));
++      })).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)), Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))));
++    });
++  }
++
  });
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
 index 14688e5..481cdf5 100644
@@ -1144,7 +1162,7 @@ index 0000000..e7d1abf
 +  };
 +}
 diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index 226f00f..2e5510e 100644
+index 226f00f..6681812 100644
 --- a/apps/desktop/src/updates/updatesTestHarness.ts
 +++ b/apps/desktop/src/updates/updatesTestHarness.ts
 @@ -10,6 +10,7 @@ import * as Option from "effect/Option";
@@ -1155,15 +1173,16 @@ index 226f00f..2e5510e 100644
  import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
-@@ -36,6 +37,7 @@ export interface UpdatesHarnessOptions {
+@@ -36,6 +37,8 @@ export interface UpdatesHarnessOptions {
    readonly env?: Record<string, string | undefined>;
    readonly platform?: NodeJS.Platform;
    readonly packageType?: string | undefined;
 +  readonly homebrewResourcePath?: string;
++  readonly homebrewBuildIdentity?: string | null;
    readonly installRecord?: string | undefined;
    readonly policy?: DesktopUpdatePolicy.UpdatePolicy;
    readonly appVersion?: string;
-@@ -136,6 +138,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -136,6 +139,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      syncAllAppearance: () => Effect.void,
    } satisfies ElectronWindow.ElectronWindow["Service"]);
 
@@ -1177,7 +1196,7 @@ index 226f00f..2e5510e 100644
    let backendDesiredRunning = options.backendDesiredRunning ?? true;
    const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
      id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
-@@ -174,13 +183,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -174,13 +184,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
 
    const layerEnvironment = DesktopEnvironment.layer({
      dirname: "/repo/apps/desktop/src",
@@ -1193,18 +1212,18 @@ index 226f00f..2e5510e 100644
      runningUnderArm64Translation: false,
    }).pipe(
      Layer.provide(
-@@ -242,7 +251,10 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -242,7 +252,10 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
    const isInstallRecord = (path: string) =>
      path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
    const layerFileSystem = FileSystem.layerNoop({
 +    exists: (path) =>
 +      Effect.succeed(path === `${options.homebrewResourcePath}/t3-homebrew-update.sh`),
      readFileString: (path) => {
-+      if (options.homebrewResourcePath && path === `${options.homebrewResourcePath}/t3-homebrew-build.json`) return Effect.succeed(JSON.stringify({ packageVersion: "main.20261106111159.6577c6b61851", sourceCommit: "6577c6b6185167c0e502fa01f9e8e8f2dee6ff25" }));
++      if (options.homebrewResourcePath && path === `${options.homebrewResourcePath}/t3-homebrew-build.json` && options.homebrewBuildIdentity !== null) return Effect.succeed(options.homebrewBuildIdentity ?? JSON.stringify({ packageVersion: "main.20261106111159.6577c6b61851", sourceCommit: "6577c6b6185167c0e502fa01f9e8e8f2dee6ff25" }));
        const installRecord = isInstallRecord(path)
          ? (installRecords.get(path) ?? previousInstallRecord)
          : undefined;
-@@ -277,6 +289,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -277,6 +290,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      Layer.provide(DesktopUpdatePolicy.layerTest(options.policy)),
      Layer.provideMerge(layerUpdater),
      Layer.provideMerge(layerWindow),
