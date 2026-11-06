@@ -14,10 +14,10 @@ const migrationPath = new URL("scripts/migrate-t3-homebrew-service.sh", repo)
 
 test("T3 CLI formula service runs the Homebrew launcher with a usable user environment", () => {
   assert.match(formula, /service do\n[\s\S]*?run \[opt_bin\/"t3", "serve"\]/)
-  assert.match(formula, /T3CODE_HOME:\s*"#\{ENV\["HOME"\]\}\/\.t3"/)
+  assert.match(formula, /T3CODE_HOME:\s*"#\{Dir\.home\}\/\.t3"/)
   assert.match(formula, /T3CODE_TELEMETRY_ENABLED:\s*"false"/)
   assert.match(formula, /PATH:\s*\[[\s\S]*?\.local\/bin[\s\S]*?\.opencode\/bin/)
-  assert.match(formula, /Formula\["node@24"\]\.opt_bin/)
+  assert.match(formula, /formula_opt_bin\("node@24"\)/)
 })
 test("T3 Desktop uses the Homebrew provider without a fake updater feed", () => {
   assert.doesNotMatch(cask, /feedUrl|app-update\.yml|electron-updater/i)
