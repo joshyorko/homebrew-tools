@@ -123,11 +123,11 @@ probe_unit_state() {
     enabled|enabled-runtime|linked|linked-runtime|linked-overwrite|alias|static|indirect|generated|transient)
       unit_enabled=true
       ;;
-    masked-runtime)
-      # A lower-priority runtime mask does not override a loaded unit in ~/.config.
-      unit_enabled=true
+    masked|masked-runtime)
+      # A lower-priority mask does not override a unit loaded from ~/.config.
+      if [[ "$load_state" == masked ]]; then unit_enabled=false; else unit_enabled=true; fi
       ;;
-    disabled|masked|not-found|bad)
+    disabled)
       unit_enabled=false
       ;;
     *) return 1 ;;

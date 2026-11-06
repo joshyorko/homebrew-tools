@@ -127,12 +127,11 @@ test("upgrade snapshot uses installed formula and cask receipt definitions", () 
     git(["commit", "-qm", "same-version tap change"])
 
     const formulaKeg = join(cellar, "t3code-cli-main", installedVersion, ".brew")
-    const caskMetadata = join(caskroom, "t3-code-linux", ".metadata", installedVersion, "20261106.123456")
+    const caskMetadata = join(caskroom, "t3-code-linux", ".metadata")
     mkdirSync(formulaKeg, { recursive: true })
-    mkdirSync(join(caskMetadata, "Casks"), { recursive: true })
+    mkdirSync(caskMetadata, { recursive: true })
     writeFileSync(join(formulaKeg, "t3code-cli-main.rb"), `class T3codeCliMain < Formula\n  version "${installedVersion}"\n  # INSTALLED_FORMULA_RECEIPT\nend\n`)
     writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap_git_head: installedTapRevision } }))
-    writeFileSync(join(caskMetadata, "Casks", "t3-code-linux.rb"), `cask "t3-code-linux" do\n  version "${installedVersion}"\n  # INSTALLED_CASK_RECEIPT\nend\n`)
 
     writeFileSync(join(bin, "brew"), `#!/bin/bash
 case "$*" in
@@ -211,9 +210,9 @@ esac
       const tap = join(home, "tap")
       const tapCellar = join(home, "Cellar", "t3code-cli-main")
       const tapCaskroom = join(home, "Caskroom")
-      const caskMetadata = join(tapCaskroom, "t3-code-linux", ".metadata", scenario.desktop, "20261106.123456")
+      const caskMetadata = join(tapCaskroom, "t3-code-linux", ".metadata")
       mkdirSync(join(tapCellar, scenario.cli, ".brew"), { recursive: true })
-      mkdirSync(join(caskMetadata, "Casks"), { recursive: true })
+      mkdirSync(caskMetadata, { recursive: true })
       writeFileSync(join(tapCellar, scenario.cli, ".brew/t3code-cli-main.rb"), `  version "${scenario.formulaReceiptVersion}"\n`)
       writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap_git_head: "a".repeat(40) } }))
 
@@ -246,6 +245,84 @@ esac
       }
       rmSync(commandLog, { force: true })
     }
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test("rollback stops after a failed stop or reinstall command", () => {
+  const home = mkdtempSync(join(tmpdir(), "t3-homebrew-rollback-guards-"))
+  try {
+    const bin = join(home, "bin")
+    mkdirSync(bin)
+    writeFileSync(join(bin, "brew"), `#!/bin/bash
+printf 'brew %s\\n' "$*" >> "$COMMAND_LOG"
+case "$*" in
+  "services stop t3code-cli-main") [[ $FAIL_COMMAND != stop ]] ;;
+  "reinstall $ROLLBACK_DIR/t3code-cli-main.rb") [[ $FAIL_COMMAND != formula ]] ;;
+  "reinstall --cask $ROLLBACK_DIR/t3-code-linux.rb") [[ $FAIL_COMMAND != cask ]] ;;
+  "list --versions t3code-cli-main") printf '%s\\n' 't3code-cli-main main.20260101000000.111111111111' ;;
+  "list --cask --versions t3-code-linux") printf '%s\\n' 't3-code-linux main.20260101000000.111111111111' ;;
+esac
+`, { mode: 0o755 })
+    const rollbackBlock = guide.match(/## Roll back[\s\S]*?```bash\n([\s\S]*?)```/)?.[1]
+    assert.ok(rollbackBlock, "rollback commands are documented")
+
+    for (const failure of ["stop", "formula", "cask"]) {
+      const commandLog = join(home, `${failure}.log`)
+      const result = spawnSync("bash", ["-c", rollbackBlock], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          COMMAND_LOG: commandLog,
+          FAIL_COMMAND: failure,
+          ROLLBACK_DIR: home,
+          rollback_dir: home,
+        },
+      })
+      assert.notEqual(result.status, 0, `${failure}: ${result.stderr}`)
+      const commands = readFileSync(commandLog, "utf8")
+      if (failure === "stop") assert.doesNotMatch(commands, /brew reinstall/)
+      if (failure === "formula") assert.doesNotMatch(commands, /reinstall --cask|brew list/)
+      if (failure === "cask") assert.doesNotMatch(commands, /brew list/)
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test("manual legacy recovery refuses to overwrite a unit changed after migration", () => {
+  const home = mkdtempSync(join(tmpdir(), "t3-homebrew-manual-recovery-"))
+  try {
+    const { bin, log } = fakeCommands(home)
+    const stateDir = join(home, ".local/state/t3code-homebrew-service-migration/legacy")
+    const unit = "t3code-homebrew.service"
+    const unitPath = join(home, ".config/systemd/user", unit)
+    mkdirSync(stateDir, { recursive: true })
+    mkdirSync(join(home, ".config/systemd/user"), { recursive: true })
+    writeFileSync(unitPath, "[Service]\nExecStart=/another/changed/unit\n")
+    writeFileSync(join(stateDir, unit), "[Service]\nExecStart=/home/linuxbrew/.linuxbrew/bin/t3 serve\n")
+    writeFileSync(join(stateDir, `${unit}.path`), `${unitPath}\n`)
+    writeFileSync(join(stateDir, `${unit}.state`), "active=true\nenabled=true\n")
+
+    const recoveryBlock = guide.match(/For example, if `t3code-homebrew\.service` was the sole active unit:[\s\S]*?```bash\n([\s\S]*?)```/)?.[1]
+    assert.ok(recoveryBlock, "manual recovery procedure is documented")
+    const result = spawnSync("bash", ["-c", recoveryBlock], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        XDG_STATE_HOME: join(home, ".local/state"),
+        PATH: `${bin}:${process.env.PATH}`,
+        COMMAND_LOG: log,
+      },
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Refusing to overwrite a changed legacy unit/)
+    assert.match(readFileSync(unitPath, "utf8"), /another\/changed\/unit/)
+    assert.equal(existsSync(log), false)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }

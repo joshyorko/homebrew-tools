@@ -98,7 +98,7 @@ mkdir -p "$rollback_dir"
 chmod 700 "$rollback_dir"
 cli_formula="$(brew --cellar t3code-cli-main)/$cli_version/.brew/t3code-cli-main.rb"
 caskroom="$(brew --caskroom)/t3-code-linux"
-cask_receipt="$(find "$caskroom/.metadata/$desktop_version" -type f -name INSTALL_RECEIPT.json -print -quit)"
+cask_receipt="$caskroom/.metadata/INSTALL_RECEIPT.json"
 if [[ ! -f "$cli_formula" || -z "$cask_receipt" ]]; then
   echo "Homebrew cannot locate the installed T3 definitions; stop before upgrading." >&2
   exit 1
@@ -150,6 +150,7 @@ do not delete or reset `~/.t3`. Stop the Homebrew service first so only one
 server can own the T3 data and port:
 
 ```bash
+set -euo pipefail
 brew services stop t3code-cli-main
 brew reinstall "$rollback_dir/t3code-cli-main.rb"
 brew reinstall --cask "$rollback_dir/t3-code-linux.rb"
@@ -178,6 +179,10 @@ set -euo pipefail
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/t3code-homebrew-service-migration/legacy"
 unit=t3code-homebrew.service
 unit_path="$(cat "$state_dir/$unit.path")"
+if [[ ! -L "$unit_path" || "$(readlink "$unit_path")" != /dev/null ]]; then
+  echo "Refusing to overwrite a changed legacy unit at $unit_path." >&2
+  exit 1
+fi
 restore_temp="${unit_path}.restore.$$"
 ln -P -- "$state_dir/$unit" "$restore_temp"
 mv -Tf -- "$restore_temp" "$unit_path"
