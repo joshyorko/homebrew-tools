@@ -29,6 +29,33 @@ class T3codeCliMain < Formula
     SH
   end
 
+  service do
+    run [opt_bin/"t3", "serve"]
+    keep_alive true
+    working_dir ENV["HOME"]
+    environment_variables(
+      T3CODE_HOME: "#{ENV["HOME"]}/.t3",
+      T3CODE_TELEMETRY_ENABLED: "false",
+      PATH: [
+        "#{HOMEBREW_PREFIX}/bin",
+        "#{HOMEBREW_PREFIX}/sbin",
+        "#{ENV["HOME"]}/.local/bin",
+        "#{ENV["HOME"]}/bin",
+        "#{ENV["HOME"]}/.cargo/bin",
+        "#{ENV["HOME"]}/.deno/bin",
+        "#{ENV["HOME"]}/.bun/bin",
+        "#{ENV["HOME"]}/go/bin",
+        "#{ENV["HOME"]}/.opencode/bin",
+        "#{ENV["HOME"]}/.local/share/mise/shims",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+      ].join(":"),
+    )
+    log_path var/"log/t3code-cli-main.log"
+    error_log_path var/"log/t3code-cli-main.log"
+  end
+
   test do
     (testpath/"telemetry-check.cjs").write <<~JS
       if (process.env.T3CODE_TELEMETRY_ENABLED !== "false") {
