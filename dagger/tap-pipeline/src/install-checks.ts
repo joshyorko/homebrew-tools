@@ -6,6 +6,187 @@ export type ArtifactCheckPlan = Readonly<{
   trustFormulas: readonly string[]
 }>
 
+/**
+ * Public T3 Connect configuration shipped inside both Homebrew T3 artifacts.
+ *
+ * These are the production public identifiers from upstream `.env.example` at
+ * the pinned source commit (`docs/operations/connect-setup.md`). They are
+ * client-visible values, not secrets: never add a Clerk secret key, relay
+ * credential, OAuth token, or a developer's local `.env` here.
+ *
+ * Both `buildT3Artifact` and `buildT3CodeArtifact` inject this single allowlist
+ * into the build container before compilation; the same builders describe the
+ * runtime acceptance checks that prove the values reached the shipped artifacts.
+ */
+
+export type T3PublicConnectSetting = {
+  readonly name: string
+  readonly value: string
+}
+
+export const T3_PUBLIC_CONNECT_ENV = [
+  "T3CODE_CLERK_PUBLISHABLE_KEY",
+  "T3CODE_CLERK_JWT_TEMPLATE",
+  "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID",
+  "T3CODE_RELAY_URL",
+] as const
+
+export const T3_PUBLIC_CONNECT_CONFIG: readonly T3PublicConnectSetting[] = [
+  { name: "T3CODE_CLERK_PUBLISHABLE_KEY", value: "pk_live_Y2xlcmsudDMuY29kZXMk" },
+  { name: "T3CODE_CLERK_JWT_TEMPLATE", value: "t3-relay" },
+  { name: "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID", value: "hzxSgY2cH10sDU2r" },
+  { name: "T3CODE_RELAY_URL", value: "https://relay.t3.codes" },
+]
+
+/** Upstream files and markers proving the pinned source still consumes the config. */
+export const T3_PUBLIC_CONNECT_UPSTREAM_MARKERS: ReadonlyArray<readonly [string, string]> = [
+  ["scripts/lib/public-config.ts", "baseEnv = process.env"],
+  ["scripts/lib/public-config.ts", "loadRepoEnv"],
+  ["apps/server/vite.config.ts", "loadRepoEnv("],
+  ["apps/server/vite.config.ts", "repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY"],
+  ["apps/server/vite.config.ts", "repoEnv.T3CODE_CLERK_CLI_OAUTH_CLIENT_ID"],
+  ["apps/server/vite.config.ts", "repoEnv.T3CODE_RELAY_URL"],
+  ["apps/server/vite.config.ts", "__T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__"],
+  ["apps/server/vite.config.ts", "__T3CODE_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__"],
+  ["apps/server/vite.config.ts", "__T3CODE_BUILD_RELAY_URL__"],
+  ["apps/web/vite.config.ts", "loadRepoEnv"],
+  ["apps/web/vite.config.ts", "repoEnv.VITE_CLERK_PUBLISHABLE_KEY"],
+  ["apps/web/vite.config.ts", "repoEnv.VITE_CLERK_JWT_TEMPLATE"],
+  ["apps/web/vite.config.ts", "repoEnv.VITE_CLERK_CLI_OAUTH_CLIENT_ID"],
+  ["apps/web/vite.config.ts", "repoEnv.VITE_T3CODE_RELAY_URL"],
+  ["apps/desktop/vite.config.ts", "loadRepoEnv"],
+  ["apps/desktop/vite.config.ts", "repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY"],
+  ["apps/desktop/vite.config.ts", "__T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__"],
+]
+
+/** The real `t3 connect` description, present only when the build gate is open. */
+export const T3_CONNECT_CLI_GATE_MARKER = "Set up T3 Connect for this machine"
+/** The placeholder description shown only when public config was compiled out. */
+export const T3_CONNECT_UNAVAILABLE_MARKER = "unavailable in builds without public configuration"
+
+function fail(message: string): never {
+  throw new Error(`T3 public Connect configuration: ${message}`)
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+/**
+ * Validate the audited allowlist, failing closed on missing, empty, malformed,
+ * duplicated, or unexpected settings.
+ */
+export function validateT3PublicConnectConfig(
+  config: readonly T3PublicConnectSetting[] = T3_PUBLIC_CONNECT_CONFIG,
+): readonly T3PublicConnectSetting[] {
+  const expected = new Set<string>(T3_PUBLIC_CONNECT_ENV)
+  const seen = new Set<string>()
+
+  for (const { name, value } of config) {
+    if (!expected.has(name)) fail(`unexpected setting ${name}`)
+    if (seen.has(name)) fail(`duplicate setting ${name}`)
+    seen.add(name)
+    if (value.length === 0 || value.trim() !== value) {
+      fail(`${name} must be a non-empty trimmed value`)
+    }
+  }
+  for (const name of expected) {
+    if (!seen.has(name)) fail(`missing required setting ${name}`)
+  }
+
+  const values = new Map(config.map((setting) => [setting.name, setting.value] as const))
+  if (!/^pk_(?:live|test)_[A-Za-z0-9_-]+$/.test(values.get("T3CODE_CLERK_PUBLISHABLE_KEY") ?? "")) {
+    fail("T3CODE_CLERK_PUBLISHABLE_KEY is not a Clerk publishable key")
+  }
+  if (!/^\S+$/.test(values.get("T3CODE_CLERK_JWT_TEMPLATE") ?? "")) {
+    fail("T3CODE_CLERK_JWT_TEMPLATE is malformed")
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(values.get("T3CODE_CLERK_CLI_OAUTH_CLIENT_ID") ?? "")) {
+    fail("T3CODE_CLERK_CLI_OAUTH_CLIENT_ID is malformed")
+  }
+  const relayUrl = values.get("T3CODE_RELAY_URL") ?? ""
+  let relay: URL
+  try {
+    relay = new URL(relayUrl)
+  } catch {
+    return fail("T3CODE_RELAY_URL is not an absolute URL")
+  }
+  if (relay.protocol !== "https:" || relay.pathname !== "/" || relay.search !== "" || relay.hash !== "") {
+    fail("T3CODE_RELAY_URL must be a secure HTTPS origin")
+  }
+
+  return config
+}
+
+/** Validated `[name, value]` pairs for the build container environment. */
+export function t3PublicConnectEnv(
+  config: readonly T3PublicConnectSetting[] = T3_PUBLIC_CONNECT_CONFIG,
+): ReadonlyArray<readonly [string, string]> {
+  return validateT3PublicConnectConfig(config).map(({ name, value }) => [name, value] as const)
+}
+
+/**
+ * Shell command that fails the build when the pinned upstream source no longer
+ * documents or consumes the audited public Connect configuration.
+ */
+export function t3PublicConnectDriftGuardCommand(upstreamDir = "/upstream"): string {
+  const lines = [
+    "set -euo pipefail",
+    `cd ${shellQuote(upstreamDir)}`,
+    'fail() { printf "T3 Connect drift guard: %s\\n" "$1" >&2; exit 1; }',
+    'test -f .env.example || fail "the pinned source no longer ships .env.example"',
+  ]
+
+  for (const { name, value } of validateT3PublicConnectConfig()) {
+    lines.push(
+      `grep -Fxq ${shellQuote(`${name}=${value}`)} .env.example || fail "the pinned .env.example no longer documents the audited ${name}"`,
+    )
+  }
+  for (const [file, marker] of T3_PUBLIC_CONNECT_UPSTREAM_MARKERS) {
+    lines.push(
+      `test -f ${shellQuote(file)} || fail "the pinned source is missing ${file}"`,
+      `grep -Fq ${shellQuote(marker)} ${shellQuote(file)} || fail "${file} no longer consumes public Connect configuration (${marker})"`,
+    )
+  }
+
+  return lines.join("\n")
+}
+
+/**
+ * Runtime proof that the installed Homebrew CLI exposes Connect without any
+ * manual public-config environment and without signing in.
+ */
+export function t3CliConnectGateChecks(
+  homeDir = "/tmp/t3-connect-ci-home",
+  helpFile = "/tmp/t3-connect-help.txt",
+): readonly string[] {
+  const unset = T3_PUBLIC_CONNECT_ENV.map((name) => `-u ${name}`).join(" ")
+  const help = shellQuote(helpFile)
+  return [
+    `mkdir -p ${shellQuote(homeDir)}`,
+    `env ${unset} HOME=${shellQuote(homeDir)} timeout 60 t3 connect --help > ${help} 2>&1 || { cat ${help} >&2; exit 1; }`,
+    `if grep -q ${shellQuote(T3_CONNECT_UNAVAILABLE_MARKER)} ${help}; then echo "T3 Connect was compiled out of the installed CLI" >&2; exit 1; fi`,
+    `grep -q ${shellQuote(T3_CONNECT_CLI_GATE_MARKER)} ${help} || { echo "T3 Connect command is unavailable in the installed CLI" >&2; exit 1; }`,
+  ]
+}
+
+/**
+ * Runtime proof that the shipped Desktop AppImage embeds the public Connect
+ * configuration in its bundled web client and server. The caller defines
+ * `$asar` as the extracted `resources/app.asar`.
+ */
+export function t3PublicConnectAsarChecks(asarVariable = "asar"): readonly string[] {
+  const asar = `"$${asarVariable}"`
+  return [
+    `test -s ${asar} || { echo "T3 Code AppImage has no app.asar" >&2; exit 1; }`,
+    `grep -aFq ${shellQuote("apps/server/dist/client/index.html")} ${asar} || { echo "T3 Code AppImage is missing the bundled web client" >&2; exit 1; }`,
+    ...validateT3PublicConnectConfig().map(
+      ({ name, value }) =>
+        `grep -aFq ${shellQuote(value)} ${asar} || { echo "T3 Code AppImage is missing embedded public ${name}" >&2; exit 1; }`,
+    ),
+  ]
+}
+
 const formula = (homebrewPath: string, name: string, commands: string[] = [], systemPackages: string[] = [], trustFormulas: string[] = []): ArtifactCheckPlan => ({
   homebrewPaths: [homebrewPath],
   kind: "formula",
@@ -37,6 +218,7 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3\"",
     "brew test test/tap/t3code-cli-main",
     "t3 --help",
+    ...t3CliConnectGateChecks(),
   ]),
   chatgpt: cask("Casks/chatgpt-linux.rb", "chatgpt-linux", [
     "test -x \"$(brew --prefix)/bin/chatgpt\"",
@@ -232,6 +414,9 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "grep -qx 'Icon=t3-code-linux' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
     "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
     "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
+    "app_dir=\"$installed_dir/squashfs-root\"",
+    "asar=\"$app_dir/resources/app.asar\"",
+    ...t3PublicConnectAsarChecks(),
   ], ["desktop-file-utils", "xdg-utils"]),
 }
 
