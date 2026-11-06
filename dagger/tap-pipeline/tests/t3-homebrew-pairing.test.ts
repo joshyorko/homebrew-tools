@@ -47,3 +47,18 @@ test("isolated T3 source checks audit the formula and cask before installing the
     /tapStagingCommands\("t3-code-linux"\),[\s\S]*?"brew audit --cask test\/tap\/t3-code-linux",[\s\S]*?"brew install --cask test\/tap\/t3-code-linux"/,
   )
 })
+
+test("T3 smoke installs use generated tap files without changing other package lanes", () => {
+  assert.match(
+    daggerPipeline,
+    /case "t3code-cli-main": \{[\s\S]*?\.withDirectory\("\/tap", tap\)\s*\.withDirectory\("\/built-tap", smokeTap\)[\s\S]*?"brew audit --formula test\/tap\/t3code-cli-main",[\s\S]*?cp \/built-tap\/Formula\/t3code-cli-main\.rb[\s\S]*?"brew install test\/tap\/t3code-cli-main"/,
+  )
+  assert.match(
+    daggerPipeline,
+    /case "t3-code-linux": \{[\s\S]*?\.withDirectory\("\/tap", tap\)\s*\.withDirectory\("\/built-tap", smokeTap\)[\s\S]*?"brew audit --cask test\/tap\/t3-code-linux",[\s\S]*?cp \/built-tap\/Casks\/t3-code-linux\.rb[\s\S]*?"brew install --cask test\/tap\/t3-code-linux"/,
+  )
+  assert.match(
+    daggerPipeline,
+    /case "fizzy-cli-master": \{[\s\S]*?\.withDirectory\("\/tap", smokeTap\)[\s\S]*?"brew install test\/tap\/fizzy-cli-master"/,
+  )
+})

@@ -34,20 +34,30 @@ services, apply it:
 bash scripts/migrate-t3-homebrew-service.sh --apply
 ```
 
-The script recognizes only `t3code-homebrew.service` and `t3code.service` in the
-current user's systemd unit directories. It stops active units, disables units
-that were enabled, then runs `brew services start t3code-cli-main`. It leaves
-the legacy unit files in place and does not read, move, or delete anything under
-`~/.t3`. If Homebrew cannot start, the script attempts to restore the prior
-active and enabled states. It also verifies that systemd reports the Homebrew
-unit active before it completes. Do not start the Homebrew service manually
-while a legacy T3 service is still active.
+The script serializes migration runs with a lock in `XDG_RUNTIME_DIR`, or
+`XDG_STATE_HOME`/`~/.local/state` when no runtime directory is available. It
+recognizes only `t3code-homebrew.service` and `t3code.service` in the current
+user's systemd unit directories. It runtime-masks those units before stopping
+and disabling them, so they cannot restart during the handoff. It then checks
+for other T3 CLI processes and listeners on port 3773, starts
+`brew services start t3code-cli-main`, and verifies that systemd reports its
+unit active. The legacy unit files remain in place; nothing under `~/.t3` is
+read, moved, or deleted.
 
-The script refuses to reconcile two active legacy units or an already-active
-Homebrew unit competing with a legacy unit. It also checks port 3773 after
-stopping legacy services. If another listener remains, it leaves the legacy
-units stopped and disabled so it cannot start a second server; identify and stop
-that listener before manually restoring the one service you intend to keep.
+If Homebrew activation fails and no other T3 server is found, the script stops
+and disables any partially registered Homebrew unit, removes the runtime masks,
+and restores the previous active and enabled legacy states. If another T3
+process, listener, or unverifiable state remains, it leaves the legacy units
+stopped, disabled, and runtime-masked; identify the conflict before restoring a
+legacy unit. Do not start the Homebrew service manually while a legacy T3
+service is active.
+
+The script refuses to reconcile two active legacy units or an already active or
+enabled Homebrew unit alongside a legacy unit. It also checks for a T3 CLI
+process on any port and checks port 3773 after stopping legacy services. If
+another listener remains, it leaves the legacy units stopped, disabled, and
+runtime-masked so it cannot start a second server; identify and stop that
+listener before manually restoring the one service you intend to keep.
 
 Check the resulting service state with:
 
@@ -57,9 +67,9 @@ systemctl --user is-active t3code-homebrew.service
 systemctl --user is-active t3code.service
 ```
 
-The Homebrew service should be running; both legacy units should be inactive.
-`systemctl` may report an inactive or unknown unit when a legacy unit was not
-installed.
+The Homebrew service should be running; both legacy units should be inactive
+and disabled. `systemctl` may report an inactive or unknown unit when a legacy
+unit was not installed.
 
 ## Upgrade the CLI and Desktop together
 
@@ -68,11 +78,20 @@ do not install a missing package:
 
 ```bash
 tap_repo="$(brew --repo joshyorko/tools)"
+cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
+desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
+test -n "$cli_version" && test "$cli_version" = "$desktop_version"
+
 rollback_dir="$HOME/.local/state/t3code-homebrew-rollback/$(date +%Y%m%d%H%M%S)"
 mkdir -p "$rollback_dir"
 chmod 700 "$rollback_dir"
-cp "$tap_repo/Formula/t3code-cli-main.rb" "$rollback_dir/"
-cp "$tap_repo/Casks/t3-code-linux.rb" "$rollback_dir/"
+cli_revision="$(git -C "$tap_repo" log --all --reverse --format=%H -S "version \"$cli_version\"" -- Formula/t3code-cli-main.rb | head -n 1)"
+desktop_revision="$(git -C "$tap_repo" log --all --reverse --format=%H -S "version \"$desktop_version\"" -- Casks/t3-code-linux.rb | head -n 1)"
+test -n "$cli_revision" && test -n "$desktop_revision"
+git -C "$tap_repo" show "$cli_revision:Formula/t3code-cli-main.rb" > "$rollback_dir/t3code-cli-main.rb"
+git -C "$tap_repo" show "$desktop_revision:Casks/t3-code-linux.rb" > "$rollback_dir/t3-code-linux.rb"
+grep -Fqx "  version \"$cli_version\"" "$rollback_dir/t3code-cli-main.rb"
+grep -Fqx "  version \"$desktop_version\"" "$rollback_dir/t3-code-linux.rb"
 printf 'Saved rollback definitions in %s\n' "$rollback_dir"
 
 brew update
@@ -128,11 +147,12 @@ brew services start t3code-cli-main
 ```
 
 If you are also rolling back to a tap revision from before Homebrew service
-support, restore only the legacy unit that was active before migration, and
-re-enable it only if it was previously enabled. For example, if
+support, unmask and restore only the legacy unit that was active before
+migration, and re-enable it only if it was previously enabled. For example, if
 `t3code-homebrew.service` was the sole active, enabled unit:
 
 ```bash
+systemctl --user unmask t3code-homebrew.service
 systemctl --user enable t3code-homebrew.service
 systemctl --user start t3code-homebrew.service
 ```
