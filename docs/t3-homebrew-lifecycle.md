@@ -46,7 +46,9 @@ systemd cannot restart it during the handoff. It then checks for other T3 CLI
 processes and listeners on port 3773, starts
 `brew services start t3code-cli-main`, and verifies that systemd reports its
 unit active. The original files are preserved in the migration state directory;
-nothing under `~/.t3` is read, moved, or deleted.
+nothing under `~/.t3` is read, moved, or deleted. If systemd cannot determine a
+unit's state, migration stops before changing services. Refusal messages do not
+print raw `ExecStart` values.
 
 If Homebrew activation fails and no other T3 server is found, the script stops
 and unregisters any partially registered Homebrew unit, restores the original
@@ -94,14 +96,17 @@ fi
 rollback_dir="$HOME/.local/state/t3code-homebrew-rollback/$(date +%Y%m%d%H%M%S)"
 mkdir -p "$rollback_dir"
 chmod 700 "$rollback_dir"
-cli_revision="$(git -C "$tap_repo" log --all --reverse --format=%H -S "version \"$cli_version\"" -- Formula/t3code-cli-main.rb | head -n 1)"
-desktop_revision="$(git -C "$tap_repo" log --all --reverse --format=%H -S "version \"$desktop_version\"" -- Casks/t3-code-linux.rb | head -n 1)"
-if [[ -z "$cli_revision" || -z "$desktop_revision" ]]; then
-  echo "Tap history does not contain both installed T3 package definitions; stop before upgrading." >&2
+cli_formula="$(brew --cellar t3code-cli-main)/$cli_version/.brew/t3code-cli-main.rb"
+caskroom="$(brew --caskroom)/t3-code-linux"
+cask_receipt="$(find "$caskroom/.metadata/$desktop_version" -type f -name INSTALL_RECEIPT.json -print -quit)"
+if [[ ! -f "$cli_formula" || -z "$cask_receipt" ]]; then
+  echo "Homebrew cannot locate the installed T3 definitions; stop before upgrading." >&2
   exit 1
 fi
-git -C "$tap_repo" show "$cli_revision:Formula/t3code-cli-main.rb" > "$rollback_dir/t3code-cli-main.rb"
-git -C "$tap_repo" show "$desktop_revision:Casks/t3-code-linux.rb" > "$rollback_dir/t3-code-linux.rb"
+jq_revision="$(jq -er '.source.tap_git_head | select(type == "string" and test("^[0-9a-f]{40}$"))' "$cask_receipt")"
+git -C "$tap_repo" cat-file -e "$jq_revision:Casks/t3-code-linux.rb"
+cp -p "$cli_formula" "$rollback_dir/t3code-cli-main.rb"
+git -C "$tap_repo" show "$jq_revision:Casks/t3-code-linux.rb" > "$rollback_dir/t3-code-linux.rb"
 grep -Fqx "  version \"$cli_version\"" "$rollback_dir/t3code-cli-main.rb"
 grep -Fqx "  version \"$desktop_version\"" "$rollback_dir/t3-code-linux.rb"
 printf 'Saved rollback definitions in %s\n' "$rollback_dir"
@@ -113,7 +118,10 @@ brew upgrade --cask joshyorko/tools/t3-code-linux
 cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
 desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
 printf 'CLI: %s\nDesktop: %s\n' "$cli_version" "$desktop_version"
-test -n "$cli_version" && test "$cli_version" = "$desktop_version"
+if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
+  echo "Upgraded T3 CLI/Desktop versions do not match; do not restart the service." >&2
+  exit 1
+fi
 ```
 
 The shared version has the upstream source commit's 12-character prefix after
@@ -148,7 +156,10 @@ brew reinstall --cask "$rollback_dir/t3-code-linux.rb"
 
 cli_version="$(brew list --versions t3code-cli-main | awk '{print $2}')"
 desktop_version="$(brew list --cask --versions t3-code-linux | awk '{print $2}')"
-test -n "$cli_version" && test "$cli_version" = "$desktop_version"
+if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
+  echo "Rolled-back T3 CLI/Desktop versions do not match; do not restart the service." >&2
+  exit 1
+fi
 ```
 
 If the restored formula still declares the Homebrew service, start it after

@@ -90,30 +90,83 @@ target_units=(
   homebrew.t3code-cli-main.service
   homebrew.mxcl.t3code-cli-main.service
 )
-target_is_active() {
-  local unit
-  for unit in "${target_units[@]}"; do
-    systemctl --user is-active --quiet "$unit" && return 0
-  done
-  return 1
+unit_active=false
+unit_enabled=false
+probe_unit_state() {
+  local unit="$1" load_state active_state unit_file_state
+  if ! load_state="$(systemctl --user show "$unit" --property=LoadState --value)"; then
+    return 1
+  fi
+  if [[ "$load_state" == not-found ]]; then
+    unit_active=false
+    unit_enabled=false
+    return 0
+  fi
+  case "$load_state" in
+    loaded|masked|merged) ;;
+    *) return 1 ;;
+  esac
+
+  if ! active_state="$(systemctl --user show "$unit" --property=ActiveState --value)"; then
+    return 1
+  fi
+  case "$active_state" in
+    active|activating|reloading|deactivating|maintenance) unit_active=true ;;
+    inactive|failed) unit_active=false ;;
+    *) return 1 ;;
+  esac
+
+  if ! unit_file_state="$(systemctl --user show "$unit" --property=UnitFileState --value)"; then
+    return 1
+  fi
+  case "$unit_file_state" in
+    enabled|enabled-runtime|linked|linked-runtime|linked-overwrite|alias|static|indirect|generated|transient)
+      unit_enabled=true
+      ;;
+    masked-runtime)
+      # A lower-priority runtime mask does not override a loaded unit in ~/.config.
+      unit_enabled=true
+      ;;
+    disabled|masked|not-found|bad)
+      unit_enabled=false
+      ;;
+    *) return 1 ;;
+  esac
+  return 0
 }
-target_is_enabled() {
+target_active_now=false
+target_enabled_now=false
+target_probe_ok=true
+probe_target_services() {
   local unit
+  target_active_now=false
+  target_enabled_now=false
+  target_probe_ok=true
   for unit in "${target_units[@]}"; do
-    systemctl --user is-enabled --quiet "$unit" && return 0
+    if ! probe_unit_state "$unit"; then
+      target_probe_ok=false
+      return
+    fi
+    $unit_active && target_active_now=true
+    $unit_enabled && target_enabled_now=true
   done
-  return 1
+  return 0
 }
-target_was_active=false
-target_is_active && target_was_active=true
-target_was_enabled=false
-target_is_enabled && target_was_enabled=true
+probe_target_services
+if ! $target_probe_ok; then
+  echo "Could not determine Homebrew T3 service state; no service was changed." >&2
+  exit 1
+fi
+target_was_active="$target_active_now"
+target_was_enabled="$target_enabled_now"
 
 for unit in "${legacy_units[@]}"; do
-  is_active=false
-  is_enabled=false
-  systemctl --user is-active --quiet "$unit" && is_active=true
-  systemctl --user is-enabled --quiet "$unit" && is_enabled=true
+  if ! probe_unit_state "$unit"; then
+    echo "Could not determine systemd state for $unit; no service was changed." >&2
+    exit 1
+  fi
+  is_active="$unit_active"
+  is_enabled="$unit_enabled"
   if ! $is_active && ! $is_enabled; then
     continue
   fi
@@ -129,7 +182,7 @@ for unit in "${legacy_units[@]}"; do
 
   exec_start="$(systemctl --user show "$unit" --property=ExecStart --value)"
   if [[ ! "$exec_start" =~ (^|[[:space:]/])t3[[:space:]]+(serve|__service-launcher)([[:space:]]|$) ]]; then
-    echo "Refusing to change $unit because ExecStart is not a recognized T3 server: $exec_start" >&2
+    echo "Refusing to change $unit because ExecStart is not a recognized T3 server; no service was changed." >&2
     exit 1
   fi
 
@@ -198,14 +251,20 @@ restore_legacy_services() {
     exit "$result"
   fi
 
-  if $homebrew_start_attempted && ! $target_was_active && ! $target_was_enabled && { target_is_active || target_is_enabled; }; then
+  probe_target_services
+  if ! $target_probe_ok; then
+    echo "Could not verify Homebrew service state during recovery; legacy unit files remain preserved." >&2
+    exit "$result"
+  fi
+  if $homebrew_start_attempted && ! $target_was_active && ! $target_was_enabled && { $target_active_now || $target_enabled_now; }; then
     echo "Homebrew partially registered; stopping and disabling it before restoring the previous service." >&2
     if ! brew services stop t3code-cli-main; then
       echo "Could not stop the partially-started Homebrew service. Legacy services remain stopped to prevent a port conflict." >&2
       exit "$result"
     fi
   fi
-  if target_is_active || target_is_enabled; then
+  probe_target_services
+  if ! $target_probe_ok || $target_active_now || $target_enabled_now; then
     echo "Homebrew service remains active or enabled; legacy services remain stopped to prevent a competing server." >&2
     exit "$result"
   fi
@@ -217,7 +276,11 @@ restore_legacy_services() {
 
   legacy_still_active=false
   for unit in "${active_units[@]}"; do
-    systemctl --user is-active --quiet "$unit" && legacy_still_active=true
+    if ! probe_unit_state "$unit"; then
+      echo "Could not determine whether $unit is still active; leaving its original unit preserved." >&2
+      exit "$result"
+    fi
+    $unit_active && legacy_still_active=true
   done
   if $legacy_still_active && ! $homebrew_start_attempted; then
     echo "Restoring legacy unit files; the prior service is still active and will not be restarted." >&2
@@ -341,7 +404,8 @@ fi
 changed=true
 homebrew_start_attempted=true
 brew services start t3code-cli-main
-if ! target_is_active; then
+probe_target_services
+if ! $target_probe_ok || ! $target_active_now; then
   echo "Homebrew services reported success without an active T3 service." >&2
   exit 1
 fi

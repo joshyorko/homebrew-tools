@@ -88,43 +88,59 @@ test("systemd honors a mask at the original unit path over a runtime mask", (con
 test("upgrade rollback definitions are recovered by the installed pair version", () => {
   assert.match(guide, /brew list --versions t3code-cli-main/)
   assert.match(guide, /brew list --cask --versions t3-code-linux/)
-  assert.match(guide, /git -C "\$tap_repo" log --all[\s\S]*Formula\/t3code-cli-main\.rb/)
-  assert.match(guide, /git -C "\$tap_repo" log --all[\s\S]*Casks\/t3-code-linux\.rb/)
+  assert.match(guide, /brew --cellar t3code-cli-main/)
+  assert.match(guide, /INSTALL_RECEIPT\.json/)
+  assert.match(guide, /source\.tap_git_head/)
+  assert.match(guide, /git -C "\$tap_repo" show "\$jq_revision:Casks\/t3-code-linux\.rb"/)
   assert.match(guide, /grep -Fqx "  version \\"\$cli_version\\""/)
+  assert.match(guide, /set -euo pipefail/)
+  assert.equal((guide.match(/if \[\[ -z "\$cli_version" \|\| "\$cli_version" != "\$desktop_version" \]\]/g) ?? []).length, 3)
 })
 
-test("upgrade snapshot extracts definitions matching installed versions from tap history", () => {
+test("upgrade snapshot uses installed formula and cask receipt definitions", () => {
   const home = mkdtempSync(join(tmpdir(), "t3-homebrew-rollback-"))
   try {
     const tap = join(home, "tap")
     const bin = join(home, "bin")
+    const cellar = join(home, "Cellar")
+    const caskroom = join(home, "Caskroom")
     mkdirSync(join(tap, "Formula"), { recursive: true })
     mkdirSync(join(tap, "Casks"), { recursive: true })
     mkdirSync(bin)
-    const version1 = "main.20260101000000.111111111111"
-    const version2 = "main.20260202000000.222222222222"
+    const installedVersion = "main.20260101000000.111111111111"
     const formulaPath = join(tap, "Formula/t3code-cli-main.rb")
     const caskPath = join(tap, "Casks/t3-code-linux.rb")
-    const writePair = (version: string) => {
-      writeFileSync(formulaPath, `class T3codeCliMain < Formula\n  version "${version}"\nend\n`)
-      writeFileSync(caskPath, `cask "t3-code-linux" do\n  version "${version}"\nend\n`)
+    const writePair = (marker: string) => {
+      writeFileSync(formulaPath, `class T3codeCliMain < Formula\n  version "${installedVersion}"\n  # ${marker}\nend\n`)
+      writeFileSync(caskPath, `cask "t3-code-linux" do\n  version "${installedVersion}"\n  # ${marker}\nend\n`)
     }
     const git = (args: string[]) => execFileSync("git", args, { cwd: tap, stdio: "ignore" })
     git(["init", "-q"])
     git(["config", "user.name", "T3 Test"])
     git(["config", "user.email", "t3-test@example.invalid"])
-    writePair(version1)
+    writePair("INSTALLED_TAP_CASK")
     git(["add", "."])
-    git(["commit", "-qm", "installed pair"])
-    writePair(version2)
+    git(["commit", "-qm", "installed cask definition"])
+    const installedTapRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: tap, encoding: "utf8" }).trim()
+    writePair("CURRENT_TAP_ONLY")
     git(["add", "."])
-    git(["commit", "-qm", "available pair"])
+    git(["commit", "-qm", "same-version tap change"])
+
+    const formulaKeg = join(cellar, "t3code-cli-main", installedVersion, ".brew")
+    const caskMetadata = join(caskroom, "t3-code-linux", ".metadata", installedVersion, "20261106.123456")
+    mkdirSync(formulaKeg, { recursive: true })
+    mkdirSync(join(caskMetadata, "Casks"), { recursive: true })
+    writeFileSync(join(formulaKeg, "t3code-cli-main.rb"), `class T3codeCliMain < Formula\n  version "${installedVersion}"\n  # INSTALLED_FORMULA_RECEIPT\nend\n`)
+    writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap_git_head: installedTapRevision } }))
+    writeFileSync(join(caskMetadata, "Casks", "t3-code-linux.rb"), `cask "t3-code-linux" do\n  version "${installedVersion}"\n  # INSTALLED_CASK_RECEIPT\nend\n`)
 
     writeFileSync(join(bin, "brew"), `#!/bin/bash
 case "$*" in
   "--repo joshyorko/tools") printf '%s\\n' "$TAP_REPO" ;;
-  "list --versions t3code-cli-main") printf '%s\\n' "t3code-cli-main ${version1}" ;;
-  "list --cask --versions t3-code-linux") printf '%s\\n' "t3-code-linux ${version1}" ;;
+  "--cellar t3code-cli-main") printf '%s\\n' "$TAP_CELLAR" ;;
+  "--caskroom") printf '%s\\n' "$TAP_CASKROOM" ;;
+  "list --versions t3code-cli-main") printf '%s\\n' "t3code-cli-main ${installedVersion}" ;;
+  "list --cask --versions t3-code-linux") printf '%s\\n' "t3-code-linux ${installedVersion}" ;;
   *) exit 0 ;;
 esac
 `, { mode: 0o755 })
@@ -138,15 +154,19 @@ esac
         HOME: home,
         PATH: `${bin}:${process.env.PATH}`,
         TAP_REPO: tap,
+        TAP_CELLAR: join(cellar, "t3code-cli-main"),
+        TAP_CASKROOM: caskroom,
       },
     })
     assert.equal(result.status, 0, result.stderr)
     const rollbackDir = result.stdout.match(/Saved rollback definitions in ([^\n]+)/)?.[1]
     assert.ok(rollbackDir, "snapshot command prints its rollback directory")
-    assert.match(readFileSync(join(rollbackDir, "t3code-cli-main.rb"), "utf8"), new RegExp(version1))
-    assert.match(readFileSync(join(rollbackDir, "t3-code-linux.rb"), "utf8"), new RegExp(version1))
-    assert.doesNotMatch(readFileSync(join(rollbackDir, "t3code-cli-main.rb"), "utf8"), new RegExp(version2))
-    assert.doesNotMatch(readFileSync(join(rollbackDir, "t3-code-linux.rb"), "utf8"), new RegExp(version2))
+    const savedFormula = readFileSync(join(rollbackDir, "t3code-cli-main.rb"), "utf8")
+    const savedCask = readFileSync(join(rollbackDir, "t3-code-linux.rb"), "utf8")
+    assert.match(savedFormula, /INSTALLED_FORMULA_RECEIPT/)
+    assert.match(savedCask, /INSTALLED_TAP_CASK/)
+    assert.doesNotMatch(savedFormula, /CURRENT_TAP_ONLY/)
+    assert.doesNotMatch(savedCask, /CURRENT_TAP_ONLY/)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
@@ -161,17 +181,20 @@ test("upgrade guards stop before brew update on pair or rollback snapshot errors
 printf 'brew %s\\n' "$*" >> "$COMMAND_LOG"
 case "$*" in
   "--repo joshyorko/tools") printf '%s\\n' "$TAP_REPO" ;;
-  "list --versions t3code-cli-main") printf '%s\\n' "t3code-cli-main $CLI_VERSION" ;;
-  "list --cask --versions t3-code-linux") printf '%s\\n' "t3-code-linux $DESKTOP_VERSION" ;;
+  "--cellar t3code-cli-main") printf '%s\\n' "$TAP_CELLAR" ;;
+  "--caskroom") printf '%s\\n' "$TAP_CASKROOM" ;;
+  "list --versions t3code-cli-main")
+    if [[ -f "$HOME/upgrade-started" ]]; then printf '%s\\n' "t3code-cli-main $POST_CLI_VERSION"; else printf '%s\\n' "t3code-cli-main $CLI_VERSION"; fi ;;
+  "list --cask --versions t3-code-linux")
+    if [[ -f "$HOME/upgrade-started" ]]; then printf '%s\\n' "t3-code-linux $POST_DESKTOP_VERSION"; else printf '%s\\n' "t3-code-linux $DESKTOP_VERSION"; fi ;;
+  "upgrade joshyorko/tools/t3code-cli-main"|"upgrade --cask joshyorko/tools/t3-code-linux") touch "$HOME/upgrade-started" ;;
 esac
 exit 0
 `, { mode: 0o755 })
     writeFileSync(join(bin, "git"), `#!/bin/bash
 printf 'git %s\\n' "$*" >> "$COMMAND_LOG"
 case "$*" in
-  *log*Formula/t3code-cli-main.rb*) [[ $MISSING_HISTORY == formula ]] || printf '%s\\n' formula-revision ;;
-  *log*Casks/t3-code-linux.rb*) [[ $MISSING_HISTORY == cask ]] || printf '%s\\n' cask-revision ;;
-  *show*Formula/t3code-cli-main.rb*) printf 'class T3codeCliMain < Formula\\n  version "%s"\\nend\\n' "$FORMULA_HISTORY_VERSION" ;;
+  *"cat-file -e "*) [[ $MISSING_CASK_REVISION != true ]] ;;
   *show*Casks/t3-code-linux.rb*) printf 'cask "t3-code-linux" do\\n  version "%s"\\nend\\n' "$DESKTOP_HISTORY_VERSION" ;;
   *) exit 1 ;;
 esac
@@ -180,10 +203,20 @@ esac
     assert.ok(upgradeBlock)
 
     for (const scenario of [
-      { cli: "main.20260101000000.111111111111", desktop: "main.20260202000000.222222222222", missing: "", historyCli: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111" },
-      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", missing: "formula", historyCli: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111" },
-      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", missing: "", historyCli: "main.20260202000000.222222222222", historyDesktop: "main.20260101000000.111111111111" },
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260202000000.222222222222", caskRevisionMissing: false, formulaReceiptVersion: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111", postCli: "main.20260101000000.111111111111", postDesktop: "main.20260101000000.111111111111", upgraded: false },
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", caskRevisionMissing: true, formulaReceiptVersion: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111", postCli: "main.20260101000000.111111111111", postDesktop: "main.20260101000000.111111111111", upgraded: false },
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", caskRevisionMissing: false, formulaReceiptVersion: "main.20260202000000.222222222222", historyDesktop: "main.20260101000000.111111111111", postCli: "main.20260101000000.111111111111", postDesktop: "main.20260101000000.111111111111", upgraded: false },
+      { cli: "main.20260101000000.111111111111", desktop: "main.20260101000000.111111111111", caskRevisionMissing: false, formulaReceiptVersion: "main.20260101000000.111111111111", historyDesktop: "main.20260101000000.111111111111", postCli: "main.20260101000000.111111111111", postDesktop: "main.20260202000000.222222222222", upgraded: true },
     ]) {
+      const tap = join(home, "tap")
+      const tapCellar = join(home, "Cellar", "t3code-cli-main")
+      const tapCaskroom = join(home, "Caskroom")
+      const caskMetadata = join(tapCaskroom, "t3-code-linux", ".metadata", scenario.desktop, "20261106.123456")
+      mkdirSync(join(tapCellar, scenario.cli, ".brew"), { recursive: true })
+      mkdirSync(join(caskMetadata, "Casks"), { recursive: true })
+      writeFileSync(join(tapCellar, scenario.cli, ".brew/t3code-cli-main.rb"), `  version "${scenario.formulaReceiptVersion}"\n`)
+      writeFileSync(join(caskMetadata, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap_git_head: "a".repeat(40) } }))
+
       const commandLog = join(home, "commands.log")
       const result = spawnSync("bash", ["-c", upgradeBlock], {
         encoding: "utf8",
@@ -192,16 +225,25 @@ esac
           HOME: home,
           PATH: `${bin}:${process.env.PATH}`,
           TAP_REPO: home,
+          TAP_CELLAR: tapCellar,
+          TAP_CASKROOM: tapCaskroom,
           COMMAND_LOG: commandLog,
           CLI_VERSION: scenario.cli,
           DESKTOP_VERSION: scenario.desktop,
-          MISSING_HISTORY: scenario.missing,
-          FORMULA_HISTORY_VERSION: scenario.historyCli,
+          MISSING_CASK_REVISION: String(scenario.caskRevisionMissing),
           DESKTOP_HISTORY_VERSION: scenario.historyDesktop,
+          POST_CLI_VERSION: scenario.postCli,
+          POST_DESKTOP_VERSION: scenario.postDesktop,
         },
       })
-      assert.notEqual(result.status, 0)
-      assert.doesNotMatch(readFileSync(commandLog, "utf8"), /brew update|brew upgrade/)
+      const commands = readFileSync(commandLog, "utf8")
+      assert.notEqual(result.status, 0, `${JSON.stringify(scenario)}\n${result.stderr}\n${commands}`)
+      if (scenario.upgraded) {
+        assert.match(commands, /brew update[\s\S]*brew upgrade[\s\S]*brew upgrade --cask/)
+        assert.match(result.stderr, /Upgraded T3 CLI\/Desktop versions do not match/)
+      } else {
+        assert.doesNotMatch(commands, /brew update|brew upgrade/)
+      }
       rmSync(commandLog, { force: true })
     }
   } finally {
@@ -238,10 +280,21 @@ case "$1" in
     exit 0 ;;
   show)
     case "$3" in
+      --property=LoadState)
+        if [[ -L "$unit_dir/$2" && "$(readlink "$unit_dir/$2")" == /dev/null ]]; then printf '%s\\n' masked
+        elif [[ -e "$unit_dir/$2" || -L "$unit_dir/$2" ]] || grep -Fxq "$2" "$active_file" || grep -Fxq "$2" "$enabled_file"; then printf '%s\\n' loaded
+        else printf '%s\\n' not-found; fi ;;
+      --property=ActiveState)
+        if [[ $FAIL_SYSTEMD_QUERY == true && "$2" == t3code-homebrew.service ]]; then exit 1; fi
+        if grep -Fxq "$2" "$active_file"; then printf '%s\\n' active; else printf '%s\\n' inactive; fi ;;
+      --property=UnitFileState)
+        if [[ -L "$unit_dir/$2" && "$(readlink "$unit_dir/$2")" == /dev/null ]]; then printf '%s\\n' masked
+        elif grep -Fxq "$2" "$enabled_file"; then printf '%s\\n' enabled
+        else printf '%s\\n' disabled; fi ;;
       --property=FragmentPath)
         if [[ $BAD_FRAGMENT == true ]]; then printf '%s\\n' /etc/systemd/user/foreign.service; else printf '%s\\n' "$HOME/.config/systemd/user/$2"; fi ;;
       --property=ExecStart)
-        if [[ $2 == t3code.service ]]; then printf '%s\\n' '/home/josh/.t3/runtime/versions/0.1.7/t3 __service-launcher'; else printf '%s\\n' '/home/linuxbrew/.linuxbrew/bin/t3 serve'; fi ;;
+        if [[ $BAD_EXECSTART == true ]]; then printf '%s\\n' '/home/josh/bin/t3 --api-key=synthetic-secret run'; elif [[ $2 == t3code.service ]]; then printf '%s\\n' '/home/josh/.t3/runtime/versions/0.1.7/t3 __service-launcher'; else printf '%s\\n' '/home/linuxbrew/.linuxbrew/bin/t3 serve'; fi ;;
       *) exit 1 ;;
     esac ;;
   stop)
@@ -619,6 +672,58 @@ test("migration refuses active legacy units outside the user's unit directories"
     const commands = readFileSync(log, "utf8")
     assert.doesNotMatch(commands, /systemctl --user (?:stop|disable) t3code-homebrew\.service/)
     assert.doesNotMatch(commands, /brew services start t3code-cli-main/)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test("migration refusal does not print unit ExecStart arguments", () => {
+  const home = mkdtempSync(join(tmpdir(), "t3-homebrew-migration-"))
+  try {
+    const { bin, log } = fakeCommands(home)
+    const result = spawnSync("bash", [migrationPath.pathname, "--apply"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${bin}:${process.env.PATH}`,
+        COMMAND_LOG: log,
+        LEGACY_ACTIVE: "t3code-homebrew.service",
+        LEGACY_ENABLED: "t3code-homebrew.service",
+        BAD_EXECSTART: "true",
+      },
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /ExecStart is not a recognized T3 server/)
+    assert.doesNotMatch(result.stderr, /synthetic-secret/)
+    assert.doesNotMatch(readFileSync(log, "utf8"), /synthetic-secret/)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test("migration refuses to proceed when systemd state queries fail", () => {
+  const home = mkdtempSync(join(tmpdir(), "t3-homebrew-migration-"))
+  try {
+    const { bin, log } = fakeCommands(home)
+    const result = spawnSync("bash", [migrationPath.pathname, "--apply"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${bin}:${process.env.PATH}`,
+        COMMAND_LOG: log,
+        LEGACY_ACTIVE: "t3code-homebrew.service",
+        LEGACY_ENABLED: "t3code-homebrew.service",
+        FAIL_SYSTEMD_QUERY: "true",
+      },
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Could not determine systemd state for t3code-homebrew\.service/)
+    const commands = readFileSync(log, "utf8")
+    assert.doesNotMatch(commands, /systemctl --user stop t3code-homebrew\.service/)
+    assert.doesNotMatch(commands, /brew services start t3code-cli-main/)
+    assert.equal(lstatSync(join(home, ".config/systemd/user/t3code-homebrew.service")).isSymbolicLink(), false)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
