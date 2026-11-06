@@ -503,7 +503,7 @@ test("relaunch closes the updater lock before the next update check", async () =
   }
 })
 
-test("a stale detached handoff records failure and relaunches a verified pair", async () => {
+test("a stale handoff is refused before readiness while Desktop remains open", async () => {
   const fixture = makeFixture()
   const desktop = await startDesktopProcess(fixture)
   try {
@@ -513,7 +513,7 @@ test("a stale detached handoff records failure and relaunches a verified pair", 
     await desktop.exited
     assert.notEqual(applied.status, 0)
     assert.equal(readResult(fixture.resultPath).outcome, "failed")
-    await waitForEvent(fixture, "desktop.relaunch")
+    assert.doesNotMatch(fixture.events().join("\n"), /desktop\.relaunch/)
     assert.doesNotMatch(fixture.events().join("\n"), /brew\|upgrade /)
   } finally { rmSync(fixture.root, { recursive: true, force: true }) }
 })

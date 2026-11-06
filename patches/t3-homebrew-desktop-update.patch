@@ -1,38 +1,30 @@
 diff --git a/apps/desktop/src/updates/DesktopUpdates.test.ts b/apps/desktop/src/updates/DesktopUpdates.test.ts
-index 3b45d80..f486423 100644
+index 3b45d80..3feca6f 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.test.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.test.ts
-@@ -1,5 +1,8 @@
+@@ -1,5 +1,7 @@
  import { assert, describe, it } from "@effect/vitest";
 -import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
 +import {
 +  DESKTOP_UPDATE_RESTART_MARKER_FILE,
-+  type DesktopBridge,
 +} from "@t3tools/contracts";
  import * as Cause from "effect/Cause";
  import * as Deferred from "effect/Deferred";
  import * as Duration from "effect/Duration";
-@@ -12,6 +15,9 @@ import * as References from "effect/References";
+@@ -12,6 +14,9 @@ import * as References from "effect/References";
  import * as Ref from "effect/Ref";
  import * as Stream from "effect/Stream";
  import * as TestClock from "effect/testing/TestClock";
 +import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 +import { tmpdir } from "node:os";
 +import { join } from "node:path";
- 
+
  import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
  import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
-@@ -20,8 +26,54 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
- import * as DesktopState from "../app/DesktopState.ts";
- import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
+@@ -22,6 +27,54 @@ import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
  import * as DesktopUpdates from "./DesktopUpdates.ts";
-+import {
-+  downloadLocalUpdate,
-+  installLocalUpdate,
-+} from "../../../web/src/components/sidebar/SidebarUpdatePill.tsx";
-+import { getDesktopUpdateInstallConfirmationMessage } from "../../../web/src/components/desktopUpdate.logic.ts";
  import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
- 
+
 +const HOMEBREW_CURRENT_VERSION = "main.20261106111159.6577c6b61851";
 +const HOMEBREW_AVAILABLE_VERSION = "main.20261107111159.abcdef123456";
 +
@@ -59,6 +51,13 @@ index 3b45d80..f486423 100644
 +    `#!/bin/bash
 +set -euo pipefail
 +printf '%s\\n' "$*" >> "${join(root, "calls.txt")}"
++if [ "$1" = apply ]; then
++  while [ "$#" -gt 0 ]; do
++    if [ "$1" = --ready-file ]; then printf ready > "$2"; break; fi
++    shift
++  done
++  sleep 0.3
++fi
 +if [ "$1" = check ]; then
 +  printf '%s\\n' '${check}'
 +fi
@@ -77,7 +76,7 @@ index 3b45d80..f486423 100644
  describe("DesktopUpdates", () => {
    it.effect("updates Linux .deb installs and leaves other non-AppImage installs off", () =>
      Effect.gen(function* () {
-@@ -1075,4 +1127,259 @@ describe("DesktopUpdates under a managed policy", () => {
+@@ -1075,4 +1128,146 @@ describe("DesktopUpdates under a managed policy", () => {
        }),
      ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
    });
@@ -149,119 +148,6 @@ index 3b45d80..f486423 100644
 +          `apply --app-version ${HOMEBREW_CURRENT_VERSION} ` +
 +            `--version ${HOMEBREW_AVAILABLE_VERSION} --wait-for-pid`,
 +        );
-+      }),
-+    ).pipe(
-+      Effect.provide(Layer.merge(TestClock.layer(), harness.layer)),
-+      Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
-+    );
-+  });
-+
-+  it.effect("routes sidebar check, prepare, and confirmed install through the Homebrew helper", () => {
-+    const root = mkdtempSync(join(tmpdir(), "t3-homebrew-sidebar-"));
-+    writeHomebrewHelper(root, "available");
-+    const harness = makeHarness({
-+      platform: "linux",
-+      appVersion: HOMEBREW_CURRENT_VERSION,
-+      homebrewResourcePath: root,
-+      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
-+    });
-+
-+    return Effect.scoped(
-+      Effect.gen(function* () {
-+        const updates = yield* DesktopUpdates.DesktopUpdates;
-+        yield* updates.configure;
-+        const context = yield* Effect.context<never>();
-+        const run = <A,>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
-+        const bridge = {
-+          getUpdateState: () => run(updates.getState),
-+          checkForUpdate: () => run(updates.check("manual")),
-+          downloadUpdate: () => run(updates.download),
-+          installUpdate: (version?: string) =>
-+            run(version === undefined ? updates.install : updates.installPrepared(version)),
-+        } as DesktopBridge;
-+
-+        const check = yield* Effect.promise(() => bridge.checkForUpdate());
-+        assert.isTrue(check.checked);
-+        const downloadErrors: string[] = [];
-+        assert.isTrue(
-+          yield* Effect.promise(() => downloadLocalUpdate(bridge, {
-+            notifyDownloaded: false,
-+            reportError: (_title, description) => downloadErrors.push(description),
-+          })),
-+        );
-+        assert.deepEqual(downloadErrors, []);
-+
-+        const prepared = yield* Effect.promise(() => bridge.getUpdateState());
-+        const confirmation = getDesktopUpdateInstallConfirmationMessage(prepared);
-+        assert.include(confirmation, "t3code-cli-main");
-+        assert.include(confirmation, "t3-code-linux");
-+        assert.include(confirmation, "joshyorko/tools");
-+        assert.include(confirmation, "restart the Homebrew T3 Code service");
-+        const userConfirmed = true;
-+        const installErrors: string[] = [];
-+        if (userConfirmed) {
-+          assert.isTrue(
-+            yield* Effect.promise(() => installLocalUpdate(
-+              bridge,
-+              (_title, description) => installErrors.push(description),
-+              HOMEBREW_AVAILABLE_VERSION,
-+            )),
-+          );
-+        }
-+        assert.deepEqual(installErrors, []);
-+        assert.match(readFileSync(join(root, "calls.txt"), "utf8"), /check --json --app-version/);
-+        yield* Effect.promise(async () => { for (let i = 0; i < 100; i++) { if (readFileSync(join(root, "calls.txt"), "utf8").includes("apply --app-version")) return; await new Promise((resolve) => setTimeout(resolve, 10)); } });
-+        const calls = readFileSync(join(root, "calls.txt"), "utf8");
-+        assert.include(calls, "prepare --app-version");
-+        assert.include(calls, "apply --app-version");
-+      }),
-+    ).pipe(
-+      Effect.provide(Layer.merge(TestClock.layer(), harness.layer)),
-+      Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
-+    );
-+  });
-+
-+  it.effect("shows helper preparation failure through the sidebar update error callback", () => {
-+    const root = mkdtempSync(join(tmpdir(), "t3-homebrew-sidebar-failure-"));
-+    writeHomebrewHelper(root, "available", true);
-+    const harness = makeHarness({
-+      platform: "linux",
-+      appVersion: HOMEBREW_CURRENT_VERSION,
-+      homebrewResourcePath: root,
-+      env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
-+    });
-+
-+    return Effect.scoped(
-+      Effect.gen(function* () {
-+        const updates = yield* DesktopUpdates.DesktopUpdates;
-+        yield* updates.configure;
-+        const context = yield* Effect.context<never>();
-+        const run = <A,>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
-+        const bridge = {
-+          getUpdateState: () => run(updates.getState),
-+          checkForUpdate: () => run(updates.check("manual")),
-+          downloadUpdate: () => run(updates.download),
-+          installUpdate: (version?: string) =>
-+            run(version === undefined ? updates.install : updates.installPrepared(version)),
-+        } as DesktopBridge;
-+        assert.isTrue((yield* Effect.promise(() => bridge.checkForUpdate())).checked);
-+
-+        const errors: Array<{ title: string; description: string }> = [];
-+        assert.isFalse(
-+          yield* Effect.promise(() => downloadLocalUpdate(bridge, {
-+            notifyDownloaded: false,
-+            reportError: (title, description) => errors.push({ title, description }),
-+          })),
-+        );
-+        const state = yield* Effect.promise(() => bridge.getUpdateState());
-+        assert.equal(state.errorContext, "download");
-+        assert.equal(state.status, "available");
-+        assert.equal(errors[0]?.title, "Could not download update");
-+        assert.include(errors[0]?.description ?? "", "Homebrew could not prepare");
-+        yield* Effect.promise(async () => { for (let i = 0; i < 100; i++) { if (readFileSync(join(root, "calls.txt"), "utf8").includes("apply --app-version")) return; await new Promise((resolve) => setTimeout(resolve, 10)); } });
-+        const calls = readFileSync(join(root, "calls.txt"), "utf8");
-+        assert.include(calls, "prepare --app-version");
-+        assert.notInclude(calls, "apply --app-version");
 +      }),
 +    ).pipe(
 +      Effect.provide(Layer.merge(TestClock.layer(), harness.layer)),
@@ -376,7 +262,7 @@ index 14688e5..5ecb026 100644
 +    ...(homebrewManaged ? { updateProvider: "homebrew" as const } : {}),
    };
  }
- 
+
 @@ -372,6 +382,25 @@ export const make = Effect.gen(function* () {
    const fileSystem = yield* FileSystem.FileSystem;
    const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
@@ -402,7 +288,7 @@ index 14688e5..5ecb026 100644
 +  );
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
- 
+
 @@ -384,6 +413,17 @@ export const make = Effect.gen(function* () {
    const updaterConfiguredRef = yield* Ref.make(false);
    const lastLoggedDownloadMilestoneRef = yield* Ref.make(-1);
@@ -436,12 +322,12 @@ index 14688e5..5ecb026 100644
 -  );
 +    ...(homebrewManaged ? { updateProvider: "homebrew" as const } : {}),
 +  });
- 
+
    const stateChanges = yield* PubSub.sliding<DesktopUpdateState>(16);
    // Serialize writes and publishes against subscription so snapshots cannot overlap the first change.
 @@ -460,6 +501,14 @@ export const make = Effect.gen(function* () {
    );
- 
+
    const resolveDisabledReason = Effect.gen(function* () {
 +    if (homebrewManaged) {
 +      if (policy.message !== null || policy.mode === "off" || policy.feedUrl !== undefined) {
@@ -457,7 +343,7 @@ index 14688e5..5ecb026 100644
 @@ -528,6 +577,65 @@ export const make = Effect.gen(function* () {
      });
    });
- 
+
 +  const checkHomebrewForUpdates = Effect.fn("desktop.updates.checkHomebrewForUpdates")(
 +    function* () {
 +      const current = yield* Ref.get(updateStateRef);
@@ -523,7 +409,7 @@ index 14688e5..5ecb026 100644
 @@ -588,7 +696,58 @@ export const make = Effect.gen(function* () {
          );
    });
- 
+
 +  const prepareHomebrewUpdate = Effect.gen(function* () {
 +    const state = yield* Ref.get(updateStateRef);
 +    if (!state.enabled || state.status !== "available" || state.availableVersion === null) {
@@ -581,7 +467,7 @@ index 14688e5..5ecb026 100644
        return { accepted: false, completed: false };
 @@ -696,9 +855,13 @@ export const make = Effect.gen(function* () {
    );
- 
+
    const baseUpdateState = (channel: DesktopUpdateChannel, disabledReason: Option.Option<string>) =>
 -    Ref.get(notAppliedVersionRef).pipe(
 -      Effect.map((notAppliedVersion) => ({
@@ -610,7 +496,7 @@ index 14688e5..5ecb026 100644
 +        }),
        })),
      );
- 
+
 -  const resetInstallAction = Effect.all(
 -    [
 -      finishUpdateAction("install"),
@@ -630,12 +516,12 @@ index 14688e5..5ecb026 100644
 +      yield* removeInstallRecord;
 +    }
 +  });
- 
+
    const recoverFailedInstall = Effect.fn("desktop.updates.recoverFailedInstall")(function* (
      message: string,
 @@ -733,8 +903,10 @@ export const make = Effect.gen(function* () {
      if (!ownsRecovery) return;
- 
+
      yield* Ref.set(desktopState.quitting, false);
 -    yield* removeUpdateRestartMarker;
 -    yield* removeInstallRecord;
@@ -657,7 +543,7 @@ index 14688e5..5ecb026 100644
                  return "refused" as const;
 @@ -808,9 +980,11 @@ export const make = Effect.gen(function* () {
          yield* Ref.set(installRunningBackendsRef, []);
- 
+
          return yield* Effect.gen(function* () {
 -          yield* writeUpdateRestartMarker;
            const { downloadedVersion } = yield* Ref.get(updateStateRef);
@@ -695,7 +581,7 @@ index 14688e5..5ecb026 100644
 @@ -1119,6 +1309,21 @@ export const make = Effect.gen(function* () {
          void Effect.runPromiseWith(context)(effect);
        };
- 
+
 +      if (homebrewManaged) {
 +        const previousResult = yield* Effect.tryPromise({
 +          try: () => homebrewUpdateProvider.takeResult(),
@@ -713,7 +599,7 @@ index 14688e5..5ecb026 100644
 +
        const appUpdateYmlConfig = yield* readAppUpdateYml;
        yield* Ref.set(appUpdateYmlConfigRef, appUpdateYmlConfig);
- 
+
 @@ -1200,6 +1405,12 @@ export const make = Effect.gen(function* () {
        options?: { readonly minimumVersion?: string | undefined },
      ) {
@@ -743,10 +629,10 @@ index 14688e5..5ecb026 100644
            checked: false,
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts
 new file mode 100644
-index 0000000..0053126
+index 0000000..eea8b63
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,106 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import * as Effect from "effect/Effect";
 +import { rejects } from "node:assert/strict";
@@ -769,7 +655,7 @@ index 0000000..0053126
 +        const calls = join(root, "calls.jsonl");
 +        await writeFile(
 +          helper,
-+          `#!/usr/bin/env node\nconst fs = require("node:fs")\nconst path = require("node:path")\nconst args = process.argv.slice(2)\nfs.appendFileSync(path.join(process.env.HOME, "calls.jsonl"), JSON.stringify(args) + "\\n")\nif (args[0] === "check") process.stdout.write(JSON.stringify({ status: "available", ${updateFields} }))\nif (args[0] === "prepare") process.stdout.write(JSON.stringify({ status: "prepared", ${updateFields} }))\n`,
++          `#!/usr/bin/env node\nconst fs = require("node:fs")\nconst path = require("node:path")\nconst args = process.argv.slice(2)\nif (args[0] === "apply") { fs.writeFileSync(args[args.indexOf("--ready-file") + 1], "ready"); args.splice(args.indexOf("--ready-file"), 2); setTimeout(() => {}, 300); }\nfs.appendFileSync(path.join(process.env.HOME, "calls.jsonl"), JSON.stringify(args) + "\\n")\nif (args[0] === "check") process.stdout.write(JSON.stringify({ status: "available", ${updateFields} }))\nif (args[0] === "prepare") process.stdout.write(JSON.stringify({ status: "prepared", ${updateFields} }))\n`,
 +          { mode: 0o755 },
 +        );
 +        await chmod(helper, 0o755);
@@ -842,13 +728,23 @@ index 0000000..0053126
 +      }
 +    }),
 +  );
++  it.effect("refuses a child that fails before readiness so Desktop can remain open", () => Effect.promise(async () => {
++    const root = await mkdtemp(join(tmpdir(), "t3-homebrew-not-ready-"));
++    try {
++      const helper = join(root, "t3-homebrew-update.sh");
++      await writeFile(helper, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
++      const provider = createHomebrewDesktopUpdateProvider({ helperPath: helper, stateHome: root, homeDirectory: root, runtimeDirectory: root });
++      await rejects(provider.apply(version, nextVersion, process.pid), /before accepting/);
++    } finally { await rm(root, { recursive: true, force: true }); }
++  }));
++
 +});
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
 new file mode 100644
-index 0000000..aa35914
+index 0000000..cf17b30
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,370 @@
 +import { execFile, spawn } from "node:child_process";
 +import { chmod, copyFile, lstat, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 +import { tmpdir } from "node:os";
@@ -1104,12 +1000,13 @@ index 0000000..aa35914
 +    await chmod(privateDirectory, 0o700);
 +    const helperCopy = join(privateDirectory, "t3-homebrew-update.sh");
 +    const runnerPath = join(privateDirectory, "run-update.sh");
++    const readyPath = join(privateDirectory, "ready");
 +    await copyFile(input.helperPath, helperCopy);
 +    await chmod(helperCopy, 0o700);
 +    await writeFile(runnerPath, DETACHED_RUNNER, { mode: 0o700 });
 +    await chmod(runnerPath, 0o700);
 +    await new Promise<void>((resolve, reject) => {
-+      const child = spawn(runnerPath, [helperCopy, privateDirectory, ...input.args], {
++      const child = spawn(runnerPath, [helperCopy, privateDirectory, ...input.args, "--ready-file", readyPath], {
 +        cwd: input.homeDirectory,
 +        detached: true,
 +        env: minimalEnvironment({
@@ -1120,12 +1017,23 @@ index 0000000..aa35914
 +        shell: false,
 +        stdio: "ignore",
 +      });
-+      child.once("error", reject);
-+      child.once("spawn", () => {
-+        child.removeAllListeners("error");
-+        child.unref();
-+        resolve();
-+      });
++      let settled = false;
++      const finish = (error?: Error) => {
++        if (settled) return;
++        settled = true;
++        if (error) { child.kill("SIGTERM"); reject(error); }
++        else { child.unref(); resolve(); }
++      };
++      child.once("error", (error) => finish(error));
++      child.once("exit", () => finish(new Error("The Homebrew helper failed before accepting the update.")));
++      const deadline = Date.now() + 15_000;
++      const checkReady = async () => {
++        if (settled) return;
++        try { if ((await readFile(readyPath, "utf8")) === "ready") return finish(); } catch {}
++        if (Date.now() >= deadline) return finish(new Error("The Homebrew helper did not become ready; Desktop remains open."));
++        setTimeout(() => void checkReady(), 20);
++      };
++      void checkReady();
 +    });
 +  } catch (error) {
 +    await rm(privateDirectory, { recursive: true, force: true });
@@ -1207,57 +1115,147 @@ index 0000000..aa35914
 +    },
 +  };
 +}
-diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 6871b91..1d5e14e 100644
---- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-+++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-@@ -4,7 +4,7 @@ import {
-   managedUpdatesDenial,
- } from "@t3tools/contracts";
- import { TriangleAlertIcon } from "lucide-react";
--import { type ComponentProps, useId, useRef, useState } from "react";
-+import { type ComponentProps, useEffect, useId, useRef, useState } from "react";
- import { flushSync } from "react-dom";
- import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
- import { isElectron } from "../../env";
-@@ -197,6 +197,25 @@ export function SidebarUpdatePill() {
- 
- function SidebarUpdateControl() {
-   const state = useDesktopUpdateState();
-+  const shownHomebrewResult = useRef<string | null>(null);
-+  useEffect(() => {
-+    const result = state?.homebrewUpdateResult;
-+    if (!result) return;
-+    const key = `${result.outcome}:${result.version}:${result.message ?? ""}`;
-+    if (shownHomebrewResult.current === key) return;
-+    shownHomebrewResult.current = key;
-+    toastManager.add(
-+      stackedThreadToast({
-+        type: result.outcome === "installed" ? "success" : "error",
-+        title: result.outcome === "installed" ? "Homebrew update installed" : "Homebrew update failed",
-+        description:
-+          result.message ??
-+          (result.outcome === "installed"
-+            ? `T3 Code was updated to ${result.version}.`
-+            : `T3 Code could not be updated to ${result.version}.`),
-+      }),
-+    );
-+  }, [state?.homebrewUpdateResult]);
-   // The desktop updates this machine, whose policy the primary environment reports.
-   const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
-   const [isActionPending, setIsActionPending] = useState(false);
-@@ -229,7 +248,7 @@ function SidebarUpdateControl() {
-   const isDownloading = state?.status === "downloading";
-   const localUpdateVersion =
-     state && action !== "none" ? getDesktopUpdateDownloadedVersion(state) : null;
--  const everything = useUpdateEverything(localUpdateVersion);
-+  const everything = useUpdateEverything(localUpdateVersion, undefined, state?.updateProvider);
-   const runsEverything = everything.hasUpdates && !isDownloading;
-   const run = useUpdateEverythingRun();
-   const isRunningEverything = run !== null;
+diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
+index 226f00f..e42f244 100644
+--- a/apps/desktop/src/updates/updatesTestHarness.ts
++++ b/apps/desktop/src/updates/updatesTestHarness.ts
+@@ -10,6 +10,7 @@ import * as Option from "effect/Option";
+ import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
+ import * as DesktopConfig from "../app/DesktopConfig.ts";
+ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
++import * as ElectronApp from "../electron/ElectronApp.ts";
+ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
+ import * as ElectronWindow from "../electron/ElectronWindow.ts";
+ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+@@ -36,6 +37,7 @@ export interface UpdatesHarnessOptions {
+   readonly env?: Record<string, string | undefined>;
+   readonly platform?: NodeJS.Platform;
+   readonly packageType?: string | undefined;
++  readonly homebrewResourcePath?: string;
+   readonly installRecord?: string | undefined;
+   readonly policy?: DesktopUpdatePolicy.UpdatePolicy;
+   readonly appVersion?: string;
+@@ -136,6 +138,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+     syncAllAppearance: () => Effect.void,
+   } satisfies ElectronWindow.ElectronWindow["Service"]);
+
++  const layerElectronApp = Layer.succeed(ElectronApp.ElectronApp, {
++    ...ElectronApp.make,
++    quit: Effect.sync(() => {
++      installSteps.push("electronApp.quit");
++    }),
++  });
++
+   let backendDesiredRunning = options.backendDesiredRunning ?? true;
+   const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
+     id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
+@@ -174,13 +183,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+
+   const layerEnvironment = DesktopEnvironment.layer({
+     dirname: "/repo/apps/desktop/src",
+-    homeDirectory: `/tmp/t3-desktop-updates-home-${process.pid}`,
++    homeDirectory: options.homebrewResourcePath ?? `/tmp/t3-desktop-updates-home-${process.pid}`,
+     platform: options.platform ?? "darwin",
+     processArch: "x64",
+     appVersion: options.appVersion ?? "1.2.3",
+     appPath: "/repo",
+     isPackaged: true,
+-    resourcesPath: "/missing/resources",
++    resourcesPath: options.homebrewResourcePath ?? "/missing/resources",
+     runningUnderArm64Translation: false,
+   }).pipe(
+     Layer.provide(
+@@ -242,6 +251,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+   const isInstallRecord = (path: string) =>
+     path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
+   const layerFileSystem = FileSystem.layerNoop({
++    exists: (path) =>
++      Effect.succeed(path === `${options.homebrewResourcePath}/t3-homebrew-update.sh`),
+     readFileString: (path) => {
+       const installRecord = isInstallRecord(path)
+         ? (installRecords.get(path) ?? previousInstallRecord)
+@@ -277,6 +288,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+     Layer.provide(DesktopUpdatePolicy.layerTest(options.policy)),
+     Layer.provideMerge(layerUpdater),
+     Layer.provideMerge(layerWindow),
++    Layer.provideMerge(layerElectronApp),
+     Layer.provideMerge(layerBackend),
+     Layer.provideMerge(DesktopState.layer),
+     Layer.provideMerge(layerSettings),
+diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
+index 51b2b92..48d36e6 100644
+--- a/apps/web/src/components/desktopUpdate.logic.ts
++++ b/apps/web/src/components/desktopUpdate.logic.ts
+@@ -87,6 +87,29 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
+ }
+
+ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
++  if (state.updateProvider === "homebrew") {
++    const version = state.downloadedVersion ?? state.availableVersion ?? state.currentVersion;
++    const sourceCommit =
++      state.homebrewUpdate?.sourceCommit ??
++      /^main\.\d{14}\.([a-f0-9]{12,40})(?:_[0-9]+)?$/i.exec(version)?.[1];
++    const installedVersion = state.homebrewUpdate?.installedVersion ?? state.currentVersion;
++    const formulaVersion = state.homebrewUpdate?.formula ?? version;
++    const caskVersion = state.homebrewUpdate?.cask ?? version;
++    const packages =
++      `t3code-cli-main ${installedVersion} → ${formulaVersion} and ` +
++      `t3-code-linux ${installedVersion} → ${caskVersion}`;
++    const source = state.homebrewUpdate?.source ?? "joshyorko/tools";
++    const sourceDetails = sourceCommit ? ` from ${source} (source commit: ${sourceCommit})` : "";
++    if (state.status === "downloading") {
++      return `Preparing Homebrew packages ${packages}${sourceDetails}`;
++    }
++    if (state.status === "available") {
++      return `Homebrew update available for ${packages}${sourceDetails}. Click to prepare both packages.`;
++    }
++    if (state.status === "downloaded") {
++      return `Homebrew packages ${packages}${sourceDetails} are prepared. Click to install and restart.`;
++    }
++  }
+   if (
+     state.notAppliedVersion !== undefined &&
+     (state.status === "available" || state.status === "downloaded") &&
+@@ -121,9 +144,35 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
+ }
+
+ export function getDesktopUpdateInstallConfirmationMessage(
+-  state: Pick<DesktopUpdateState, "availableVersion" | "downloadedVersion">,
++  state: Pick<
++    DesktopUpdateState,
++    | "currentVersion"
++    | "availableVersion"
++    | "downloadedVersion"
++    | "updateProvider"
++    | "homebrewUpdate"
++  >,
+ ): string {
+   const version = state.downloadedVersion ?? state.availableVersion;
++  if (state.updateProvider === "homebrew" && version !== null) {
++    const formulaVersion = state.homebrewUpdate?.formula ?? version;
++    const caskVersion = state.homebrewUpdate?.cask ?? version;
++    const source = state.homebrewUpdate?.source ?? "joshyorko/tools";
++    const sourceCommit =
++      state.homebrewUpdate?.sourceCommit ??
++      /^main\.\d{14}\.([a-f0-9]{12,40})(?:_[0-9]+)?$/i.exec(version)?.[1];
++    const installedVersion = state.homebrewUpdate?.installedVersion ?? state.currentVersion;
++    const sourceDetails = sourceCommit ? ` from ${source} (source commit: ${sourceCommit})` : "";
++    const action = [
++      `Upgrade t3code-cli-main ${installedVersion} → ${formulaVersion}`,
++      `and t3-code-linux ${installedVersion} → ${caskVersion}${sourceDetails},`,
++      "verify the paired versions, restart the Homebrew T3 Code service, and relaunch T3 Code?",
++    ].join(" ");
++    const warning =
++      "T3 Code and its local servers will close during the update. " +
++      "Make sure running tasks are ready to stop.";
++    return `${action}\n\n${warning}`;
++  }
+   return `Install update${version ? ` ${version}` : ""} and restart T3 Code?\n\nAny running tasks will be interrupted. Make sure you're ready before continuing.`;
+ }
+
 diff --git a/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts b/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts
 new file mode 100644
-index 0000000..716302b
+index 0000000..0dd45ad
 --- /dev/null
 +++ b/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts
 @@ -0,0 +1,69 @@
@@ -1303,7 +1301,7 @@ index 0000000..716302b
 +    assert.include(tooltip, `t3code-cli-main ${state.currentVersion} → ${version}`);
 +    assert.include(tooltip, `t3-code-linux ${state.currentVersion} → ${version}`);
 +    assert.include(tooltip, "joshyorko/tools");
-+    assert.include(tooltip, "source commit 6577c6b61851");
++    assert.include(tooltip, "source commit: 6577c6b61851");
 +  });
 +
 +  it("confirms both packages, service restart, and Desktop relaunch", () => {
@@ -1330,144 +1328,54 @@ index 0000000..716302b
 +    assert.notMatch(tooltip, /\d+%/);
 +  });
 +});
-diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index 51b2b92..48d36e6 100644
---- a/apps/web/src/components/desktopUpdate.logic.ts
-+++ b/apps/web/src/components/desktopUpdate.logic.ts
-@@ -87,6 +87,29 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
- }
- 
- export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
-+  if (state.updateProvider === "homebrew") {
-+    const version = state.downloadedVersion ?? state.availableVersion ?? state.currentVersion;
-+    const sourceCommit =
-+      state.homebrewUpdate?.sourceCommit ??
-+      /^main\.\d{14}\.([a-f0-9]{12,40})(?:_[0-9]+)?$/i.exec(version)?.[1];
-+    const installedVersion = state.homebrewUpdate?.installedVersion ?? state.currentVersion;
-+    const formulaVersion = state.homebrewUpdate?.formula ?? version;
-+    const caskVersion = state.homebrewUpdate?.cask ?? version;
-+    const packages =
-+      `t3code-cli-main ${installedVersion} → ${formulaVersion} and ` +
-+      `t3-code-linux ${installedVersion} → ${caskVersion}`;
-+    const source = state.homebrewUpdate?.source ?? "joshyorko/tools";
-+    const sourceDetails = sourceCommit ? ` from ${source} (source commit: ${sourceCommit})` : "";
-+    if (state.status === "downloading") {
-+      return `Preparing Homebrew packages ${packages}${sourceDetails}`;
-+    }
-+    if (state.status === "available") {
-+      return `Homebrew update available for ${packages}${sourceDetails}. Click to prepare both packages.`;
-+    }
-+    if (state.status === "downloaded") {
-+      return `Homebrew packages ${packages}${sourceDetails} are prepared. Click to install and restart.`;
-+    }
-+  }
-   if (
-     state.notAppliedVersion !== undefined &&
-     (state.status === "available" || state.status === "downloaded") &&
-@@ -121,9 +144,35 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
- }
- 
- export function getDesktopUpdateInstallConfirmationMessage(
--  state: Pick<DesktopUpdateState, "availableVersion" | "downloadedVersion">,
-+  state: Pick<
-+    DesktopUpdateState,
-+    | "currentVersion"
-+    | "availableVersion"
-+    | "downloadedVersion"
-+    | "updateProvider"
-+    | "homebrewUpdate"
-+  >,
- ): string {
-   const version = state.downloadedVersion ?? state.availableVersion;
-+  if (state.updateProvider === "homebrew" && version !== null) {
-+    const formulaVersion = state.homebrewUpdate?.formula ?? version;
-+    const caskVersion = state.homebrewUpdate?.cask ?? version;
-+    const source = state.homebrewUpdate?.source ?? "joshyorko/tools";
-+    const sourceCommit =
-+      state.homebrewUpdate?.sourceCommit ??
-+      /^main\.\d{14}\.([a-f0-9]{12,40})(?:_[0-9]+)?$/i.exec(version)?.[1];
-+    const installedVersion = state.homebrewUpdate?.installedVersion ?? state.currentVersion;
-+    const sourceDetails = sourceCommit ? ` from ${source} (source commit: ${sourceCommit})` : "";
-+    const action = [
-+      `Upgrade t3code-cli-main ${installedVersion} → ${formulaVersion}`,
-+      `and t3-code-linux ${installedVersion} → ${caskVersion}${sourceDetails},`,
-+      "verify the paired versions, restart the Homebrew T3 Code service, and relaunch T3 Code?",
-+    ].join(" ");
-+    const warning =
-+      "T3 Code and its local servers will close during the update. " +
-+      "Make sure running tasks are ready to stop.";
-+    return `${action}\n\n${warning}`;
-+  }
-   return `Install update${version ? ` ${version}` : ""} and restart T3 Code?\n\nAny running tasks will be interrupted. Make sure you're ready before continuing.`;
- }
- 
-diff --git a/apps/desktop/src/updates/updatesTestHarness.ts b/apps/desktop/src/updates/updatesTestHarness.ts
-index 226f00f..e42f244 100644
---- a/apps/desktop/src/updates/updatesTestHarness.ts
-+++ b/apps/desktop/src/updates/updatesTestHarness.ts
-@@ -10,6 +10,7 @@ import * as Option from "effect/Option";
- import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
- import * as DesktopConfig from "../app/DesktopConfig.ts";
- import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-+import * as ElectronApp from "../electron/ElectronApp.ts";
- import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
- import * as ElectronWindow from "../electron/ElectronWindow.ts";
- import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
-@@ -36,6 +37,7 @@ export interface UpdatesHarnessOptions {
-   readonly env?: Record<string, string | undefined>;
-   readonly platform?: NodeJS.Platform;
-   readonly packageType?: string | undefined;
-+  readonly homebrewResourcePath?: string;
-   readonly installRecord?: string | undefined;
-   readonly policy?: DesktopUpdatePolicy.UpdatePolicy;
-   readonly appVersion?: string;
-@@ -136,6 +138,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
-     syncAllAppearance: () => Effect.void,
-   } satisfies ElectronWindow.ElectronWindow["Service"]);
- 
-+  const layerElectronApp = Layer.succeed(ElectronApp.ElectronApp, {
-+    ...ElectronApp.make,
-+    quit: Effect.sync(() => {
-+      installSteps.push("electronApp.quit");
-+    }),
-+  });
-+
-   let backendDesiredRunning = options.backendDesiredRunning ?? true;
-   const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
-     id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
-@@ -174,13 +183,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
- 
-   const layerEnvironment = DesktopEnvironment.layer({
-     dirname: "/repo/apps/desktop/src",
--    homeDirectory: `/tmp/t3-desktop-updates-home-${process.pid}`,
-+    homeDirectory: options.homebrewResourcePath ?? `/tmp/t3-desktop-updates-home-${process.pid}`,
-     platform: options.platform ?? "darwin",
-     processArch: "x64",
-     appVersion: options.appVersion ?? "1.2.3",
-     appPath: "/repo",
-     isPackaged: true,
--    resourcesPath: "/missing/resources",
-+    resourcesPath: options.homebrewResourcePath ?? "/missing/resources",
-     runningUnderArm64Translation: false,
-   }).pipe(
-     Layer.provide(
-@@ -242,6 +251,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
-   const isInstallRecord = (path: string) =>
-     path.endsWith(DesktopUpdates.DESKTOP_UPDATE_INSTALL_RECORD_FILE);
-   const layerFileSystem = FileSystem.layerNoop({
-+    exists: (path) =>
-+      Effect.succeed(path === `${options.homebrewResourcePath}/t3-homebrew-update.sh`),
-     readFileString: (path) => {
-       const installRecord = isInstallRecord(path)
-         ? (installRecords.get(path) ?? previousInstallRecord)
-@@ -277,6 +288,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
-     Layer.provide(DesktopUpdatePolicy.layerTest(options.policy)),
-     Layer.provideMerge(layerUpdater),
-     Layer.provideMerge(layerWindow),
-+    Layer.provideMerge(layerElectronApp),
-     Layer.provideMerge(layerBackend),
-     Layer.provideMerge(DesktopState.layer),
-     Layer.provideMerge(layerSettings),
+diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
+index 6871b91..1d5e14e 100644
+--- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
++++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
+@@ -4,7 +4,7 @@ import {
+   managedUpdatesDenial,
+ } from "@t3tools/contracts";
+ import { TriangleAlertIcon } from "lucide-react";
+-import { type ComponentProps, useId, useRef, useState } from "react";
++import { type ComponentProps, useEffect, useId, useRef, useState } from "react";
+ import { flushSync } from "react-dom";
+ import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+ import { isElectron } from "../../env";
+@@ -197,6 +197,25 @@ export function SidebarUpdatePill() {
+
+ function SidebarUpdateControl() {
+   const state = useDesktopUpdateState();
++  const shownHomebrewResult = useRef<string | null>(null);
++  useEffect(() => {
++    const result = state?.homebrewUpdateResult;
++    if (!result) return;
++    const key = `${result.outcome}:${result.version}:${result.message ?? ""}`;
++    if (shownHomebrewResult.current === key) return;
++    shownHomebrewResult.current = key;
++    toastManager.add(
++      stackedThreadToast({
++        type: result.outcome === "installed" ? "success" : "error",
++        title: result.outcome === "installed" ? "Homebrew update installed" : "Homebrew update failed",
++        description:
++          result.message ??
++          (result.outcome === "installed"
++            ? `T3 Code was updated to ${result.version}.`
++            : `T3 Code could not be updated to ${result.version}.`),
++      }),
++    );
++  }, [state?.homebrewUpdateResult]);
+   // The desktop updates this machine, whose policy the primary environment reports.
+   const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
+   const [isActionPending, setIsActionPending] = useState(false);
+@@ -229,7 +248,7 @@ function SidebarUpdateControl() {
+   const isDownloading = state?.status === "downloading";
+   const localUpdateVersion =
+     state && action !== "none" ? getDesktopUpdateDownloadedVersion(state) : null;
+-  const everything = useUpdateEverything(localUpdateVersion);
++  const everything = useUpdateEverything(localUpdateVersion, undefined, state?.updateProvider);
+   const runsEverything = everything.hasUpdates && !isDownloading;
+   const run = useUpdateEverythingRun();
+   const isRunningEverything = run !== null;
 diff --git a/apps/web/src/components/sidebar/useUpdateEverything.ts b/apps/web/src/components/sidebar/useUpdateEverything.ts
 index 05127d9..f004b1f 100644
 --- a/apps/web/src/components/sidebar/useUpdateEverything.ts
@@ -1476,7 +1384,7 @@ index 05127d9..f004b1f 100644
  import { useAtomValue } from "@effect/atom-react";
 -import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 +import { PROVIDER_DISPLAY_NAMES, type DesktopUpdateState } from "@t3tools/contracts";
- 
+
  import { APP_VERSION } from "~/branding";
  import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 @@ -51,6 +51,7 @@ export type ReportLocalUpdateError = (title: string, description: string) => voi
@@ -1510,7 +1418,7 @@ index 05127d9..f004b1f 100644
 +    ? { machines: [], updateAll: async () => [] }
 +    : providerUpdates;
    const updateServer = useServerUpdate();
- 
+
    const view = describeUpdateEverything({
 diff --git a/packages/contracts/src/ipc.ts b/packages/contracts/src/ipc.ts
 index 6f1354d..85f791b 100644
@@ -1559,11 +1467,12 @@ index 6f1354d..85f791b 100644
 +  ),
    notAppliedVersion: Schema.optionalKey(Schema.String),
  });
- 
+
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
+index 599c6b8..de3debb 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -1091,6 +1091,7 @@
+@@ -1091,6 +1091,7 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
  export const DESKTOP_EXTRA_RESOURCES = [

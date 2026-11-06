@@ -17,6 +17,7 @@ PREFIX=""
 CELLAR=""
 APP_VERSION=""
 TARGET_VERSION=""
+READY_FILE=""
 WAIT_PID=""
 RESULT_WRITTEN=false
 DESKTOP_LAUNCHED=false
@@ -562,6 +563,11 @@ parse_arguments() {
         WAIT_PID="$2"
         shift 2
         ;;
+      --ready-file)
+        [[ $# -ge 2 && "$command_name" == apply ]] || fail "Invalid readiness handoff."
+        READY_FILE="$2"
+        shift 2
+        ;;
       --json)
         [[ "$command_name" == check ]] || fail "--json is supported only by check."
         shift
@@ -598,6 +604,8 @@ main() {
       prepare_update
       ;;
     apply)
+      verify_snapshot
+      if [[ -n "$READY_FILE" ]]; then printf ready > "$READY_FILE"; fi
       wait_for_desktop_exit
       RELAUNCH_SAFE=true
       apply_update
