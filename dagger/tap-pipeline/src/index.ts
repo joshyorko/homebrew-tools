@@ -2682,6 +2682,7 @@ end
         "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
         "apps/desktop/src/updates/DesktopUpdates.test.ts",
         "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
+        "apps/web/src/components/desktopUpdate.logic.test.ts",
       ])
       .withExec([
         "pnpm",

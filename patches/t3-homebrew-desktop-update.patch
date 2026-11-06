@@ -741,10 +741,10 @@ index 0000000..eea8b63
 +});
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
 new file mode 100644
-index 0000000..cf17b30
+index 0000000..779d9d1
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts
-@@ -0,0 +1,370 @@
+@@ -0,0 +1,373 @@
 +import { execFile, spawn } from "node:child_process";
 +import { chmod, copyFile, lstat, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 +import { tmpdir } from "node:os";
@@ -1021,7 +1021,10 @@ index 0000000..cf17b30
 +      const finish = (error?: Error) => {
 +        if (settled) return;
 +        settled = true;
-+        if (error) { child.kill("SIGTERM"); reject(error); }
++        if (error) {
++          try { if (child.pid !== undefined) process.kill(-child.pid, "SIGTERM"); } catch {}
++          reject(error);
++        }
 +        else { child.unref(); resolve(); }
 +      };
 +      child.once("error", (error) => finish(error));
@@ -1183,7 +1186,7 @@ index 226f00f..e42f244 100644
      Layer.provideMerge(DesktopState.layer),
      Layer.provideMerge(layerSettings),
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
-index 51b2b92..48d36e6 100644
+index 51b2b92..43fb039 100644
 --- a/apps/web/src/components/desktopUpdate.logic.ts
 +++ b/apps/web/src/components/desktopUpdate.logic.ts
 @@ -87,6 +87,29 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
@@ -1216,19 +1219,13 @@ index 51b2b92..48d36e6 100644
    if (
      state.notAppliedVersion !== undefined &&
      (state.status === "available" || state.status === "downloaded") &&
-@@ -121,9 +144,35 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
+@@ -121,9 +144,29 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
  }
 
  export function getDesktopUpdateInstallConfirmationMessage(
 -  state: Pick<DesktopUpdateState, "availableVersion" | "downloadedVersion">,
-+  state: Pick<
-+    DesktopUpdateState,
-+    | "currentVersion"
-+    | "availableVersion"
-+    | "downloadedVersion"
-+    | "updateProvider"
-+    | "homebrewUpdate"
-+  >,
++  state: Pick<DesktopUpdateState, "availableVersion" | "downloadedVersion"> &
++    Partial<Pick<DesktopUpdateState, "currentVersion" | "updateProvider" | "homebrewUpdate">>,
  ): string {
    const version = state.downloadedVersion ?? state.availableVersion;
 +  if (state.updateProvider === "homebrew" && version !== null) {
