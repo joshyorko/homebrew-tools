@@ -78,110 +78,67 @@ The Homebrew service should be running; both legacy units should be inactive
 and masked. `systemctl` may report an inactive or unknown unit when a legacy
 unit was not installed.
 
-## Upgrade the CLI and Desktop together
+## Update from the T3 Desktop
 
-Run as the T3 user. These commands upgrade the already-installed packages; they
-do not install a missing package:
+The packaged Linux Desktop's update control uses the Homebrew provider. It
+updates only this local CLI/Desktop pair; it does not update remote T3 servers
+or provider packages. Its status and confirmation show both package identities
+(`t3code-cli-main` and
+`t3-code-linux`), their current and target versions, tap source, and the shared
+12-character upstream source commit. The suffix in each paired version must
+match that commit.
 
-```bash
-set -euo pipefail
-tap_repo="$(brew --repo joshyorko/tools)"
-formula_info="$(brew info --json=v2 --installed --formula t3code-cli-main)"
-cli_version="$(jq -er '.formulae[0].linked_keg // empty' <<<"$formula_info")"
-cask_receipt="$(brew --caskroom)/t3-code-linux/.metadata/INSTALL_RECEIPT.json"
-desktop_version="$(jq -er '.source.version // empty' "$cask_receipt")"
-if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
-  echo "Installed T3 CLI/Desktop versions do not match; restore parity before upgrading." >&2
-  exit 1
-fi
+The flow has separate check, prepare, and install steps:
 
-rollback_dir="$HOME/.local/state/t3code-homebrew-rollback/$(date +%Y%m%d%H%M%S)"
-mkdir -p "$rollback_dir"
-chmod 700 "$rollback_dir"
-cli_formula="$(brew --cellar t3code-cli-main)/$cli_version/.brew/t3code-cli-main.rb"
-caskroom="$(brew --caskroom)/t3-code-linux"
-cask_receipt="$caskroom/.metadata/INSTALL_RECEIPT.json"
-if [[ ! -f "$cli_formula" || -z "$cask_receipt" ]]; then
-  echo "Homebrew cannot locate the installed T3 definitions; stop before upgrading." >&2
-  exit 1
-fi
-jq_revision="$(jq -er '.source.tap_git_head | select(type == "string" and test("^[0-9a-f]{40}$"))' "$cask_receipt")"
-git -C "$tap_repo" cat-file -e "$jq_revision:Casks/t3-code-linux.rb"
-cp -p "$cli_formula" "$rollback_dir/t3code-cli-main.rb"
-git -C "$tap_repo" show "$jq_revision:Casks/t3-code-linux.rb" > "$rollback_dir/t3-code-linux.rb"
-grep -Fqx "  version \"$cli_version\"" "$rollback_dir/t3code-cli-main.rb"
-grep -Fqx "  version \"$desktop_version\"" "$rollback_dir/t3-code-linux.rb"
-printf 'Saved rollback definitions in %s\n' "$rollback_dir"
-latest_path="$HOME/.local/state/t3code-homebrew-rollback/latest"
-latest_temp="${latest_path}.tmp.$$"
-printf '%s\n' "$rollback_dir" > "$latest_temp"
-mv -f -- "$latest_temp" "$latest_path"
+1. **Check** verifies that the running Desktop matches the installed cask, the
+   installed CLI and Desktop versions match, and the tap offers a matching pair.
+   It refreshes Homebrew metadata as the current user. No package is installed.
+2. **Prepare** fetches both matching Homebrew artifacts and rechecks the target
+   pair. Fetching does not install either package.
+3. **Install** opens an explicit confirmation listing both version changes and
+   the source commit. It warns that T3 Code and local servers will close. Only
+   after confirmation does the Desktop hand off to a detached helper running as
+   the same user.
+4. The helper waits for the Desktop and its AppImage children to exit, then
+   checks and updates the package pair. It stops the Homebrew T3 service only
+   when that service was active before the update, and restarts it only in that
+   case. If it was inactive, it remains stopped.
+5. After a successful pair install, the helper relaunches the Desktop. T3 reads
+   the helper result, displays a success toast, and reconnects to the T3
+   environment. It also relaunches after recoverable failures when the previous
+   pair and service state have been restored, so the failure result can be
+   shown in a toast. If recovery cannot be verified, the helper leaves the
+   service stopped and does not relaunch the Desktop automatically; review the
+   log before reopening it.
 
-brew update
-brew upgrade joshyorko/tools/t3code-cli-main
-brew upgrade --cask joshyorko/tools/t3-code-linux
+The helper validates the installed and candidate pair again at each stage, so a
+stale check or tap change fails closed. It records its lock, log, and result
+under `${XDG_STATE_HOME:-$HOME/.local/state}/t3code/homebrew-update/`; nothing
+in `~/.t3` is used for update bookkeeping. For status outside the Desktop, run
+`brew services info t3code-cli-main`.
 
-formula_info="$(brew info --json=v2 --installed --formula t3code-cli-main)"
-cli_version="$(jq -er '.formulae[0].linked_keg // empty' <<<"$formula_info")"
-desktop_version="$(jq -er '.source.version // empty' "$cask_receipt")"
-printf 'CLI: %s\nDesktop: %s\n' "$cli_version" "$desktop_version"
-if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
-  echo "Upgraded T3 CLI/Desktop versions do not match; do not restart the service." >&2
-  exit 1
-fi
-```
+## Recovery and rollback
 
-The shared version has the upstream source commit's 12-character prefix after
-the final dot (for example, both current packages are
-`main.20261106111159.6577c6b61851`, from commit
-`6577c6b6185167c0e502fa01f9e8e8f2dee6ff25`). Paired CI resolves one full commit
-and passes it to both package acceptance jobs. If the versions do not match,
-stop here and do not restart the service; inspect the tap formula, cask, and CI
-source SHA first.
+If the CLI formula upgrade succeeds but the cask upgrade fails, Homebrew's cask
+transaction restores the previously installed Desktop. The helper relinks the
+retained previous formula keg, then verifies that the CLI and cask versions
+match again. When that pair is verified, it restores the service only if it was
+active before the update and reports the failure in the Desktop toast.
 
-Restart only the Homebrew-owned server, and only after the compatibility check
-above succeeds. Restarting interrupts active T3 work:
+If the helper cannot verify recovery of the previous package pair, it leaves
+the Homebrew service stopped and records a failure result. The Desktop remains
+closed on this path. Review the helper log before reopening or starting a
+service; do not start a legacy `t3code-homebrew` or `t3code` service alongside
+Homebrew.
+
+If both packages are installed at the matching target version but the service
+cannot be restarted or verified, the pair remains installed. The helper reports
+the service error rather than rolling back a valid pair. Review the log and
+service status before retrying:
 
 ```bash
-brew services restart t3code-cli-main
-```
-
-For service status, use `brew services info t3code-cli-main`. Do not use
-`t3 service restart`; that command is owned by upstream T3 and is outside this
-Homebrew lifecycle.
-
-## Roll back
-
-If a paired upgrade fails, use the saved `rollback_dir` from the upgrade step;
-do not delete or reset `~/.t3`. Stop the Homebrew service first so only one
-server can own the T3 data and port:
-
-```bash
-set -euo pipefail
-rollback_dir="$(cat "$HOME/.local/state/t3code-homebrew-rollback/latest")"
-if [[ ! -f "$rollback_dir/t3code-cli-main.rb" || ! -f "$rollback_dir/t3-code-linux.rb" ]]; then
-  echo "The saved T3 rollback definitions are incomplete; do not reinstall or restart." >&2
-  exit 1
-fi
-brew services stop t3code-cli-main
-brew reinstall "$rollback_dir/t3code-cli-main.rb"
-brew reinstall --cask "$rollback_dir/t3-code-linux.rb"
-
-formula_info="$(brew info --json=v2 --installed --formula t3code-cli-main)"
-cli_version="$(jq -er '.formulae[0].linked_keg // empty' <<<"$formula_info")"
-cask_receipt="$(brew --caskroom)/t3-code-linux/.metadata/INSTALL_RECEIPT.json"
-desktop_version="$(jq -er '.source.version // empty' "$cask_receipt")"
-if [[ -z "$cli_version" || "$cli_version" != "$desktop_version" ]]; then
-  echo "Rolled-back T3 CLI/Desktop versions do not match; do not restart the service." >&2
-  exit 1
-fi
-```
-
-If the restored formula still declares the Homebrew service, start it after
-the parity check:
-
-```bash
-brew services start t3code-cli-main
+brew services info t3code-cli-main
+systemctl --user status homebrew.mxcl.t3code-cli-main.service
 ```
 
 If you are also rolling back to a tap revision from before Homebrew service
@@ -210,31 +167,20 @@ identify the single unit to restore. The original unit and its enabled/active
 state are saved alongside the path. Never run `brew services start` while the
 restored legacy server is active.
 
-## Update ownership and limitations
+## Update ownership and policy limits
 
-Use Homebrew for both packages and the service lifecycle. Do not run upstream
-`t3 update` or `t3 service install`: the pinned upstream CLI downloads its own
-release archives, and its service installer writes a separate `t3code.service`
-that targets the upstream-managed `~/.t3/runtime` launcher. Either can bypass
-the formula or create a competing server. The Desktop's “Update everything”
-action is not a Homebrew operation and may replace the tap-built app with an
-upstream release if an updater feed is configured.
+Do not run upstream `t3 update` or `t3 service install`. The CLI updater
+downloads upstream release archives; its service installer creates a separate
+`t3code.service` targeting the upstream-managed `~/.t3/runtime` launcher. The
+Homebrew Desktop update button updates the tap's paired formula and cask; it
+does not configure an Electron updater feed or use upstream release binaries.
 
-The cask does not configure an updater feed. Upstream therefore shows its
-existing “Automatic updates are not available because no update feed is
-configured” state; this is accurate, but cannot name Homebrew as the update
-owner. The message comes from the pinned upstream [Desktop updater check](https://github.com/pingdotgg/t3code/blob/6577c6b6185167c0e502fa01f9e8e8f2dee6ff25/apps/desktop/src/updates/DesktopUpdates.ts#L342-L347).
-Homebrew does not add a fake Electron feed, and the Desktop update button does
-not invoke `brew upgrade`.
-
-Upstream supports `limits.updates.mode=off` in the administrator-managed Linux
-policy at `/etc/t3code/policy.json` ([pinned source](https://github.com/pingdotgg/t3code/blob/6577c6b6185167c0e502fa01f9e8e8f2dee6ff25/packages/shared/src/managedPolicyFile.ts#L35-L46)).
-The updater displays an organization-managed message when that policy turns
-updates off ([pinned policy handling](https://github.com/pingdotgg/t3code/blob/6577c6b6185167c0e502fa01f9e8e8f2dee6ff25/apps/desktop/src/updates/DesktopUpdatePolicy.ts#L39-L47)).
-The policy is system-wide, not scoped to this cask, and also affects CLI update
-behavior ([pinned CLI policy check](https://github.com/pingdotgg/t3code/blob/6577c6b6185167c0e502fa01f9e8e8f2dee6ff25/apps/server/src/cli/update.ts#L367-L376)).
-Homebrew does not create or modify it: an existing administrator policy must
-not be overwritten or silently merged. If policy-managed Desktop updates are
-required, coordinate the complete policy with the system administrator. The
-current app cannot provide a truthful Homebrew-specific update message without
-application changes or policy management reserved to an administrator.
+The Homebrew provider defers to managed T3 update policy. In particular,
+`limits.updates.mode: "off"` disables updates, and an administrator-managed
+`limits.updates.feedUrl` is not replaced by the Homebrew source. On Linux this
+policy is read from `/etc/t3code/policy.json` ([pinned source path](https://github.com/pingdotgg/t3code/blob/6577c6b6185167c0e502fa01f9e8e8f2dee6ff25/packages/shared/src/managedPolicyFile.ts#L35-L46)).
+It is system-wide, not scoped to the Homebrew cask, and also affects CLI update
+policy ([pinned CLI policy check](https://github.com/pingdotgg/t3code/blob/6577c6b6185167c0e502fa01f9e8e8f2dee6ff25/apps/server/src/cli/update.ts#L367-L376)).
+Homebrew does not create, overwrite, or merge the admin policy. Coordinate
+policy changes with the administrator; never replace an existing policy to
+enable the Homebrew button.

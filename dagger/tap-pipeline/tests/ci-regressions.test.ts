@@ -176,6 +176,29 @@ test("T3 builds inject one shared audited public Connect config before compilati
   }
 })
 
+test("T3 Desktop build packages its Homebrew updater patch and helper before compilation", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const desktopBuild = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  const injectUpdater = desktopBuild.indexOf("git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch")
+  const installHelper = desktopBuild.indexOf("install -m 0755 /tap/scripts/t3-homebrew-update.sh")
+  const updateTests = desktopBuild.indexOf('"apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts"')
+  const installDependencies = desktopBuild.indexOf('.withExec(["pnpm", "install", "--frozen-lockfile"])')
+  const buildAppImage = desktopBuild.indexOf('"dist:desktop:linux"')
+  const upstreamPatch = read("patches/t3-homebrew-desktop-update.patch")
+
+  assert.notEqual(injectUpdater, -1)
+  assert.notEqual(installHelper, -1)
+  assert.notEqual(updateTests, -1)
+  assert.notEqual(buildAppImage, -1)
+  assert.ok(installHelper < installDependencies, "the helper must be staged before packaging")
+  assert.ok(injectUpdater < installDependencies, "the source patch must apply before compilation")
+  assert.ok(installDependencies < updateTests && updateTests < buildAppImage, "focused Homebrew updater tests must pass before AppImage packaging")
+  assert.match(upstreamPatch, /Homebrew/)
+  assert.match(upstreamPatch, /t3-homebrew-update\.sh/)
+  assert.doesNotMatch(upstreamPatch, /\.setFeedURL\(/)
+  assert.doesNotMatch(upstreamPatch, /provider:\s*["']generic["']/)
+})
+
 test("T3 acceptance proves compiled Connect in the CLI and the shipped Desktop app", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const cliCi = section(pipeline, 'case "t3code-cli-main": {', 'case "chatgpt": {')

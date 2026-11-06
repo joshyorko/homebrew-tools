@@ -2658,9 +2658,31 @@ end
           "rm -rf /upstream/.git",
         ].join("\n"),
       ])
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /upstream/apps/desktop/resources",
+          "install -m 0755 /tap/scripts/t3-homebrew-update.sh /upstream/apps/desktop/resources/t3-homebrew-update.sh",
+          "git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch",
+          "git -C /upstream apply /tap/patches/t3-homebrew-desktop-update.patch",
+        ].join("\n"),
+      ])
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withExec([
+        "pnpm",
+        "exec",
+        "vp",
+        "test",
+        "run",
+        "--passWithNoTests",
+        "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
+        "apps/desktop/src/updates/DesktopUpdates.test.ts",
+        "apps/desktop/src/updates/desktopUpdate.logic.test.ts",
+      ])
       .withExec([
         "pnpm",
         "dist:desktop:linux",
