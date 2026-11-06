@@ -45,6 +45,7 @@ function makeFixture(options: FixtureOptions = {}) {
   mkdirSync(fakeState, { recursive: true })
   mkdirSync(bin, { recursive: true })
   mkdirSync(join(cellar, "t3code-cli-main", currentFormula), { recursive: true })
+  writeFileSync(join(cellar, "t3code-cli-main", currentFormula, "INSTALL_RECEIPT.json"), JSON.stringify({source:{tap:"joshyorko/tools"}}))
   mkdirSync(join(prefix, "Caskroom", "t3-code-linux", ".metadata"), { recursive: true })
   mkdirSync(join(prefix, "bin"), { recursive: true })
   for (const [name, value] of Object.entries({
@@ -62,13 +63,16 @@ function makeFixture(options: FixtureOptions = {}) {
   if (options.activeService) writeFileSync(join(fakeState, "service-active"), "active\n")
   writeFileSync(join(fakeState, "service-enabled"), "enabled\n")
   writeFileSync(join(prefix, "Caskroom", "t3-code-linux", ".metadata", "INSTALL_RECEIPT.json"),
-    `{"source":{"version":"${currentCask}"}}\n`)
+    `{"source":{"tap":"joshyorko/tools","version":"${currentCask}"}}\n`)
 
   const rubyParser = `import { readFileSync } from "node:fs"
 const source = process.argv[2] ?? ""
 const data = JSON.parse(readFileSync(0, "utf8"))
 const formula = data.formulae?.find((entry) => entry.name === "t3code-cli-main")
-if (source.includes("PkgVersion.parse")) {
+if (source.includes("foreign installed tap") && data.source?.tap !== "joshyorko/tools") process.exit(1)
+if (source.includes('data.fetch("source").fetch("tap")')) {
+  if (data.source?.tap !== "joshyorko/tools") process.exit(1)
+} else if (source.includes("PkgVersion.parse")) {
   const versions = (formula?.installed ?? []).map((entry) => entry.version).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   if (!versions.length) process.exit(1)
   process.stdout.write(versions.at(-1) + "\\n")
@@ -120,12 +124,12 @@ case "$command" in
         [[ -n "$installed_json" ]] && installed_json="$installed_json,"
         installed_json="$installed_json"'{"version":"'"$version"'"}'
       done < "$FAKE_STATE_DIR/installed_formula_versions"
-      printf '{"formulae":[{"name":"t3code-cli-main","versions":{"stable":"%s"},"revision":%s,"linked_keg":"%s","installed":[%s]}]}\\n' \\
+      printf '{"formulae":[{"name":"t3code-cli-main","tap":"joshyorko/tools","versions":{"stable":"%s"},"revision":%s,"linked_keg":"%s","installed":[%s]}]}\\n' \\
         "$(cat "$FAKE_STATE_DIR/available_formula")" "$(cat "$FAKE_STATE_DIR/available_revision")" "$linked" "$installed_json"
     elif [[ " $* " == *" --cask "* ]]; then
-      printf '{"casks":[{"token":"t3-code-linux","version":"%s"}]}\\n' "$(cat "$FAKE_STATE_DIR/available_cask")"
+      printf '{"casks":[{"token":"t3-code-linux","tap":"joshyorko/tools","version":"%s"}]}\\n' "$(cat "$FAKE_STATE_DIR/available_cask")"
     else
-      printf '{"formulae":[{"name":"t3code-cli-main","versions":{"stable":"%s"},"revision":%s}]}\\n' \\
+      printf '{"formulae":[{"name":"t3code-cli-main","tap":"joshyorko/tools","versions":{"stable":"%s"},"revision":%s}]}\\n' \\
         "$(cat "$FAKE_STATE_DIR/available_formula")" "$(cat "$FAKE_STATE_DIR/available_revision")"
     fi ;;
   fetch) exit 0 ;;
@@ -134,13 +138,14 @@ case "$command" in
     if [[ " $* " == *" --formula "* ]]; then
       version="$(cat "$FAKE_STATE_DIR/available_full")"
       mkdir -p "$FAKE_CELLAR/t3code-cli-main/$version"
+      printf '%s\\n' '{"source":{"tap":"joshyorko/tools"}}' > "$FAKE_CELLAR/t3code-cli-main/$version/INSTALL_RECEIPT.json"
       printf '%s\\n' "$version" >> "$FAKE_STATE_DIR/installed_formula_versions"
       printf '%s\\n' "$version" > "$FAKE_STATE_DIR/linked_formula"
     elif [[ " $* " == *" --cask "* ]]; then
       if [[ "$FAIL_CASK" == true ]]; then exit 32; fi
       version="$(cat "$FAKE_STATE_DIR/available_cask")"
       [[ "$MISMATCH_INSTALLED_CASK" != true ]] || version="$MISMATCH_CASK_VERSION"
-      printf '{"source":{"version":"%s"}}\\n' "$version" > "$FAKE_PREFIX/Caskroom/t3-code-linux/.metadata/INSTALL_RECEIPT.json"
+      printf '{"source":{"tap":"joshyorko/tools","version":"%s"}}\\n' "$version" > "$FAKE_PREFIX/Caskroom/t3-code-linux/.metadata/INSTALL_RECEIPT.json"
     else
       exit 37
     fi ;;
@@ -372,8 +377,8 @@ test("prepare fetches both matching candidates without changing packages or serv
     assert.equal(output.availableVersion, availableVersion)
     assertPackageOutput(output, availableVersion)
     const events = fixture.events().join("\n")
-    assert.match(events, /brew\|fetch --formula t3code-cli-main/)
-    assert.match(events, /brew\|fetch --cask t3-code-linux/)
+    assert.match(events, /brew\|fetch --formula joshyorko\/tools\/t3code-cli-main/)
+    assert.match(events, /brew\|fetch --cask joshyorko\/tools\/t3-code-linux/)
     assert.doesNotMatch(events, /brew\|(upgrade|install|uninstall|link) /)
     assert.equal(readFileSync(join(fixture.fakeState, "linked_formula"), "utf8").trim(), originalVersion)
     assert.equal(existsSync(join(fixture.fakeState, "service-active")), false)
@@ -477,4 +482,48 @@ test("recovery mismatch leaves the service stopped and records failure", async (
     await desktop.exited
     rmSync(fixture.root, { recursive: true, force: true })
   }
+})
+
+test("relaunch closes the updater lock before the next update check", async () => {
+  const fixture = makeFixture()
+  const desktop = await startDesktopProcess(fixture)
+  const pidFile = join(fixture.root, "launcher.pid")
+  try {
+    writeFileSync(join(fixture.prefix, "bin", "t3-code-linux"), `#!/bin/bash\nprintf '%s' "$$" > '${pidFile}'\nprintf 'desktop.relaunch\\n' >> "$EVENT_LOG"\nsleep 10\n`, { mode: 0o755 })
+    check(fixture)
+    const applied = fixture.run(["apply", "--app-version", originalVersion, "--version", availableVersion, "--wait-for-pid", String(desktop.pid)])
+    await desktop.exited
+    assert.equal(applied.status, 0, applied.stderr)
+    await waitForEvent(fixture, "desktop.relaunch")
+    const checked = fixture.run(["check", "--json", "--app-version", availableVersion])
+    assert.equal(checked.status, 0, checked.stderr)
+  } finally {
+    if (existsSync(pidFile)) { try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGTERM") } catch {} }
+    rmSync(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test("a stale detached handoff records failure and relaunches a verified pair", async () => {
+  const fixture = makeFixture()
+  const desktop = await startDesktopProcess(fixture)
+  try {
+    check(fixture)
+    writeFileSync(join(fixture.state, "t3code", "homebrew-update", "snapshot", "metadata"), JSON.stringify({ currentVersion: availableVersion, appVersion: originalVersion }))
+    const applied = fixture.run(["apply", "--app-version", originalVersion, "--version", availableVersion, "--wait-for-pid", String(desktop.pid)])
+    await desktop.exited
+    assert.notEqual(applied.status, 0)
+    assert.equal(readResult(fixture.resultPath).outcome, "failed")
+    await waitForEvent(fixture, "desktop.relaunch")
+    assert.doesNotMatch(fixture.events().join("\n"), /brew\|upgrade /)
+  } finally { rmSync(fixture.root, { recursive: true, force: true }) }
+})
+
+test("a same-version cask from a foreign tap is refused", () => {
+  const fixture = makeFixture()
+  try {
+    writeFileSync(join(fixture.prefix, "Caskroom", "t3-code-linux", ".metadata", "INSTALL_RECEIPT.json"), JSON.stringify({ source: { version: originalVersion, tap: "foreign/tools" } }))
+    const result = fixture.run(["check", "--json", "--app-version", originalVersion])
+    assert.notEqual(result.status, 0)
+    assert.doesNotMatch(fixture.events().join("\n"), /brew\|(?:update|upgrade|fetch) /)
+  } finally { rmSync(fixture.root, { recursive: true, force: true }) }
 })

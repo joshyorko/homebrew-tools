@@ -2681,7 +2681,7 @@ end
         "--passWithNoTests",
         "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
         "apps/desktop/src/updates/DesktopUpdates.test.ts",
-        "apps/desktop/src/updates/desktopUpdate.logic.test.ts",
+        "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
       ])
       .withExec([
         "pnpm",

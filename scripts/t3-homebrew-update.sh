@@ -18,6 +18,11 @@ CELLAR=""
 APP_VERSION=""
 TARGET_VERSION=""
 WAIT_PID=""
+RESULT_WRITTEN=false
+DESKTOP_LAUNCHED=false
+RELAUNCH_SAFE=false
+COMMAND_NAME=""
+LAST_ERROR="The detached Homebrew update failed before completion."
 
 usage() {
   cat >&2 <<'USAGE'
@@ -29,6 +34,7 @@ USAGE
 }
 
 fail() {
+  LAST_ERROR="$1"
   printf '%s\n' "$1" >&2
   exit 1
 }
@@ -122,7 +128,7 @@ formula_info() {
   local -a mode_args=()
   local output
   [[ -z "$mode" ]] || mode_args+=("$mode")
-  if ! output="$(brew_run info --json=v2 "${mode_args[@]}" --formula "$FORMULA" 2>>"$LOG_FILE")"; then
+  if ! output="$(brew_run info --json=v2 "${mode_args[@]}" --formula "$TAP/$FORMULA" 2>>"$LOG_FILE")"; then
     fail "Could not read the Homebrew formula metadata."
   fi
   printf '%s' "$output"
@@ -130,7 +136,7 @@ formula_info() {
 
 cask_info() {
   local output
-  if ! output="$(brew_run info --json=v2 --cask "$CASK" 2>>"$LOG_FILE")"; then
+  if ! output="$(brew_run info --json=v2 --cask "$TAP/$CASK" 2>>"$LOG_FILE")"; then
     fail "Could not read the Homebrew Desktop cask metadata."
   fi
   printf '%s' "$output"
@@ -143,6 +149,7 @@ formula_candidate_version() {
 data = JSON.parse(STDIN.read)
 formula = data.fetch("formulae").find { |entry| entry["name"] == "t3code-cli-main" }
 raise "formula metadata missing" unless formula
+raise "foreign formula tap" unless formula.fetch("tap") == "joshyorko/tools"
 stable = formula.fetch("versions").fetch("stable")
 revision = Integer(formula.fetch("revision", 0))
 puts(revision.positive? ? "#{stable}_#{revision}" : stable)
@@ -158,6 +165,7 @@ formula_linked_version() {
 data = JSON.parse(STDIN.read)
 formula = data.fetch("formulae").find { |entry| entry["name"] == "t3code-cli-main" }
 raise "installed formula metadata missing" unless formula
+raise "foreign formula tap" unless formula.fetch("tap") == "joshyorko/tools"
 linked = formula["linked_keg"]
 raise "formula has no linked keg" unless linked.is_a?(String) && !linked.empty?
 puts linked
@@ -189,6 +197,7 @@ cask_candidate_version() {
 data = JSON.parse(STDIN.read)
 cask = data.fetch("casks").find { |entry| entry["token"] == "t3-code-linux" }
 raise "cask metadata missing" unless cask
+raise "foreign cask tap" unless cask.fetch("tap") == "joshyorko/tools"
 puts cask.fetch("version")
 ')" || fail "Could not parse the Desktop cask version."
   valid_package_version "$value" || fail "The cask version is not a recognized paired T3 build."
@@ -208,6 +217,7 @@ read_cask_receipt() {
   printf '%s' "$json" | ruby_parse '
 data = JSON.parse(STDIN.read)
 source = data.fetch("source")
+raise "foreign installed tap" unless source.fetch("tap") == "joshyorko/tools"
 version = source.fetch("version")
 raise "invalid cask version" unless version.is_a?(String)
 puts version
@@ -218,6 +228,9 @@ installed_pair() {
   local formula_json formula_version cask_version
   formula_json="$(formula_info --installed)"
   formula_version="$(formula_linked_version "$formula_json")"
+  local formula_receipt="$CELLAR/$FORMULA/$formula_version/INSTALL_RECEIPT.json"
+  [[ -f "$formula_receipt" ]] || fail "The installed formula receipt is missing."
+  ruby_parse 'data = JSON.parse(STDIN.read); raise "foreign installed formula tap" unless data.fetch("source").fetch("tap") == "joshyorko/tools"' < "$formula_receipt" || fail "The installed formula is not owned by the expected tap."
   cask_version="$(read_cask_receipt)"
   valid_package_version "$cask_version" || fail "The installed cask version is not a recognized paired T3 build."
   [[ "$formula_version" == "$cask_version" ]] || fail "The installed T3 CLI and Desktop package versions do not match."
@@ -323,10 +336,10 @@ prepare_update() {
   candidate="$(candidate_pair)"
   [[ "$candidate" == "$TARGET_VERSION" ]] || fail "The tap package pair changed after the update check; check for updates again."
   [[ "$candidate" != "$installed" ]] || fail "The Homebrew T3 package pair is already current."
-  if ! brew_run fetch --formula "$FORMULA" >> "$LOG_FILE" 2>&1; then
+  if ! brew_run fetch --formula "$TAP/$FORMULA" >> "$LOG_FILE" 2>&1; then
     fail "Homebrew could not fetch the matching T3 CLI artifact."
   fi
-  if ! brew_run fetch --cask "$CASK" >> "$LOG_FILE" 2>&1; then
+  if ! brew_run fetch --cask "$TAP/$CASK" >> "$LOG_FILE" 2>&1; then
     fail "Homebrew could not fetch the matching T3 Desktop artifact."
   fi
   paired_result "prepared" "$installed" "$candidate"
@@ -390,12 +403,14 @@ write_result() {
     "$(json_escape "$status")" "$(json_escape "$version")" "$(json_escape "$message")" > "$temp_file"
   chmod 600 -- "$temp_file"
   mv -f -- "$temp_file" "$STATE_DIR/result.json"
+  RESULT_WRITTEN=true
 }
 
 launch_desktop() {
   local launcher="$PREFIX/bin/t3-code-linux"
   [[ -x "$launcher" ]] || return 1
-  nohup "$launcher" >> "$LOG_FILE" 2>&1 < /dev/null &
+  ( exec {LOCK_FD}>&-; exec nohup "$launcher" >> "$LOG_FILE" 2>&1 < /dev/null ) &
+  DESKTOP_LAUNCHED=true
   return 0
 }
 
@@ -451,6 +466,7 @@ apply_update() {
       fail "Could not determine the Homebrew service state; no packages were changed."
     fi
   fi
+  RELAUNCH_SAFE=false
   if [[ "$service_was_active" == true ]]; then
     if ! systemctl --user stop "$UNIT" >> "$LOG_FILE" 2>&1; then
       if restore_service true; then
@@ -568,6 +584,7 @@ parse_arguments() {
 
 main() {
   local command_name="${1:-}"
+  COMMAND_NAME="$command_name"
   [[ "$command_name" =~ ^(check|prepare|apply)$ ]] || { usage; exit 2; }
   parse_arguments "$@"
   ensure_user_context
@@ -582,9 +599,20 @@ main() {
       ;;
     apply)
       wait_for_desktop_exit
+      RELAUNCH_SAFE=true
       apply_update
       ;;
   esac
 }
 
+handoff_exit() {
+  local status=$?
+  trap - EXIT
+  if [[ "$status" -ne 0 && "$COMMAND_NAME" == apply && -d "$STATE_DIR" && -n "$PREFIX" ]]; then
+    if [[ "$RESULT_WRITTEN" != true ]]; then write_result failed "$LAST_ERROR" "$APP_VERSION" || true; fi
+    if [[ "$RELAUNCH_SAFE" == true && "$DESKTOP_LAUNCHED" != true ]] && installed_pair >/dev/null 2>&1; then launch_desktop || true; fi
+  fi
+  exit "$status"
+}
+trap handoff_exit EXIT
 main "$@"
