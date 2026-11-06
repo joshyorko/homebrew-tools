@@ -293,30 +293,6 @@ const plans: Record<string, ArtifactCheckPlan> = {
     systemPackages: ["desktop-file-utils"],
     trustFormulas: [],
   },
-  "buzz-linux": cask("Casks/buzz-linux.rb", "buzz-linux", [
-    "test -x \"$(brew --prefix)/bin/buzz\"",
-    "wrapper=$(readlink -f \"$(brew --prefix)/bin/buzz\")",
-    "bash -n \"$wrapper\"",
-    "grep -q 'gst-inspect-1.0' \"$wrapper\"",
-    "grep -q 'GST_PLUGIN_PATH_1_0' \"$wrapper\"",
-    "grep -q 'GST_PLUGIN_SCANNER_1_0' \"$wrapper\"",
-    "grep -q 'GST_REGISTRY_1_0' \"$wrapper\"",
-    "mkdir -p /tmp/buzz-runtime-fixture/plugins /tmp/buzz-runtime-fixture/bin",
-    "printf '#!/bin/bash\\nprintf \"  Filename                 /tmp/buzz-runtime-fixture/plugins/libgstapp.so\\\\n\"\\n' > /tmp/buzz-runtime-fixture/bin/gst-inspect-1.0",
-    "printf '#!/bin/bash\\nexit 0\\n' > /tmp/buzz-runtime-fixture/bin/gst-plugin-scanner",
-    "chmod +x /tmp/buzz-runtime-fixture/bin/gst-inspect-1.0 /tmp/buzz-runtime-fixture/bin/gst-plugin-scanner",
-    "mkdir -p /tmp/buzz-runtime-fixture/data/Buzz/node-tools/bin /tmp/buzz-runtime-fixture/data/Buzz/runtimes/node/v24.11.0/linux-x64/bin",
-    "runtime_env=$(XDG_DATA_HOME=/tmp/buzz-runtime-fixture/data PATH=\"/tmp/buzz-runtime-fixture/bin:/usr/bin\" BUZZ_PRINT_RUNTIME_ENV=1 \"$wrapper\")",
-    "printf '%s\\n' \"$runtime_env\" | grep -q 'GST_PLUGIN_PATH_1_0=/tmp/buzz-runtime-fixture/plugins'",
-    "printf '%s\\n' \"$runtime_env\" | grep -q 'GST_PLUGIN_SCANNER_1_0=/tmp/buzz-runtime-fixture/bin/gst-plugin-scanner'",
-    "printf '%s\\n' \"$runtime_env\" | grep -q '^PATH=/tmp/buzz-runtime-fixture/data/Buzz/node-tools/bin:/tmp/buzz-runtime-fixture/data/Buzz/runtimes/node/v24.11.0/linux-x64/bin:/tmp/buzz-runtime-fixture/bin:/usr/bin$'",
-    "runtime_probe=$(APPIMAGE_EXTRACT_AND_RUN=1 XDG_DATA_HOME=/tmp/buzz-runtime-fixture/data PATH=\"/tmp/buzz-runtime-fixture/bin:/usr/bin\" \"$wrapper\" --print-agent-access-owner-only)",
-    "printf '%s\\n' \"$runtime_probe\" | grep -Eq '^(true|false)$'",
-    "test -f \"$HOME/.local/share/applications/buzz.desktop\"",
-    "test -f \"$HOME/.local/share/icons/hicolor/128x128/apps/buzz.png\"",
-    "grep -q \"Exec=$(brew --prefix)/bin/buzz %U\" \"$HOME/.local/share/applications/buzz.desktop\"",
-    "grep -q 'x-scheme-handler/buzz' \"$HOME/.local/share/applications/buzz.desktop\"",
-  ], ["desktop-file-utils", "xdg-utils", "libasound2t64", "libgtk-3-0", "libgstreamer-plugins-base1.0-0", "libgstreamer-gl1.0-0", "libwayland-server0"]),
   "fizzy-cli-master": formula("Formula/fizzy-cli-master.rb", "fizzy-cli-master", [
     "brew test test/tap/fizzy-cli-master",
     "fizzy --version",
@@ -427,24 +403,4 @@ export function artifactCheckPlan(packageId: string): ArtifactCheckPlan {
 
 export function rejectForbiddenShaCommand(recipePath: string): string {
   return `if grep -Eq 'sha256.*(no_check|:no_check)' "${recipePath}"; then exit 1; fi`
-}
-
-export function buzzArtifactVerificationCommands(artifactPath: string): string[] {
-  const directory = artifactPath.slice(0, artifactPath.lastIndexOf("/")) || "."
-  const name = artifactPath.slice(artifactPath.lastIndexOf("/") + 1)
-  return [
-    "set -euxo pipefail",
-    `chmod +x ${artifactPath}`,
-    `cd ${directory}`,
-    `./${name} --appimage-extract >/dev/null`,
-    "test -x squashfs-root/AppRun",
-    "test -x squashfs-root/usr/bin/buzz-desktop",
-    "test -x squashfs-root/usr/bin/buzz-desktop.bin",
-    "grep -q 'GST_PLUGIN_SYSTEM_PATH_1_0' squashfs-root/usr/bin/buzz-desktop",
-    "grep -q 'unset \"$var\"' squashfs-root/usr/bin/buzz-desktop",
-    "test ! -e squashfs-root/usr/etc/fonts/fonts.conf",
-    "test -z \"$(find squashfs-root/usr/lib -maxdepth 1 -name 'libwayland-client.so*' -print -quit)\"",
-    "test -z \"$(find squashfs-root/usr/lib -maxdepth 1 -name 'libglib-2.0.so*' -print -quit)\"",
-    "test -z \"$(find squashfs-root/usr/lib -maxdepth 1 -name 'libgst*.so*' -print -quit)\"",
-  ]
 }

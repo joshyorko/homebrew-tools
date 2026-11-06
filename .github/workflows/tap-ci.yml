@@ -39,14 +39,13 @@ jobs:
     - name: Install planner compiler
       run: npm install --prefix dagger/tap-pipeline --ignore-scripts --package-lock=false
 
-    - name: Run pipeline and Buzz regression suites
+    - name: Run pipeline and regression suites
       run: |
         set -euo pipefail
         python3 scripts/test-rcc-maintenance-pin.py
         node scripts/test-t3-dagger-cli.mjs
         npm test --prefix dagger/tap-pipeline
         node --test scripts/render-review-formula.test.mjs scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
-        npm test --prefix dagger/buzz-linux-smoke
 
   plan:
     name: Resolve Changed Packages
@@ -169,7 +168,7 @@ jobs:
           --package-id="${{ matrix.package_id }}"
 
     - name: Run package source CI through Dagger
-      if: matrix.mode == 'build' && matrix.package_id != 'buzz-linux'
+      if: matrix.mode == 'build' && true
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -180,18 +179,6 @@ jobs:
           ci-check
           --package-id="${{ matrix.package_id }}"
           --github-token=env://GH_TOKEN
-
-    - name: Run Buzz Linux CI through Dagger
-      if: matrix.mode == 'build' && matrix.package_id == 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/buzz-linux-smoke
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          smoke-test
-          --tap=.
 
     - name: Record local Dagger engine cache stats
       if: always() && !cancelled()

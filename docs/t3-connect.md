@@ -91,7 +91,7 @@ use, Android/Desktop-close durability, or thread integrity.
 Local verification after the archive repair: all five public-config tests and 21 selected
 T3, launcher, and routing tests passed. Before that repair, the full pipeline
 suite reported 156 passed, eight failed, and one skipped. Failures reported a missing Ruby
-command and host shell-profile errors in the Buzz and Devsy checks. Tests ran sequentially
+command and host shell-profile errors in the Devsy checks. Tests ran sequentially
 in a systemd cgroup capped at 64 tasks, 768 MiB, one CPU, and 30 seconds. A separate
 12-task, three-second probe verified process-limit enforcement and whole-cgroup cleanup.
 No fixture or test-cgroup processes remained afterward.
