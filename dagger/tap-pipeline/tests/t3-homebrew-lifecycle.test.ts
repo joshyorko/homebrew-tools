@@ -151,6 +151,7 @@ esac
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         TAP_REPO: tap,
         TAP_CELLAR: join(cellar, "t3code-cli-main"),
@@ -328,6 +329,7 @@ test("manual legacy recovery refuses to overwrite a unit changed after migration
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         XDG_STATE_HOME: join(home, ".local/state"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
@@ -351,7 +353,7 @@ printf 'systemctl %s\\n' "$*" >> "$COMMAND_LOG"
 shift
 active_file="$HOME/active-units"
 enabled_file="$HOME/enabled-units"
-unit_dir="$HOME/.config/systemd/user"
+unit_dir="\${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 if [[ ! -f "$active_file" ]]; then printf '%s\\n' "$LEGACY_ACTIVE" | tr ' ' '\\n' > "$active_file"; fi
 if [[ ! -f "$enabled_file" ]]; then printf '%s\\n' "$LEGACY_ENABLED" | tr ' ' '\\n' > "$enabled_file"; fi
 mkdir -p "$unit_dir"
@@ -450,6 +452,7 @@ test("migration dry run does not change either service", () => {
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -480,6 +483,7 @@ test("migration masks the legacy server before starting Homebrew and is repeatab
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -503,6 +507,7 @@ test("migration masks the legacy server before starting Homebrew and is repeatab
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -527,6 +532,7 @@ test("migration supports the upstream-installed t3code.service launcher", () => 
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code.service",
@@ -561,6 +567,7 @@ test("migration reuses an exact preserved unit backup after operator restoration
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -585,6 +592,7 @@ test("migration restores the legacy server if Homebrew activation fails", () => 
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -614,6 +622,7 @@ test("migration restores the original unit if systemd reload fails after masking
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -644,6 +653,7 @@ test("migration rolls back if brew reports success without an active Homebrew un
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -673,6 +683,7 @@ test("migration refuses to start beside an unexplained listener on port 3773", (
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -701,6 +712,7 @@ test("migration refuses to reconcile two active legacy T3 services", () => {
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service t3code.service",
@@ -726,6 +738,7 @@ test("migration refuses when a Homebrew service is already active beside a legac
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service sh.brew.t3code-cli-main.service",
@@ -751,6 +764,7 @@ test("migration refuses active legacy units outside the user's unit directories"
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -777,6 +791,7 @@ test("migration refusal does not print unit ExecStart arguments", () => {
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -802,6 +817,7 @@ test("migration refuses to proceed when systemd state queries fail", () => {
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -829,6 +845,7 @@ test("migration removes an inactive but newly enabled Homebrew unit before resto
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LEGACY_ACTIVE: "t3code-homebrew.service",
@@ -857,6 +874,7 @@ test("migration refuses a concurrent migration while its user lock is held", () 
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         LOCK_HELD: "true",
@@ -883,6 +901,7 @@ test("migration refuses to start beside a T3 process on a non-default port", () 
       env: {
         ...process.env,
         HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
         PATH: `${bin}:${process.env.PATH}`,
         COMMAND_LOG: log,
         SERVER_RUNNING: "true",
