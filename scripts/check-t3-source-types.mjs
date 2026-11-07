@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process"
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { readFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -39,9 +39,11 @@ function check(source, patch, reports) {
     ["shared", "@t3tools/shared", "packages/shared/"],
   ]
   const changed = [...readFileSync(patch, "utf8").matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1])
-  const run = (stage) => packages.map(([label, name]) => {
-    const result = spawnSync("pnpm", ["exec", "vp", "run", "--filter", name, "typecheck"], {
-      cwd: source, encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024,
+  const run = (stage) => packages.map(([label, , prefix]) => {
+    const freshState = mkdtempSync(resolve(reports, `${stage}-${label}-`))
+    const result = spawnSync("pnpm", ["exec", "effect-tsgo", "tsrs", "--noEmit", "--pretty", "false",
+      "--incremental", "--tsBuildInfoFile", resolve(freshState, "types.tsbuildinfo")], {
+      cwd: resolve(source, prefix), encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024,
     })
     const output = (result.stdout ?? "") + (result.stderr ?? "")
     writeFileSync(resolve(reports, `${stage}-${label}.log`), output)
