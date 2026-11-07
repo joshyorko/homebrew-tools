@@ -19,7 +19,7 @@ index 2b2dd841..ae05784e 100644
          ElectronDialog.layer,
          ElectronApp.layer,
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..5c2c8a7c 100644
+index 77a4aa99..33bef409 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
 @@ -1,4 +1,7 @@
@@ -52,7 +52,7 @@ index 77a4aa99..5c2c8a7c 100644
  
      // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
      const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
-@@ -174,12 +183,68 @@ export const layer = Layer.effect(
+@@ -174,12 +183,71 @@ export const layer = Layer.effect(
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
        onStateDirOwned: () =>
@@ -84,7 +84,9 @@ index 77a4aa99..5c2c8a7c 100644
 +            const environment = yield* DesktopEnvironment.DesktopEnvironment;
 +            const window = yield* desktopWindow.ensureMain;
 +            // The renderer reads localEnvironmentEnabled only when it boots.
-+            yield* Effect.promise(() => window.loadURL(getDesktopUrl(environment.isDevelopment)));
++            const desktopUrl = getDesktopUrl(environment.isDevelopment);
++            const connectionsUrl = new URL("/settings/connections", desktopUrl).href;
++            yield* Effect.promise(() => window.loadURL(recovery.pairingLink === null ? connectionsUrl : desktopUrl));
 +            let delivered = false;
 +            if (recovery.pairingLink !== null && recovery.expectedOwner !== null) {
 +              delivered = yield* deliverHomebrewServicePairing({
@@ -94,6 +96,7 @@ index 77a4aa99..5c2c8a7c 100644
 +              });
 +            }
 +            if (!delivered && recovery.pairingRequested) {
++              yield* Effect.promise(() => window.loadURL(connectionsUrl));
 +              yield* electronDialog.showErrorBox(
 +                "Could not create a pairing link",
 +                "Desktop is open with its local environment off. The server changed or could not be paired; add it from Settings > Connections after verifying it.",
@@ -530,10 +533,10 @@ index 00000000..93c84a1d
 +}
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 new file mode 100644
-index 00000000..bf58dc9b
+index 00000000..6022314d
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,96 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- Backup assertions exercise actual private Desktop settings files.
 +import { mkdtemp, writeFile, readFile, stat, rm } from "node:fs/promises";
 +import { tmpdir } from "node:os";
@@ -621,6 +624,14 @@ index 00000000..bf58dc9b
 +    assert.equal(accepted, fingerprint === owner.fingerprint);
 +  }
 +  assert.deepEqual(delivered, ["t3code://pair?fixture"]);
++}));
++
++it.effect("opens the manual recovery path without minting when settings is chosen", () => Effect.gen(function* () {
++  const result = yield* prepareHomebrewServiceRecovery({
++    inspect: () => Effect.succeed(owner), choose: () => Effect.succeed(1),
++    pair: () => Effect.die("manual settings must not mint a credential"),
++  });
++  assert.deepEqual(result, { _tag: "open", pairingLink: null, pairingRequested: false, expectedOwner: null });
 +}));
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 new file mode 100644

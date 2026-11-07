@@ -277,7 +277,7 @@ const waitForWebSocket = async (page) => {
   return socket.url()
 }
 
-const clickNativeDialog = async (title) => {
+const clickNativeDialog = async (title, buttonIndex = 0) => {
   const result = await exec("xdotool", ["search", "--sync", "--onlyvisible", "--name", title], {
     timeout: 60_000,
     maxBuffer: 4096,
@@ -293,7 +293,16 @@ const clickNativeDialog = async (title) => {
     await writeFile(root + "/owner-dialog.png", Buffer.from(capture, "base64"))
   }
   await exec("xdotool", ["windowfocus", windowId], { timeout: 5000 })
-  await exec("xdotool", ["key", "--window", windowId, "Return"], { timeout: 5000 })
+  if (title === "Homebrew T3 service is already running") {
+    const geometry = await exec("xdotool", ["getwindowgeometry", "--shell", windowId], { timeout: 5000 })
+    const width = Number(geometry.stdout.match(/^WIDTH=(\d+)$/m)?.[1])
+    const height = Number(geometry.stdout.match(/^HEIGHT=(\d+)$/m)?.[1])
+    assert.ok(width > 0 && height > 20)
+    await exec("xdotool", ["mousemove", "--window", windowId, String(Math.floor(width * (buttonIndex + 0.5) / 3)), String(height - 18)], { timeout: 5000 })
+    await exec("xdotool", ["click", "1"], { timeout: 5000 })
+  } else {
+    await exec("xdotool", ["key", "--window", windowId, "Return"], { timeout: 5000 })
+  }
 }
 
 const connectAndVerify = async () => {
@@ -307,8 +316,15 @@ const connectAndVerify = async () => {
     const value = new URL(window.url())
     return { protocol: value.protocol, host: value.host, pathname: value.protocol === "data:" ? "<data>" : value.pathname }
   }), null, 2))
-  await page.screenshot({ path: root + "/initial.png" })
-  await page.getByText(new RegExp(new URL(serverOrigin).origin.replaceAll(".", "\\."))).waitFor({ timeout: 30_000 })
+  const confirmation = page.getByText(new RegExp(new URL(serverOrigin).origin.replaceAll(".", "\\."))).waitFor({ timeout: 30_000 }).then(() => "confirmation")
+  const rejected = exec("xdotool", ["search", "--sync", "--onlyvisible", "--name", "Could not create a pairing link"], { timeout: 30_000, maxBuffer: 4096 }).then(() => "rejected", () => "not-found")
+  const outcome = await Promise.race([confirmation, rejected])
+  if (outcome === "rejected") {
+    await clickNativeDialog("Could not create a pairing link")
+    await page.screenshot({ path: root + "/initial.png", timeout: 10_000 })
+    throw new Error("Automatic pairing failed before renderer delivery")
+  }
+  assert.equal(outcome, "confirmation")
   await page.screenshot({ path: root + "/pairing-confirmation.png" })
   await page.getByRole("button", { name: "Confirm", exact: true }).click()
   console.log("PAIRING_CONFIRMED")
@@ -348,6 +364,20 @@ const connectAndVerify = async () => {
   return { ...firstReport, repeatWebsocketUrl: repeatSocket }
 }
 
+const verifyManualSettings = async () => {
+  app = await launchDesktop()
+  await clickNativeDialog("Homebrew T3 service is already running", 1)
+  const page = await app.firstWindow({ timeout: 90_000 })
+  await page.waitForURL((url) => url.pathname === "/settings/connections", { timeout: 30_000 })
+  await page.screenshot({ path: root + "/manual-settings.png" })
+  assert.equal(JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8")).localEnvironmentEnabled, false)
+  assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
+  await checkPreserved()
+  await app.close()
+  app = null
+  return { attached: false, manualSettingsOpened: true }
+}
+
 const verifyPackageMismatch = async () => {
   app = await launchDesktop()
   console.log("DESKTOP_LAUNCHED")
@@ -356,6 +386,7 @@ const verifyPackageMismatch = async () => {
   await clickNativeDialog("Could not create a pairing link")
   const page = await app.firstWindow({ timeout: 90_000 })
   await page.waitForLoadState("domcontentloaded")
+  await page.waitForURL((url) => url.pathname === "/settings/connections", { timeout: 30_000 })
   await page.screenshot({ path: root + "/package-mismatch.png" })
   assert.equal(JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8")).localEnvironmentEnabled, false)
   assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
@@ -388,7 +419,8 @@ try {
   const descriptor = await fetch(new URL("/.well-known/t3/environment", runtime.origin)).then((response) => response.json())
   assert.equal(descriptor.environmentId, environmentId)
   const result = scenario === "unknown-owner" ? await verifyUnknownOwner()
-    : scenario === "package-mismatch" ? await verifyPackageMismatch() : await connectAndVerify()
+    : scenario === "package-mismatch" ? await verifyPackageMismatch()
+    : scenario === "manual-settings" ? await verifyManualSettings() : await connectAndVerify()
   await writeFile(root + "/report.json", JSON.stringify({
     scenario,
     packageVersion: JSON.parse(await readFile(appDir + "/resources/t3-homebrew-build.json", "utf8")).packageVersion,
