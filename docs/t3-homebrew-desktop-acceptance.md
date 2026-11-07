@@ -55,7 +55,7 @@ normal paired package build after integration.
 
 The issue-175 recovery path is exercised against a source-built AppImage and a
 fresh isolated T3 home. The fixture starts a real packaged T3 server inside a
-network-disabled container, supplies synthetic same-user systemd metadata, and
+container without external routing or DNS, supplies synthetic same-user systemd metadata, and
 launches the packaged Desktop with its default local environment enabled. It
 checks the verified-service recovery choice, the in-app pairing confirmation,
 connection to the same environment ID, saved reconnection on a repeat launch,
@@ -70,7 +70,7 @@ manifest do not identify the same immutable source package. Ownership is checked
 again after window creation and immediately before credential delivery.
 
 Build and export the candidate AppImage with the repository's Dagger module,
-then run both isolated cases with fresh evidence directories:
+then run all isolated cases with fresh evidence directories:
 
 ```bash
 git_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
@@ -86,9 +86,12 @@ bash scripts/t3-homebrew-desktop-e2e/run.sh \
   /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-unknown-owner unknown-owner
 bash scripts/t3-homebrew-desktop-e2e/run.sh \
   /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-package-mismatch package-mismatch
+bash scripts/t3-homebrew-desktop-e2e/run.sh \
+  /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-manual-settings manual-settings
 ```
 
-Each runner has no network, a private home, a 4 GiB memory cap, a 256-process
-cap, and a 240-second deadline. It removes only its own container and image.
+Each service fixture has an internal interface without a host gateway, external
+routing or DNS, a private home and synthetic unlocked session keyring, a 4 GiB memory cap, a 512-task
+cap with four-CPU affinity, and a 240-second deadline. It removes only its own container and image.
 The `report.json`, screenshots and logs are generated evidence; they do not
 prove behavior on a live Homebrew installation or systemd manager.

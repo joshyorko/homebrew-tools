@@ -32,9 +32,10 @@ test("paired T3 acceptance builds both packages from one resolved immutable sour
   assert.ok(pairedJob, "paired T3 CI job exists")
   assert.match(pairedJob, /resolve-t-3-source/)
   assert.equal((pairedJob.match(/id: t3_source/g) ?? []).length, 1)
-  assert.equal((pairedJob.match(/--t-3-source-ref="\$\{\{ fromJSON\(steps\.t3_source\.outputs\.output\)\.commit \}\}"/g) ?? []).length, 2)
+  assert.equal((pairedJob.match(/--t-3-source-ref="\$\{\{ fromJSON\(steps\.t3_source\.outputs\.output\)\.commit \}\}"/g) ?? []).length, 3)
   assert.match(pairedJob, /--package-id="t3code-cli-main"/)
   assert.match(pairedJob, /--package-id="t3-code-linux"/)
+  assert.match(pairedJob, /t-3-code-linux-candidate/)
 })
 
 test("isolated T3 source checks audit the formula and cask before installing them", () => {

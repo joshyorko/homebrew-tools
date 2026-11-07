@@ -5,6 +5,7 @@ import { createHash } from "node:crypto"
 import { promisify } from "node:util"
 import { execFile, spawn } from "node:child_process"
 import assert from "node:assert/strict"
+import { DatabaseSync } from "node:sqlite"
 
 const exec = promisify(execFile)
 const root = "/tmp/t3-ui-test"
@@ -29,6 +30,8 @@ const environment = {
   PATH: "/tmp/t3-ui-test/fakebin:" + process.env.PATH,
   HOME: home,
   DISPLAY: ":99",
+  DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
+  XDG_CURRENT_DESKTOP: "GNOME",
   XDG_CONFIG_HOME: root + "/config",
   XDG_STATE_HOME: root + "/state",
   XDG_RUNTIME_DIR: root + "/runtime",
@@ -48,8 +51,15 @@ await exec(root + "/candidate.AppImage", ["--appimage-extract"], {
 for (const path of [home, stateDir, root + "/fakebin", root + "/config", root + "/state", root + "/runtime", root + "/data"]) {
   await mkdir(path, { recursive: true, mode: 0o700 })
 }
-const originalDesktopSettings = JSON.stringify({ localEnvironmentEnabled: true, linuxPasswordStore: "basic", updateChannel: "latest", updateChannelConfiguredByUser: true }) + "\n"
+const originalDesktopSettings = JSON.stringify({ localEnvironmentEnabled: true, linuxPasswordStore: "gnome-libsecret", updateChannel: "latest", updateChannelConfiguredByUser: true }) + "\n"
 await writeFile(stateDir + "/desktop-settings.json", originalDesktopSettings)
+const settingsBeforeLocalOff = new Set([originalDesktopSettings])
+const settingsObserver = watch(stateDir, { persistent: false }, (_event, name) => {
+  if (name !== "desktop-settings.json") return
+  void readFile(stateDir + "/desktop-settings.json", "utf8").then((raw) => {
+    if (JSON.parse(raw).localEnvironmentEnabled !== false) settingsBeforeLocalOff.add(raw)
+  }).catch(() => {})
+})
 for (const marker of markerPaths) await writeFile(marker, marker.includes("history") ? "history-marker-v1" : "credential-marker-v1")
 
 const buildIdentity = JSON.parse(await readFile(appDir + "/resources/t3-homebrew-build.json", "utf8"))
@@ -229,12 +239,29 @@ const seedServiceState = async () => {
   const thread = await tool("t3_thread_launch", { projectId: project.id, title: "Existing preserved thread", runtimeMode: "approval-required", modelSelection: { provider: "codex", model: "gpt-6-luna" } })
   assert.ok(thread.threadId)
   assert.equal(thread.runId, null, "fixture must not run an agent")
+  // Seed durable conversation history in the real projection store without invoking a provider.
+  const timestamp = new Date().toISOString()
+  const historyMessage = {
+    id: "message:preserved-history", threadId: thread.threadId, runId: null, nodeId: null,
+    role: "assistant", text: "Historical fixture reply preserved across service attachment.",
+    createdBy: "agent", creationSource: "provider", attachments: [], streaming: false,
+    createdAt: timestamp, updatedAt: timestamp,
+  }
+  const database = new DatabaseSync(stateDir + "/statev2.sqlite")
+  try {
+    database.exec("PRAGMA busy_timeout=5000")
+    database.prepare(`INSERT INTO orchestration_v2_projection_messages
+      (message_id, thread_id, run_id, node_id, role, streaming, created_at, updated_at, payload_json)
+      VALUES (?, ?, NULL, NULL, 'assistant', 0, ?, ?, ?)`)
+      .run(historyMessage.id, thread.threadId, timestamp, timestamp, JSON.stringify(historyMessage))
+  } finally { database.close() }
   const verify = async () => {
     const savedProject = await tool("t3_project_read", { projectId: project.id })
     assert.equal(savedProject.title, "Preserved project")
     const savedThread = await tool("t3_thread_read", { threadId: thread.threadId, limit: 5 })
     assert.equal(savedThread.thread.title, "Existing preserved thread")
     assert.equal(savedThread.recentRuns.length, 0)
+    assert.equal(JSON.stringify(savedThread).includes(historyMessage.text), true, "real API returns the preserved conversation history")
     return true
   }
   await verify()
@@ -256,14 +283,49 @@ const checkPreserved = async () => {
   assert.equal(await preservedState.verify(), true, "existing thread/project and original bearer credential remain usable")
 }
 
-const launchDesktop = () => electron.launch({
+const launchDesktop = async () => {
+  const instance = await electron.launch({
   executablePath: appRun,
   args: ["--no-sandbox"],
   env: environment,
   timeout: 90_000,
-})
+  })
+  if (scenario !== "unknown-owner") {
+    const secureStorage = await instance.evaluate(({ safeStorage }) => ({
+      available: safeStorage.isEncryptionAvailable(), backend: safeStorage.getSelectedStorageBackend(),
+    }))
+    console.log("SECURE_STORAGE", JSON.stringify(secureStorage))
+    assert.equal(secureStorage.available, true, "Desktop secure storage must be available")
+    assert.notEqual(secureStorage.backend, "basic_text", "fixture requires a protected storage backend")
+  }
+  const clean = (value) => String(value).replace(/(?:t3code|https?):\/\/[^\s]+/g, "<url>").replace(/Bearer\s+\S+/gi, "Bearer <redacted>")
+  const observe = (page) => {
+    page.on("pageerror", (error) => console.log("RENDERER_ERROR", clean(error.message).slice(0, 500)))
+    page.on("console", (message) => { if (message.type() === "error") console.log("RENDERER_CONSOLE", clean(message.text()).slice(0, 500)) })
+  }
+  instance.windows().forEach(observe)
+  instance.on("window", observe)
+  return instance
+}
 
-const waitForWebSocket = async (page) => {
+const captureRendererState = async (page) => {
+  let deadline
+  try {
+    const state = await Promise.race([
+      page.evaluate(() => ({
+        protocol: location.protocol, host: location.host, pathname: location.pathname,
+        bridge: !!window.desktopBridge, localEnvironmentEnabled: window.desktopBridge?.getLocalEnvironmentEnabled(),
+        ready: document.readyState, rootChildren: document.getElementById("root")?.childElementCount,
+        online: navigator.onLine,
+      })),
+      new Promise((resolve) => { deadline = setTimeout(() => resolve({ unavailable: true }), 5000) }),
+    ])
+    console.log("RENDERER_STATE", JSON.stringify(state))
+    await writeFile(root + "/renderer-state.json", JSON.stringify(state, null, 2))
+  } finally { clearTimeout(deadline) }
+}
+
+const waitForWebSocket = async (page, { reload = true } = {}) => {
   const socketPromise = page.waitForEvent("websocket", {
     predicate: (socket) => {
       const url = new URL(socket.url())
@@ -271,10 +333,12 @@ const waitForWebSocket = async (page) => {
     },
     timeout: 30_000,
   })
-  await page.reload()
+  if (reload) await page.reload()
+  assert.equal(await page.evaluate(() => navigator.onLine), true, "the isolated interface must allow the saved-connection supervisor to run")
   const socket = await socketPromise
   await socket.waitForEvent("framereceived", { timeout: 30_000 })
-  return socket.url()
+  const url = new URL(socket.url())
+  return url.origin + url.pathname
 }
 
 const clickNativeDialog = async (title, buttonIndex = 0) => {
@@ -285,25 +349,38 @@ const clickNativeDialog = async (title, buttonIndex = 0) => {
   const windowId = result.stdout.trim().split(/\s+/u).at(-1)
   assert.ok(windowId, `native dialog did not appear: ${title}`)
   if (title === "Homebrew T3 service is already running") {
-    const capture = await app.evaluate(async ({ desktopCapturer }) => {
-      const screens = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1280, height: 900 } })
-      if (!screens[0]) throw new Error("No Xvfb screen was captured")
-      return screens[0].thumbnail.toPNG().toString("base64")
-    })
-    await writeFile(root + "/owner-dialog.png", Buffer.from(capture, "base64"))
+    await exec("scrot", ["-o", root + "/owner-dialog.png"], { timeout: 5000 })
   }
   await exec("xdotool", ["windowfocus", windowId], { timeout: 5000 })
   if (title === "Homebrew T3 service is already running") {
     const geometry = await exec("xdotool", ["getwindowgeometry", "--shell", windowId], { timeout: 5000 })
     const width = Number(geometry.stdout.match(/^WIDTH=(\d+)$/m)?.[1])
     const height = Number(geometry.stdout.match(/^HEIGHT=(\d+)$/m)?.[1])
+    console.log("NATIVE_GEOMETRY", JSON.stringify({ windowId, width, height, buttonIndex }))
     assert.ok(width > 0 && height > 20)
     await exec("xdotool", ["mousemove", "--window", windowId, String(Math.floor(width * (buttonIndex + 0.5) / 3)), String(height - 18)], { timeout: 5000 })
     await exec("xdotool", ["click", "1"], { timeout: 5000 })
+    let closed = false
+    for (let check = 0; check < 20; check++) {
+      const visible = await exec("xdotool", ["search", "--onlyvisible", "--name", title], { timeout: 1000 }).then((value) => value.stdout.trim().split(/\s+/u), () => [])
+      if (!visible.includes(windowId)) { closed = true; break }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    if (!closed) {
+      await exec("scrot", ["-o", root + "/owner-dialog-after-click.png"], { timeout: 5000 })
+      throw new Error("Native recovery dialog remained visible after the selected input")
+    }
   } else {
     await exec("xdotool", ["key", "--window", windowId, "Return"], { timeout: 5000 })
   }
 }
+
+const savedPublicProfile = (page) => page.evaluate(async (expectedId) => {
+  const raw = await window.desktopBridge.getConnectionCatalog()
+  const catalog = raw === null ? null : JSON.parse(raw)
+  const profile = catalog?.profiles?.find((value) => value.environmentId === expectedId && typeof value.httpBaseUrl === "string")
+  return profile ? { environmentId: profile.environmentId, httpBaseUrl: profile.httpBaseUrl } : null
+}, environmentId)
 
 const connectAndVerify = async () => {
   app = await launchDesktop()
@@ -316,34 +393,55 @@ const connectAndVerify = async () => {
     const value = new URL(window.url())
     return { protocol: value.protocol, host: value.host, pathname: value.protocol === "data:" ? "<data>" : value.pathname }
   }), null, 2))
+  await captureRendererState(page)
   const confirmation = page.getByText(new RegExp(new URL(serverOrigin).origin.replaceAll(".", "\\."))).waitFor({ timeout: 30_000 }).then(() => "confirmation")
-  const rejected = exec("xdotool", ["search", "--sync", "--onlyvisible", "--name", "Could not create a pairing link"], { timeout: 30_000, maxBuffer: 4096 }).then(() => "rejected", () => "not-found")
+  const rejected = exec("xdotool", ["search", "--sync", "--onlyvisible", "--name", "^(Could not create a pairing link|Error)$"], { timeout: 30_000, maxBuffer: 4096 }).then(() => "rejected", () => "not-found")
   const outcome = await Promise.race([confirmation, rejected])
   if (outcome === "rejected") {
-    await clickNativeDialog("Could not create a pairing link")
+    await exec("scrot", ["-o", root + "/error-screen.png"], { timeout: 5000 })
+    await clickNativeDialog("^(Could not create a pairing link|Error)$")
+    await captureRendererState(page)
     await page.screenshot({ path: root + "/initial.png", timeout: 10_000 })
     throw new Error("Automatic pairing failed before renderer delivery")
   }
   assert.equal(outcome, "confirmation")
   await page.screenshot({ path: root + "/pairing-confirmation.png" })
+  const pendingLinks = JSON.parse(await runPackagedCli(["auth", "pairing", "list", "--json"]))
+  console.log("PAIRING_LINK_STATE", JSON.stringify({ count: pendingLinks.length, unexpired: pendingLinks.every((link) => Date.parse(link.expiresAt) > Date.now()) }))
+  const added = page.getByText("Backend added", { exact: true }).waitFor({ timeout: 30_000 }).then(() => "added")
+  const refused = page.getByText("Could not add backend", { exact: true }).waitFor({ timeout: 30_000 }).then(() => "refused")
+  const firstConnection = waitForWebSocket(page, { reload: false })
+  void firstConnection.catch(() => {})
   await page.getByRole("button", { name: "Confirm", exact: true }).click()
   console.log("PAIRING_CONFIRMED")
-  await page.getByText("Backend added", { exact: true }).waitFor({ timeout: 30_000 })
+  const pairingResult = await Promise.race([added, refused])
+  if (pairingResult === "refused") {
+    await captureRendererState(page)
+    const detail = ["Could not add backend", ...await page.locator('[data-slot="toast-description"]').allTextContents()].join("\n")
+    const safeDetail = detail.replace(/(?:https?|t3code):\/\/[^\s]+/g, "<url>").replace(/Bearer\s+\S+/gi, "Bearer <redacted>")
+    await writeFile(root + "/pairing-result.txt", safeDetail)
+    await exec("scrot", ["-o", root + "/pairing-failure.png"], { timeout: 5000 })
+    throw new Error("Pairing refused: " + safeDetail)
+  }
   const connected = await page.evaluate(() => window.desktopBridge.getLocalEnvironmentEnabled())
   assert.equal(connected, false)
   const settings = JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8"))
   assert.equal(settings.localEnvironmentEnabled, false)
   const backups = (await readdir(stateDir)).filter((name) => name.startsWith("desktop-settings.json.before-homebrew-attach-"))
   assert.equal(backups.length, 1)
-  assert.equal(await readFile(stateDir + "/" + backups[0], "utf8"), originalDesktopSettings)
+  assert.equal(settingsBeforeLocalOff.has(await readFile(stateDir + "/" + backups[0], "utf8")), true, "backup preserves an exact pre-recovery settings document")
   assert.equal((await stat(stateDir + "/" + backups[0])).mode & 0o777, 0o600)
 
-  const registry = JSON.parse(await readFile(stateDir + "/saved-environments.json", "utf8"))
-  const saved = registry.records?.find((record) => record.environmentId === environmentId)
-  assert.ok(saved, "the paired environment ID is persisted")
+  const saved = await savedPublicProfile(page)
+  assert.ok(saved, "the paired environment ID is persisted in the protected connection catalog")
+  assert.equal((await readFile(stateDir + "/connection-catalog.json", "utf8")).includes(environmentId), false, "catalog must not persist plaintext connection data")
   assert.equal(new URL(saved.httpBaseUrl).origin, new URL(serverOrigin).origin)
+  const firstSocket = await firstConnection
+  await page.getByText("Preserved project", { exact: true }).first().waitFor({ timeout: 30_000 })
+  await page.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
+  await page.getByText("Existing preserved thread", { exact: true }).first().click()
+  await page.getByText("Historical fixture reply preserved across service attachment.", { exact: true }).waitFor({ timeout: 30_000 })
   await page.screenshot({ path: root + "/connected.png" })
-  const firstSocket = await waitForWebSocket(page)
   console.log("FIRST_CONNECTION_PROVED")
   await checkPreserved()
   const firstReport = { environmentId, serverOrigin, websocketUrl: firstSocket }
@@ -354,7 +452,11 @@ const connectAndVerify = async () => {
   app = await launchDesktop()
   const repeatPage = await app.firstWindow({ timeout: 90_000 })
   await repeatPage.waitForLoadState("domcontentloaded")
+  await repeatPage.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
+  await repeatPage.getByText("Existing preserved thread", { exact: true }).first().click()
+  await repeatPage.getByText("Historical fixture reply preserved across service attachment.", { exact: true }).waitFor({ timeout: 30_000 })
   const repeatSocket = await waitForWebSocket(repeatPage)
+  await repeatPage.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
   console.log("REPEAT_CONNECTION_PROVED")
   await repeatPage.screenshot({ path: root + "/repeat-run.png" })
   await checkPreserved()
@@ -371,7 +473,7 @@ const verifyManualSettings = async () => {
   await page.waitForURL((url) => url.pathname === "/settings/connections", { timeout: 30_000 })
   await page.screenshot({ path: root + "/manual-settings.png" })
   assert.equal(JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8")).localEnvironmentEnabled, false)
-  assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
+  assert.equal(await savedPublicProfile(page), null)
   await checkPreserved()
   await app.close()
   app = null
@@ -389,7 +491,7 @@ const verifyPackageMismatch = async () => {
   await page.waitForURL((url) => url.pathname === "/settings/connections", { timeout: 30_000 })
   await page.screenshot({ path: root + "/package-mismatch.png" })
   assert.equal(JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8")).localEnvironmentEnabled, false)
-  assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
+  assert.equal(await savedPublicProfile(page), null)
   await checkPreserved()
   await app.close()
   app = null
@@ -404,7 +506,10 @@ const verifyUnknownOwner = async () => {
   await app.close().catch(() => {})
   app = null
   await checkPreserved()
-  assert.equal(await readFile(stateDir + "/desktop-settings.json", "utf8"), originalDesktopSettings)
+  const retainedSettings = JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8"))
+  assert.notEqual(retainedSettings.localEnvironmentEnabled, false)
+  assert.equal(retainedSettings.linuxPasswordStore, "gnome-libsecret")
+  assert.equal(retainedSettings.updateChannelConfiguredByUser, true)
   assert.equal((await readdir(stateDir)).some((name) => name.includes(".before-homebrew-attach-")), false)
   assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
   return { owner: "unverified", attached: false, settingsChanged: false }
@@ -421,6 +526,10 @@ try {
   const result = scenario === "unknown-owner" ? await verifyUnknownOwner()
     : scenario === "package-mismatch" ? await verifyPackageMismatch()
     : scenario === "manual-settings" ? await verifyManualSettings() : await connectAndVerify()
+  const pidEvents = await readFile("/sys/fs/cgroup/pids.events", "utf8")
+  const memoryEvents = await readFile("/sys/fs/cgroup/memory.events", "utf8")
+  assert.equal(Number(pidEvents.match(/^max (\d+)$/m)?.[1]), 0, "fixture must not hit the task limit")
+  assert.equal(Number(memoryEvents.match(/^oom_kill (\d+)$/m)?.[1]), 0, "fixture must not hit the memory limit")
   await writeFile(root + "/report.json", JSON.stringify({
     scenario,
     packageVersion: JSON.parse(await readFile(appDir + "/resources/t3-homebrew-build.json", "utf8")).packageVersion,
@@ -428,11 +537,12 @@ try {
     serviceEnvironmentId: environmentId,
     serviceProcessPreserved: true,
     existingProjectAndIdleThreadPreserved: true,
+    existingConversationHistoryPreserved: true,
     existingBearerCredentialAuthenticated: true,
     syntheticMarkersPreserved: true,
     originalDesktopSettingsBackedUp: scenario !== "unknown-owner",
     isolatedHome: true,
-    network: "none",
+    network: "internal bridge without host gateway, external routing or DNS",
     systemd: "fake user-unit metadata",
     result,
   }, null, 2))
@@ -440,6 +550,12 @@ try {
   await writeFile(root + "/failure.txt", `${error?.stack ?? error}\n${serverStderr}`)
   throw error
 } finally {
+  settingsObserver.close()
+  await writeFile(root + "/resource-report.json", JSON.stringify({
+    pidEvents: await readFile("/sys/fs/cgroup/pids.events", "utf8"),
+    memoryEvents: await readFile("/sys/fs/cgroup/memory.events", "utf8"),
+    taskLimit: await readFile("/sys/fs/cgroup/pids.max", "utf8"),
+  }, null, 2))
   if (app) await app.close().catch(() => {})
   if (server?.pid) {
     const groupAlive = () => {

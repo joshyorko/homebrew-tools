@@ -2684,6 +2684,7 @@ end
         "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
         "apps/web/src/components/desktopUpdate.logic.test.ts",
       ])
+      .withExec(["pnpm", "exec", "vp", "run", "--filter", "@t3tools/desktop", "--filter", "t3", "--filter", "@t3tools/shared", "typecheck"])
       .withExec([
         "pnpm",
         "dist:desktop:linux",
