@@ -1,4 +1,4 @@
-FROM node:26-bookworm-slim
+FROM node:26-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb ruby libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libsecret-1-0 libdbus-1-3 libnotify4 libdrm2 libxshmfence1 libx11-xcb1 procps ca-certificates && rm -r /var/lib/apt/lists/*
 WORKDIR /runner
 RUN npm install --no-audit --no-fund playwright-core@1.60.0
