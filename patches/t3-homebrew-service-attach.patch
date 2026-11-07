@@ -148,7 +148,7 @@ index 77a4aa99..a132ca44 100644
      const instancesRef = yield* SynchronizedRef.make<
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 new file mode 100644
-index 00000000..fa9b45da
+index 00000000..18844a34
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 @@ -0,0 +1,247 @@
@@ -243,13 +243,13 @@ index 00000000..fa9b45da
 +      .pipe(Effect.orElseSucceed(() => null));
 +    if (runtimeRaw === null || idRaw === null) return { _tag: "unverified" } as const;
 +
-+    const runtime = Schema.decodeUnknownOption(Schema.fromJsonString(PersistedServerRuntimeState))(runtimeRaw);
++    const runtime = Schema.decodeOption(Schema.fromJsonString(PersistedServerRuntimeState))(runtimeRaw);
 +    if (Option.isNone(runtime)) return { _tag: "unverified" } as const;
 +    if (runtime.value.pid < 1 || runtime.value.port < 1 || runtime.value.port > 65_535) {
 +      return { _tag: "unverified" } as const;
 +    }
 +
-+    const origin = yield* Effect.try(() => new URL(runtime.value.origin)).pipe(Effect.orElseSucceed(() => null));
++    const origin = URL.parse(runtime.value.origin);
 +    if (origin === null) return { _tag: "unverified" } as const;
 +    if (
 +      origin.protocol !== "http:" ||
@@ -368,7 +368,7 @@ index 00000000..fa9b45da
 +
 +  const appLink = result.match(/^App link:\s+(t3code:\/\/pair\?[^\s]+)$/mu)?.[1];
 +  if (appLink === undefined) return null;
-+  const parsed = yield* Effect.try(() => new URL(appLink)).pipe(Effect.orElseSucceed(() => null));
++  const parsed = URL.parse(appLink);
 +  return parsed?.protocol === "t3code:" && parsed.hostname === "pair" ? appLink : null;
 +});
 +

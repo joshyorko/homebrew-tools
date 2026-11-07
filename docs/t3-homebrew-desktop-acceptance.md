@@ -66,6 +66,13 @@ These local runs do not establish hosted CI or source type-check success.
 The paired acceptance CI job uploads reports and screenshots for 14 days in
 its `t3-service-attach-<commit>` artifact, without databases or credentials.
 
+The source type gate compares the updater-only source against the attachment
+patch at the same upstream revision. It requires zero diagnostics in files
+changed by the attachment patch and rejects new or increased diagnostics
+elsewhere. Existing diagnostics in unchanged updater code remain listed in
+the build log; passing this gate does not mean the entire upstream/updater
+source tree is type-clean.
+
 The issue-175 recovery path is exercised against a source-built AppImage and a
 fresh isolated T3 home. The fixture starts a real packaged T3 server inside a
 container without external routing or DNS, supplies synthetic same-user systemd metadata, and

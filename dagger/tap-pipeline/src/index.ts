@@ -2684,7 +2684,7 @@ end
         "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
         "apps/web/src/components/desktopUpdate.logic.test.ts",
       ])
-      .withExec(["pnpm", "exec", "vp", "run", "--filter", "@t3tools/desktop", "--filter", "t3", "--filter", "@t3tools/shared", "typecheck"])
+      .withExec(["node", "/tap/scripts/check-t3-source-types.mjs", "/upstream", "/tap/patches/t3-homebrew-service-attach.patch", "/tmp/t3-source-typechecks"])
       .withExec([
         "pnpm",
         "dist:desktop:linux",
