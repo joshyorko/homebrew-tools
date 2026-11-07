@@ -16,6 +16,7 @@ const t3Home = home + "/.t3"
 const stateDir = t3Home + "/userdata"
 const appDir = root + "/squashfs-root"
 const appRun = appDir + "/AppRun"
+const electronBinary = appDir + "/t3code"
 const bundledServerEntry = appDir + "/resources/app.asar/apps/server/dist/bin.mjs"
 let serverEntry = bundledServerEntry
 const runtimeStatePath = stateDir + "/server-runtime.json"
@@ -56,7 +57,14 @@ const runningPackageVersion = scenario === "package-mismatch" ? "main.2000010100
 const activeKeg = root + "/homebrew/Cellar/t3code-cli-main/" + runningPackageVersion
 serverEntry = activeKeg + "/libexec/dist/bin.mjs"
 await mkdir(activeKeg + "/libexec/dist", { recursive: true })
-await writeFile(serverEntry, "import " + JSON.stringify(bundledServerEntry) + "\n")
+await writeFile(serverEntry, `import { readdirSync } from "node:fs";
+import { join } from "node:path";
+const directory = ${JSON.stringify(appDir + "/resources/app.asar/apps/server/dist")};
+const main = readdirSync(directory).find((name) => /^binMain-.*\\.mjs$/.test(name));
+if (!main) throw new Error("Packaged CLI entry module is missing");
+const { runCliCommand } = await import(join(directory, main));
+await runCliCommand();
+`)
 await writeFile(activeKeg + "/INSTALL_RECEIPT.json", JSON.stringify({ source: { tap: "joshyorko/tools", version: runningPackageVersion } }))
 
 const unitPath = "/tmp/t3-ui-test/homebrew/opt/t3code-cli-main/bin/t3"
@@ -91,11 +99,17 @@ let preservedState = null
 
 const waitForServerReady = () => new Promise((resolve, reject) => {
   let checking = false
+  let settled = false
+  const onExit = (code, signal) => finish(new Error(`Isolated T3 service exited before readiness (${code ?? signal})`))
+  server.once("close", onExit)
   const watcher = watch(stateDir, { persistent: false }, () => {
     void check()
   })
   const deadline = setTimeout(() => finish(new Error("Timed out waiting for isolated T3 service readiness")), 60_000)
   const finish = (error, value) => {
+    if (settled) return
+    settled = true
+    server.removeListener("close", onExit)
     clearTimeout(deadline)
     watcher.close()
     if (error) reject(error)
@@ -142,7 +156,7 @@ const startService = async () => {
     T3CODE_HOST: "127.0.0.1",
     T3CODE_PORT: "3773",
   }
-  server = spawn(appRun, [serverEntry, "serve", "--base-dir", t3Home, "--host", "127.0.0.1", "--port", "3773"], {
+  server = spawn(electronBinary, [serverEntry, "serve", "--base-dir", t3Home, "--host", "127.0.0.1", "--port", "3773"], {
     cwd: home,
     env: serviceEnvironment,
     detached: true,
@@ -157,7 +171,7 @@ const startService = async () => {
 }
 
 const runPackagedCli = async (args) => {
-  const result = await exec(appRun, [serverEntry, ...args, "--base-dir", t3Home], {
+  const result = await exec(electronBinary, [serverEntry, ...args, "--base-dir", t3Home], {
     cwd: home,
     env: { ...environment, ELECTRON_RUN_AS_NODE: "1", T3CODE_HOME: t3Home },
     timeout: 30_000,
@@ -200,13 +214,19 @@ const seedServiceState = async () => {
   await request("notifications/initialized", {}, true)
   const tool = async (name, args) => {
     const result = await request("tools/call", { name, arguments: args })
-    assert.notEqual(result?.isError, true, `isolated tool ${name} failed`)
+    if (result?.isError === true) {
+      let failure = result.structuredContent
+      if (!failure) {
+        try { failure = JSON.parse(result.content?.find((part) => part.type === "text")?.text ?? "{}") } catch {}
+      }
+      throw new Error(`isolated tool ${name} failed: ${failure?.code ?? "unknown"}: ${failure?.message ?? "no diagnostic"}`)
+    }
     return result.structuredContent
   }
   const projects = await tool("t3_project_list", {})
   const project = projects.projects.find((value) => value.workspaceRoot === workspace)
   assert.ok(project)
-  const thread = await tool("t3_thread_launch", { projectId: project.id, title: "Existing preserved thread" })
+  const thread = await tool("t3_thread_launch", { projectId: project.id, title: "Existing preserved thread", runtimeMode: "approval-required", modelSelection: { provider: "codex", model: "gpt-6-luna" } })
   assert.ok(thread.threadId)
   assert.equal(thread.runId, null, "fixture must not run an agent")
   const verify = async () => {
@@ -278,12 +298,20 @@ const clickNativeDialog = async (title) => {
 
 const connectAndVerify = async () => {
   app = await launchDesktop()
+  console.log("DESKTOP_LAUNCHED")
   await clickNativeDialog("Homebrew T3 service is already running")
+  console.log("SERVICE_RECOVERY_CONFIRMED")
   const page = await app.firstWindow({ timeout: 90_000 })
   await page.waitForLoadState("domcontentloaded")
+  await writeFile(root + "/window-state.json", JSON.stringify(app.windows().map((window) => {
+    const value = new URL(window.url())
+    return { protocol: value.protocol, host: value.host, pathname: value.protocol === "data:" ? "<data>" : value.pathname }
+  }), null, 2))
+  await page.screenshot({ path: root + "/initial.png" })
   await page.getByText(new RegExp(new URL(serverOrigin).origin.replaceAll(".", "\\."))).waitFor({ timeout: 30_000 })
   await page.screenshot({ path: root + "/pairing-confirmation.png" })
   await page.getByRole("button", { name: "Confirm", exact: true }).click()
+  console.log("PAIRING_CONFIRMED")
   await page.getByText("Backend added", { exact: true }).waitFor({ timeout: 30_000 })
   const connected = await page.evaluate(() => window.desktopBridge.getLocalEnvironmentEnabled())
   assert.equal(connected, false)
@@ -300,6 +328,7 @@ const connectAndVerify = async () => {
   assert.equal(new URL(saved.httpBaseUrl).origin, new URL(serverOrigin).origin)
   await page.screenshot({ path: root + "/connected.png" })
   const firstSocket = await waitForWebSocket(page)
+  console.log("FIRST_CONNECTION_PROVED")
   await checkPreserved()
   const firstReport = { environmentId, serverOrigin, websocketUrl: firstSocket }
   await app.close()
@@ -310,6 +339,7 @@ const connectAndVerify = async () => {
   const repeatPage = await app.firstWindow({ timeout: 90_000 })
   await repeatPage.waitForLoadState("domcontentloaded")
   const repeatSocket = await waitForWebSocket(repeatPage)
+  console.log("REPEAT_CONNECTION_PROVED")
   await repeatPage.screenshot({ path: root + "/repeat-run.png" })
   await checkPreserved()
   assert.equal(new URL(repeatSocket).origin, new URL(firstSocket).origin)
@@ -320,7 +350,9 @@ const connectAndVerify = async () => {
 
 const verifyPackageMismatch = async () => {
   app = await launchDesktop()
+  console.log("DESKTOP_LAUNCHED")
   await clickNativeDialog("Homebrew T3 service is already running")
+  console.log("SERVICE_RECOVERY_CONFIRMED")
   await clickNativeDialog("Could not create a pairing link")
   const page = await app.firstWindow({ timeout: 90_000 })
   await page.waitForLoadState("domcontentloaded")
@@ -349,7 +381,9 @@ const verifyUnknownOwner = async () => {
 
 try {
   await startService()
+  console.log("SERVICE_READY")
   preservedState = await seedServiceState()
+  console.log("EXISTING_STATE_SEEDED")
   const runtime = JSON.parse(await readFile(runtimeStatePath, "utf8"))
   const descriptor = await fetch(new URL("/.well-known/t3/environment", runtime.origin)).then((response) => response.json())
   assert.equal(descriptor.environmentId, environmentId)

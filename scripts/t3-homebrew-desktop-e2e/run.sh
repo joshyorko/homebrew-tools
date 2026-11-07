@@ -31,7 +31,7 @@ docker cp "$runner_dir/." "$container:/work/runner/"
 docker cp "$artifact" "$container:/work/bundle/artifacts/candidate.AppImage"
 status=0
 timeout --kill-after=5s 240s docker start -a "$container" > "$output/run.log" 2>&1 || status=$?
-for name in report.json confirmation.png result.png initial.png owner-dialog.png pairing-confirmation.png connected.png repeat-run.png package-mismatch.png failure.txt; do
+for name in report.json confirmation.png result.png initial.png window-state.json owner-dialog.png pairing-confirmation.png connected.png repeat-run.png package-mismatch.png failure.txt; do
   docker cp "$container:/tmp/t3-ui-test/$name" "$output/$name" >/dev/null 2>&1 || true
 done
 cat "$output/run.log"
