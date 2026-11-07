@@ -215,12 +215,8 @@ export `T3CODE_TELEMETRY_ENABLED=false` before starting the application. This di
 T3 product analytics (including token counts) and relay tracing for their local server,
 even if the parent environment sets the variable to `true`. This is a runtime setting;
 setting it only in the build workflow would not opt installed applications out.
-After updating the tap, reinstall existing packages and restart running T3 processes:
-
-```bash
-brew reinstall joshyorko/tools/t3code-cli-main
-brew reinstall --cask joshyorko/tools/t3-code-linux
-```
+Upgrade the CLI and Desktop together, verify their pinned source commit matches, and
+restart only the Homebrew service with the [paired lifecycle procedure](docs/t3-homebrew-lifecycle.md#update-from-the-t3-desktop).
 
 This policy belongs to the Homebrew launchers, not the unmodified release tarball or
 AppImage: running the embedded server/AppRun directly bypasses it. Remote servers must
@@ -230,6 +226,20 @@ configured diagnostic exporters. See [the source audit](docs/t3-telemetry.md).
 Both build paths supply the audited public production T3 Connect identifiers from
 upstream's `.env.example` before compilation. Built-artifact acceptance is pending;
 see [the public configuration policy](docs/t3-connect.md).
+
+The CLI formula owns the Homebrew-managed Linux user service. On the packaged
+Linux Desktop, the update control uses a Homebrew helper to check and prepare the
+CLI formula and Desktop cask as a pair. It shows both package versions and their
+shared source commit, then asks for confirmation before the helper applies either
+upgrade. Check and prepare are separate; install requires explicit confirmation.
+The detached helper runs as the Desktop user, preserves Homebrew's cask rollback
+and the prior formula keg, and restarts the service only when it was active
+before the update. On relaunch, the Desktop shows the update result and
+reconnects; if package recovery cannot be verified, the service stays stopped
+for diagnosis. Managed update policies remain authoritative: `mode: off`
+disables this updater, and an administrator-managed `feedUrl` is not replaced.
+See [the T3 Homebrew lifecycle guide](docs/t3-homebrew-lifecycle.md) for the
+confirmation flow, migration, recovery behavior, and policy limits.
 
 ### T3 Code CLI (Main Formula)
 

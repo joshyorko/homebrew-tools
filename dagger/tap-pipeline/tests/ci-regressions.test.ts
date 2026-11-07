@@ -176,6 +176,29 @@ test("T3 builds inject one shared audited public Connect config before compilati
   }
 })
 
+test("T3 Desktop build packages its Homebrew updater patch and helper before compilation", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const desktopBuild = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  const injectUpdater = desktopBuild.indexOf("git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch")
+  const installHelper = desktopBuild.indexOf("install -m 0755 /tap/scripts/t3-homebrew-update.sh")
+  const updateTests = desktopBuild.indexOf('"apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts"')
+  const installDependencies = desktopBuild.indexOf('.withExec(["pnpm", "install", "--frozen-lockfile"])')
+  const buildAppImage = desktopBuild.indexOf('"dist:desktop:linux"')
+  const upstreamPatch = read("patches/t3-homebrew-desktop-update.patch")
+
+  assert.notEqual(injectUpdater, -1)
+  assert.notEqual(installHelper, -1)
+  assert.notEqual(updateTests, -1)
+  assert.notEqual(buildAppImage, -1)
+  assert.ok(installHelper < installDependencies, "the helper must be staged before packaging")
+  assert.ok(injectUpdater < installDependencies, "the source patch must apply before compilation")
+  assert.ok(installDependencies < updateTests && updateTests < buildAppImage, "focused Homebrew updater tests must pass before AppImage packaging")
+  assert.match(upstreamPatch, /Homebrew/)
+  assert.match(upstreamPatch, /t3-homebrew-update\.sh/)
+  assert.doesNotMatch(upstreamPatch, /\.setFeedURL\(/)
+  assert.doesNotMatch(upstreamPatch, /provider:\s*["']generic["']/)
+})
+
 test("T3 acceptance proves compiled Connect in the CLI and the shipped Desktop app", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const cliCi = section(pipeline, 'case "t3code-cli-main": {', 'case "chatgpt": {')
@@ -553,4 +576,44 @@ test("Codex MemoryD slot uses the four-platform native builder instead of Dagger
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const tags = section(pipeline, "private expectedTapReleaseTag", "private async tapReleaseExists")
   assert.match(tags, /case "codex-memoryd":\s*return `codex-memoryd-\$\{version\}`/)
+})
+
+test("T3 source acceptance trusts each isolated fixture before audit and checks the packaged helper", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  for (const [id, kind, end] of [
+    ["t3code-cli-main", "formula", 'case "chatgpt": {'],
+    ["t3-code-linux", "cask", 'case "headroom-self-hosted": {'],
+  ]) {
+    const source = section(pipeline, `case "${id}": {`, end)
+    const trust = source.indexOf(`brew trust --${kind} test/tap/${id}`)
+    const audit = source.indexOf(`brew audit --${kind} test/tap/${id}`)
+    assert.ok(trust >= 0 && audit > trust, `${id} must be trusted before Homebrew loads it for audit`)
+    assert.doesNotMatch(source, /HOMEBREW_NO_REQUIRE_TAP_TRUST/)
+  }
+  assert.match(pipeline, /test -x.*app_dir\/resources\/t3-homebrew-update\.sh/)
+})
+
+test("T3 Desktop immutable URLs retain audit-visible version interpolation and checksums", () => {
+  const cask = read("Casks/t3-code-linux.rb")
+  const version = cask.match(/version "([^"]+)"/)?.[1]
+  const url = cask.match(/url "([^"]+)"/)?.[1]
+  assert.ok(version && url)
+  assert.match(url, /t3-code-linux-#\{version\}\/T3-Code-#\{version\}-#\{arch\}\.AppImage$/)
+  assert.equal(url.replaceAll("#{version}", version).replace("#{arch}", "x86_64"),
+    `https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-${version}/T3-Code-${version}-x86_64.AppImage`)
+  assert.match(cask, /sha256 x86_64_linux: "[0-9a-f]{64}"/)
+  const renderer = section(read("dagger/tap-pipeline/src/index.ts"), "private renderT3CodeCask", "/** Install an unpublished")
+  assert.match(renderer, /downloadUrl\.replaceAll\(version, "#\{version\}"\)/)
+  assert.doesNotMatch(renderer, /sha256.*:no_check.*`sha256.*:no_check/)
+})
+
+test("T3 Desktop embeds and verifies Homebrew identity independently of Electron semver", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const build = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  assert.match(build, /withNewFile\("\/upstream\/apps\/desktop\/resources\/t3-homebrew-build\.json", JSON\.stringify\(\{ packageVersion: resolvedVersion, sourceCommit: commit \}\)\)/)
+  const patch = read("patches/t3-homebrew-desktop-update.patch")
+  assert.match(patch, /homebrewUpdateProvider\.check\(homebrewPackageVersion\)/)
+  assert.match(patch, /appVersion: "0\.1\.7"/)
+  assert.match(patch, /to: "t3-homebrew-build\.json"/)
+  assert.match(pipeline, /value\.packageVersion !== process\.argv\[2\].*value\.sourceCommit !== process\.argv\[3\]/)
 })

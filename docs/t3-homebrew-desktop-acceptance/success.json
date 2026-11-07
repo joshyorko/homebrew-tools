@@ -1,0 +1,14 @@
+{
+  "outcome": "installed",
+  "packageVersion": "main.20261107210915.111122223333",
+  "electronVersion": "0.1.7",
+  "sourceCommit": "b90e554e0a942605c4de2d4ff5d4654caf998e27",
+  "profileHomePreserved": true,
+  "cancelledFirst": true,
+  "confirmed": true,
+  "relaunched": true,
+  "reconnected": true,
+  "network": "none",
+  "homebrew": "fake",
+  "systemd": "fake"
+}

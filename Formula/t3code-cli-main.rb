@@ -25,8 +25,35 @@ class T3codeCliMain < Formula
       if [ ! -f "$entry" ]; then
         entry="#{libexec}/dist/index.mjs"
       fi
-      exec "#{Formula["node@24"].opt_bin}/node" "$entry" "$@"
+      exec "#{formula_opt_bin("node@24")}/node" "$entry" "$@"
     SH
+  end
+
+  service do
+    run [opt_bin/"t3", "serve"]
+    keep_alive true
+    working_dir Dir.home
+    environment_variables(
+      T3CODE_HOME:              "#{Dir.home}/.t3",
+      T3CODE_TELEMETRY_ENABLED: "false",
+      PATH:                     [
+        "#{HOMEBREW_PREFIX}/bin",
+        "#{HOMEBREW_PREFIX}/sbin",
+        "#{Dir.home}/.local/bin",
+        "#{Dir.home}/bin",
+        "#{Dir.home}/.cargo/bin",
+        "#{Dir.home}/.deno/bin",
+        "#{Dir.home}/.bun/bin",
+        "#{Dir.home}/go/bin",
+        "#{Dir.home}/.opencode/bin",
+        "#{Dir.home}/.local/share/mise/shims",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+      ].join(":"),
+    )
+    log_path var/"log/t3code-cli-main.log"
+    error_log_path var/"log/t3code-cli-main.log"
   end
 
   test do
