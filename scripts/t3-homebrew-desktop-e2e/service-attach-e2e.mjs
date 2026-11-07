@@ -76,6 +76,7 @@ let serverOrigin = null
 let lockIdentity = null
 let markerHashes = null
 let serverStderr = ""
+let preservedState = null
 
 const waitForServerReady = () => new Promise((resolve, reject) => {
   let checking = false
@@ -144,6 +145,71 @@ const startService = async () => {
   return waitForServerReady()
 }
 
+const runPackagedCli = async (args) => {
+  const result = await exec(appRun, [serverEntry, ...args, "--base-dir", t3Home], {
+    cwd: home,
+    env: { ...environment, ELECTRON_RUN_AS_NODE: "1", T3CODE_HOME: t3Home },
+    timeout: 30_000,
+    maxBuffer: 1024 * 1024,
+  })
+  return result.stdout
+}
+
+const seedServiceState = async () => {
+  const workspace = root + "/existing-project"
+  await mkdir(workspace)
+  await runPackagedCli(["project", "add", workspace, "--title", "Preserved project"])
+  const issued = JSON.parse(await runPackagedCli(["auth", "session", "issue", "--json", "--subject", "mcp-client", "--label", "Existing fixture credential"]))
+  assert.ok(issued.token)
+  let sessionId = null
+  let sequence = 0
+  const request = async (method, params, notification = false) => {
+    const response = await fetch(new URL("/mcp", serverOrigin), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json", accept: "application/json, text/event-stream",
+        authorization: "Bearer " + issued.token,
+        "mcp-protocol-version": "2025-06-18",
+        ...(sessionId === null ? {} : { "mcp-session-id": sessionId }),
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", ...(notification ? {} : { id: ++sequence }), method, params }),
+      signal: AbortSignal.timeout(20_000),
+    })
+    assert.ok(response.ok, `isolated MCP ${method} returned ${response.status}`)
+    sessionId = response.headers.get("mcp-session-id") ?? sessionId
+    const raw = await response.text()
+    if (notification) return null
+    const message = response.headers.get("content-type")?.includes("text/event-stream")
+      ? raw.split("\n").filter((line) => line.startsWith("data:")).map((line) => JSON.parse(line.slice(5))).find((value) => value.id === sequence)
+      : JSON.parse(raw)
+    assert.ok(message && !message.error, `isolated MCP ${method} failed`)
+    return message.result
+  }
+  await request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "preservation-fixture", version: "1" } })
+  await request("notifications/initialized", {}, true)
+  const tool = async (name, args) => {
+    const result = await request("tools/call", { name, arguments: args })
+    assert.notEqual(result?.isError, true, `isolated tool ${name} failed`)
+    return result.structuredContent
+  }
+  const projects = await tool("t3_project_list", {})
+  const project = projects.projects.find((value) => value.workspaceRoot === workspace)
+  assert.ok(project)
+  const thread = await tool("t3_thread_launch", { projectId: project.id, title: "Existing preserved thread" })
+  assert.ok(thread.threadId)
+  assert.equal(thread.runId, null, "fixture must not run an agent")
+  const verify = async () => {
+    const savedProject = await tool("t3_project_read", { projectId: project.id })
+    assert.equal(savedProject.title, "Preserved project")
+    const savedThread = await tool("t3_thread_read", { threadId: thread.threadId, limit: 5 })
+    assert.equal(savedThread.thread.title, "Existing preserved thread")
+    assert.equal(savedThread.recentRuns.length, 0)
+    return true
+  }
+  await verify()
+  return { verify, projectId: project.id, threadId: thread.threadId, sessionId: issued.sessionId }
+}
+
 const checkPreserved = async () => {
   const currentLock = await stat(stateDir + "/server-owner.sqlite")
   assert.equal(currentLock.dev, lockIdentity.dev)
@@ -156,6 +222,7 @@ const checkPreserved = async () => {
   assert.equal(runtime.pid, serverRuntimePid)
   assert.equal((await readFile(environmentIdPath, "utf8")).trim(), environmentId)
   assert.equal(await readFile(root + "/service.pid", "utf8"), String(serverRuntimePid))
+  assert.equal(await preservedState.verify(), true, "existing thread/project and original bearer credential remain usable")
 }
 
 const launchDesktop = () => electron.launch({
@@ -243,6 +310,7 @@ const verifyUnknownOwner = async () => {
 
 try {
   await startService()
+  preservedState = await seedServiceState()
   const runtime = JSON.parse(await readFile(runtimeStatePath, "utf8"))
   const descriptor = await fetch(new URL("/.well-known/t3/environment", runtime.origin)).then((response) => response.json())
   assert.equal(descriptor.environmentId, environmentId)
@@ -253,7 +321,9 @@ try {
     sourceCommit: JSON.parse(await readFile(appDir + "/resources/t3-homebrew-build.json", "utf8")).sourceCommit,
     serviceEnvironmentId: environmentId,
     serviceProcessPreserved: true,
-    stateAndMarkersPreserved: true,
+    existingProjectAndIdleThreadPreserved: true,
+    existingBearerCredentialAuthenticated: true,
+    syntheticMarkersPreserved: true,
     isolatedHome: true,
     network: "none",
     systemd: "fake user-unit metadata",
@@ -264,22 +334,23 @@ try {
   throw error
 } finally {
   if (app) await app.close().catch(() => {})
-  if (server && server.exitCode === null) {
-    try {
-      process.kill(-server.pid, "SIGTERM")
-    } catch {}
-    const exited = await Promise.race([
-      new Promise((resolve) => server.once("exit", () => resolve(true))),
-      new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
-    ])
-    if (!exited) {
-      try {
-        process.kill(-server.pid, "SIGKILL")
-      } catch {}
-      await new Promise((resolve) => server.once("exit", resolve))
+  if (server?.pid) {
+    const groupAlive = () => {
+      try { process.kill(-server.pid, 0); return true } catch (error) {
+        if (error.code === "ESRCH") return false
+        throw error
+      }
     }
-  }
-  if (serverRuntimePid !== null) {
-    await assert.rejects(exec("kill", ["-0", String(serverRuntimePid)]))
+    const waitForGroupExit = (deadlineMs) => new Promise((resolve) => {
+      const deadline = setTimeout(() => { clearInterval(observer); resolve(!groupAlive()) }, deadlineMs)
+      const observer = setInterval(() => {
+        if (!groupAlive()) { clearTimeout(deadline); clearInterval(observer); resolve(true) }
+      }, 50)
+    })
+    try { process.kill(-server.pid, "SIGTERM") } catch (error) { if (error.code !== "ESRCH") throw error }
+    if (!await waitForGroupExit(5000)) {
+      try { process.kill(-server.pid, "SIGKILL") } catch (error) { if (error.code !== "ESRCH") throw error }
+      assert.equal(await waitForGroupExit(5000), true, "the entire isolated service process group exited")
+    }
   }
 }

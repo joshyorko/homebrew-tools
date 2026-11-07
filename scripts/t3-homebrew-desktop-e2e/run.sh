@@ -26,7 +26,7 @@ cleanup() {
 trap cleanup EXIT
 sha256sum "$artifact" > "$output/artifact.sha256"
 docker build -t "$image" "$runner_dir" > "$output/image.log" 2>&1
-docker create --name "$container" --network none --cap-drop=ALL --security-opt no-new-privileges --pids-limit=256 --memory=4g --cpus=4 --shm-size=512m -e "CASE=$scenario" -e "E2E_SCRIPT=$e2e_script" "$image" > "$output/container.id"
+docker create --init --name "$container" --network none --cap-drop=ALL --security-opt no-new-privileges --pids-limit=256 --memory=4g --cpus=4 --shm-size=512m -e "CASE=$scenario" -e "E2E_SCRIPT=$e2e_script" "$image" > "$output/container.id"
 docker cp "$runner_dir/." "$container:/work/runner/"
 docker cp "$artifact" "$container:/work/bundle/artifacts/candidate.AppImage"
 status=0

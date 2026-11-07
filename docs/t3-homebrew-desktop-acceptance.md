@@ -59,7 +59,9 @@ network-disabled container, supplies synthetic same-user systemd metadata, and
 launches the packaged Desktop with its default local environment enabled. It
 checks the verified-service recovery choice, the in-app pairing confirmation,
 connection to the same environment ID, saved reconnection on a repeat launch,
-and preservation of synthetic history and credential markers. A second case
+and preservation of an existing project, idle thread, and a pre-existing bearer
+credential that remains authenticated through the real service API. Synthetic
+file markers and the ownership-lock inode are checked as additional evidence. A second case
 uses an unrecognized service command and verifies Desktop does not change its
 settings or attach to that owner.
 
