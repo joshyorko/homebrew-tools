@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ $# -lt 2 || $# -gt 3 ]]; then
-  echo "Usage: $0 candidate.AppImage output-directory [success|failure|service-attach|unknown-owner]" >&2
+  echo "Usage: $0 candidate.AppImage output-directory [success|failure|service-attach|unknown-owner|package-mismatch]" >&2
   exit 2
 fi
 artifact="$(realpath -- "$1")"
 output="$(realpath -m -- "$2")"
 scenario="${3:-success}"
-[[ -f "$artifact" && "$scenario" =~ ^(success|failure|service-attach|unknown-owner)$ ]] || exit 2
-if [[ "$scenario" == "service-attach" || "$scenario" == "unknown-owner" ]]; then
+[[ -f "$artifact" && "$scenario" =~ ^(success|failure|service-attach|unknown-owner|package-mismatch)$ ]] || exit 2
+if [[ "$scenario" == "service-attach" || "$scenario" == "unknown-owner" || "$scenario" == "package-mismatch" ]]; then
   e2e_script="service-attach-e2e.mjs"
 else
   e2e_script="e2e.mjs"
@@ -31,7 +31,7 @@ docker cp "$runner_dir/." "$container:/work/runner/"
 docker cp "$artifact" "$container:/work/bundle/artifacts/candidate.AppImage"
 status=0
 timeout --kill-after=5s 240s docker start -a "$container" > "$output/run.log" 2>&1 || status=$?
-for name in report.json confirmation.png result.png initial.png pairing-confirmation.png connected.png repeat-run.png failure.txt; do
+for name in report.json confirmation.png result.png initial.png owner-dialog.png pairing-confirmation.png connected.png repeat-run.png package-mismatch.png failure.txt; do
   docker cp "$container:/tmp/t3-ui-test/$name" "$output/$name" >/dev/null 2>&1 || true
 done
 cat "$output/run.log"

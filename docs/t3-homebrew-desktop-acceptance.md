@@ -64,7 +64,10 @@ credential that remains authenticated through the real service API. Synthetic
 file markers, the ownership-lock inode, and a private byte-for-byte backup of
 Desktop-only settings are checked as additional evidence. A second case
 uses an unrecognized service command and verifies Desktop does not change its
-settings or attach to that owner.
+settings or attach to that owner. The package-mismatch case refuses automatic
+pairing before database access when the active formula keg and Desktop build
+manifest do not identify the same immutable source package. Ownership is checked
+again after window creation and immediately before credential delivery.
 
 Build and export the candidate AppImage with the repository's Dagger module,
 then run both isolated cases with fresh evidence directories:
@@ -81,6 +84,8 @@ bash scripts/t3-homebrew-desktop-e2e/run.sh \
   /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-service-attach service-attach
 bash scripts/t3-homebrew-desktop-e2e/run.sh \
   /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-unknown-owner unknown-owner
+bash scripts/t3-homebrew-desktop-e2e/run.sh \
+  /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-package-mismatch package-mismatch
 ```
 
 Each runner has no network, a private home, a 4 GiB memory cap, a 256-process

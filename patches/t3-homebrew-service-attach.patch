@@ -19,7 +19,7 @@ index 2b2dd841..ae05784e 100644
          ElectronDialog.layer,
          ElectronApp.layer,
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..cdc51c7a 100644
+index 77a4aa99..695e9d48 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
 @@ -1,4 +1,7 @@
@@ -35,7 +35,7 @@ index 77a4aa99..cdc51c7a 100644
  import * as DesktopWindow from "../window/DesktopWindow.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
 +import * as HomebrewServiceOwnerProbe from "./HomebrewServiceOwnerProbe.ts";
-+import { prepareHomebrewServiceRecovery } from "./HomebrewServiceRecovery.ts";
++import { prepareHomebrewServiceRecovery, deliverHomebrewServicePairing } from "./HomebrewServiceRecovery.ts";
  import * as ElectronDialog from "../electron/ElectronDialog.ts";
  import * as ElectronApp from "../electron/ElectronApp.ts";
  
@@ -49,7 +49,7 @@ index 77a4aa99..cdc51c7a 100644
  
      // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
      const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
-@@ -174,12 +182,60 @@ export const layer = Layer.effect(
+@@ -174,12 +182,64 @@ export const layer = Layer.effect(
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
        onStateDirOwned: () =>
@@ -78,11 +78,15 @@ index 77a4aa99..cdc51c7a 100644
 +            yield* HomebrewServiceOwnerProbe.backupHomebrewDesktopSettings();
 +            yield* appSettings.setLocalEnvironmentEnabled(false);
 +            yield* desktopWindow.createMainIfBackendReady;
-+            if (recovery.pairingLink !== null) {
-+              yield* Effect.sync(() => {
-+                Electron.app.emit("open-url", { preventDefault() {} }, recovery.pairingLink);
++            let delivered = false;
++            if (recovery.pairingLink !== null && recovery.expectedOwner !== null) {
++              delivered = yield* deliverHomebrewServicePairing({
++                expectedOwner: recovery.expectedOwner, pairingLink: recovery.pairingLink,
++                inspect: () => HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner().pipe(Effect.provide(recoveryContext)),
++                deliver: (link) => Effect.sync(() => { Electron.app.emit("open-url", { preventDefault() {} }, link); }),
 +              });
-+            } else if (recovery.pairingRequested) {
++            }
++            if (!delivered && recovery.pairingRequested) {
 +              yield* electronDialog.showErrorBox(
 +                "Could not create a pairing link",
 +                "Desktop is open with its local environment off. The server changed or could not be paired; add it from Settings > Connections after verifying it.",
@@ -118,10 +122,10 @@ index 77a4aa99..cdc51c7a 100644
      const instancesRef = yield* SynchronizedRef.make<
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 new file mode 100644
-index 00000000..b4cf90de
+index 00000000..9ac21bb1
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,260 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- `/proc/<pid>` ownership identifies the locked state owner on Linux.
 +import { stat, readFile, open } from "node:fs/promises";
 +import { randomUUID } from "node:crypto";
@@ -134,7 +138,7 @@ index 00000000..b4cf90de
 +import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 +import { ChildProcess, ChildProcessSpawner } from "effect/process";
 +
-+import { readHomebrewServerOwner } from "@t3tools/shared/homebrewServerOwner";
++import { readHomebrewServerOwner, readHomebrewDesktopPackage } from "@t3tools/shared/homebrewServerOwner";
 +import { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 +import * as HostProcess from "@t3tools/shared/HostProcess";
 +
@@ -286,7 +290,9 @@ index 00000000..b4cf90de
 +      if (classification._tag === "verified") {
 +        const currentOwner = yield* Effect.promise(() => readHomebrewServerOwner(environment.stateDir));
 +        if (currentOwner?.fingerprint !== kernelOwner.fingerprint) return { _tag: "unverified" } as const;
-+        return { ...classification, origin: origin.href, fingerprint: kernelOwner.fingerprint } as const;
++        const embeddedPackage = yield* Effect.promise(() => readHomebrewDesktopPackage(environment.resourcesPath));
++        return { ...classification, origin: origin.href, fingerprint: kernelOwner.fingerprint,
++          pairingCompatible: embeddedPackage !== null && kernelOwner.packageVersion === embeddedPackage } as const;
 +      }
 +    }
 +    if (!sawActiveUnit && inactiveUnit !== null) {
@@ -517,10 +523,10 @@ index 00000000..93c84a1d
 +}
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 new file mode 100644
-index 00000000..75a4529a
+index 00000000..bf58dc9b
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,88 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- Backup assertions exercise actual private Desktop settings files.
 +import { mkdtemp, writeFile, readFile, stat, rm } from "node:fs/promises";
 +import { tmpdir } from "node:os";
@@ -528,9 +534,9 @@ index 00000000..75a4529a
 +import { backupDesktopSettingsFile } from "./HomebrewServiceOwnerProbe.ts";
 +import { assert, it } from "@effect/vitest";
 +import * as Effect from "effect/Effect";
-+import { prepareHomebrewServiceRecovery, type HomebrewServiceInspection } from "./HomebrewServiceRecovery.ts";
++import { prepareHomebrewServiceRecovery, deliverHomebrewServicePairing, type HomebrewServiceInspection } from "./HomebrewServiceRecovery.ts";
 +
-+const owner = { _tag: "verified", unit: "t3code-homebrew.service", environmentId: "existing-env", origin: "http://127.0.0.1:3773/", fingerprint: "original-process-and-lock" } satisfies HomebrewServiceInspection;
++const owner = { _tag: "verified", unit: "t3code-homebrew.service", environmentId: "existing-env", origin: "http://127.0.0.1:3773/", fingerprint: "original-process-and-lock", pairingCompatible: true } satisfies HomebrewServiceInspection;
 +
 +it.effect("invokes discovery and binds an approved pairing to the unchanged owner", () => Effect.gen(function* () {
 +  let inspections = 0;
@@ -542,7 +548,7 @@ index 00000000..75a4529a
 +  });
 +  assert.equal(inspections, 3);
 +  assert.deepEqual(paired, [owner.fingerprint]);
-+  assert.deepEqual(result, { _tag: "open", pairingLink: "t3code://pair?fixture", pairingRequested: true });
++  assert.deepEqual(result, { _tag: "open", pairingLink: "t3code://pair?fixture", pairingRequested: true, expectedOwner: owner });
 +}));
 +
 +it.effect.each([2, 3])("refuses an owner change at inspection %s", (changeAt) => Effect.gen(function* () {
@@ -553,7 +559,7 @@ index 00000000..75a4529a
 +    choose: () => Effect.succeed(0),
 +    pair: () => Effect.sync(() => { pairCount++; return "t3code://pair?fixture"; }),
 +  });
-+  assert.deepEqual(result, { _tag: "open", pairingLink: null, pairingRequested: true });
++  assert.deepEqual(result, { _tag: "open", pairingLink: null, pairingRequested: true, expectedOwner: owner });
 +  assert.equal(pairCount, changeAt === 2 ? 0 : 1);
 +}));
 +
@@ -587,16 +593,38 @@ index 00000000..75a4529a
 +    await rm(dir, { recursive: true, force: true });
 +  }
 +});
++
++it.effect("does not mint against an unknown or different source package", () => Effect.gen(function* () {
++  const incompatible = { ...owner, pairingCompatible: false };
++  const result = yield* prepareHomebrewServiceRecovery({
++    inspect: () => Effect.succeed(incompatible), choose: () => Effect.succeed(0),
++    pair: () => Effect.die("must not open the authentication database"),
++  });
++  assert.deepEqual(result, { _tag: "open", pairingLink: null, pairingRequested: true, expectedOwner: incompatible });
++}));
++
++it.effect("rechecks after settings/window work immediately before delivering the credential", () => Effect.gen(function* () {
++  const delivered: string[] = [];
++  for (const fingerprint of ["replacement-after-window-open", owner.fingerprint]) {
++    const accepted = yield* deliverHomebrewServicePairing({
++      expectedOwner: owner, pairingLink: "t3code://pair?fixture",
++      inspect: () => Effect.succeed({ ...owner, fingerprint }),
++      deliver: (link) => Effect.sync(() => { delivered.push(link); }),
++    });
++    assert.equal(accepted, fingerprint === owner.fingerprint);
++  }
++  assert.deepEqual(delivered, ["t3code://pair?fixture"]);
++}));
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 new file mode 100644
-index 00000000..e5fef84c
+index 00000000..12647e2f
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,45 @@
 +import * as Effect from "effect/Effect";
 +
 +export type HomebrewServiceInspection =
-+  | { readonly _tag: "verified"; readonly unit: string; readonly environmentId: string; readonly origin: string; readonly fingerprint: string }
++  | { readonly _tag: "verified"; readonly unit: string; readonly environmentId: string; readonly origin: string; readonly fingerprint: string; readonly pairingCompatible: boolean }
 +  | { readonly _tag: "inactive"; readonly unit: string }
 +  | { readonly _tag: "unverified" };
 +type VerifiedOwner = Extract<HomebrewServiceInspection, { _tag: "verified" }>;
@@ -611,16 +639,31 @@ index 00000000..e5fef84c
 +    if (owner._tag !== "verified") return owner;
 +    const choice = yield* actions.choose(owner);
 +    if (choice === 2 || (choice !== 0 && choice !== 1)) return { _tag: "quit" } as const;
-+    if (choice === 1) return { _tag: "open", pairingLink: null, pairingRequested: false } as const;
++    if (choice === 1) return { _tag: "open", pairingLink: null, pairingRequested: false, expectedOwner: null } as const;
++    if (!owner.pairingCompatible) return { _tag: "open", pairingLink: null, pairingRequested: true, expectedOwner: owner } as const;
 +
 +    const current = yield* actions.inspect();
 +    let pairingLink: string | null = null;
-+    if (current._tag === "verified" && current.unit === owner.unit && current.fingerprint === owner.fingerprint) {
++    if (current._tag === "verified" && current.unit === owner.unit && current.fingerprint === owner.fingerprint && current.pairingCompatible) {
 +      pairingLink = yield* actions.pair(owner.fingerprint);
 +      const finalOwner = yield* actions.inspect();
-+      if (finalOwner._tag !== "verified" || finalOwner.unit !== owner.unit || finalOwner.fingerprint !== owner.fingerprint) pairingLink = null;
++      if (finalOwner._tag !== "verified" || finalOwner.unit !== owner.unit || finalOwner.fingerprint !== owner.fingerprint || !finalOwner.pairingCompatible) pairingLink = null;
 +    }
-+    return { _tag: "open", pairingLink, pairingRequested: true } as const;
++    return { _tag: "open", pairingLink, pairingRequested: true, expectedOwner: owner } as const;
++  },
++);
++
++export const deliverHomebrewServicePairing = Effect.fn("homebrewServiceRecovery.deliver")(
++  function* (input: {
++    readonly expectedOwner: VerifiedOwner;
++    readonly pairingLink: string;
++    readonly inspect: () => Effect.Effect<HomebrewServiceInspection>;
++    readonly deliver: (link: string) => Effect.Effect<void>;
++  }) {
++    const current = yield* input.inspect();
++    if (current._tag !== "verified" || !current.pairingCompatible || current.unit !== input.expectedOwner.unit || current.fingerprint !== input.expectedOwner.fingerprint) return false;
++    yield* input.deliver(input.pairingLink);
++    return true;
 +  },
 +);
 diff --git a/apps/server/src/cli/pair.test.ts b/apps/server/src/cli/pair.test.ts
@@ -653,18 +696,18 @@ index e6264619..6cbf4dc0 100644
      withDescriptorServer(
        (origin) =>
 diff --git a/apps/server/src/cli/pair.ts b/apps/server/src/cli/pair.ts
-index 904182ad..ecb5030c 100644
+index 904182ad..64ed364e 100644
 --- a/apps/server/src/cli/pair.ts
 +++ b/apps/server/src/cli/pair.ts
 @@ -1,3 +1,7 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- Homebrew pairing binds local kernel ownership to the selected state directory.
-+import { join } from "node:path";
-+import { readHomebrewServerOwner } from "@t3tools/shared/homebrewServerOwner";
++import { join, dirname } from "node:path";
++import { readHomebrewServerOwner, readHomebrewDesktopPackage } from "@t3tools/shared/homebrewServerOwner";
 +import * as CliError from "effect/cli/CliError";
  import {
    type AuthEnvironmentScope,
    AuthStandardClientScopes,
-@@ -433,20 +437,44 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
+@@ -433,20 +437,45 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
    },
  );
  
@@ -674,10 +717,11 @@ index 904182ad..ecb5030c 100644
 +) {
 +  if (expected === undefined) return;
 +  const owner = yield* Effect.promise(() => readHomebrewServerOwner(stateDir));
-+  if (owner?.fingerprint !== expected) {
++  const embeddedPackage = yield* Effect.promise(() => readHomebrewDesktopPackage(join(dirname(process.execPath), "resources")));
++  if (owner?.fingerprint !== expected || embeddedPackage === null || owner.packageVersion !== embeddedPackage) {
 +    return yield* new CliError.UserError({
 +      cause: "homebrew-owner-changed",
-+      userMessage: "The verified Homebrew server changed. No pairing link was delivered; retry from Desktop.",
++      userMessage: "The verified Homebrew server changed or its source package does not match this Desktop. No pairing link was delivered; retry from Desktop.",
 +    });
 +  }
 +  return owner;
@@ -710,7 +754,7 @@ index 904182ad..ecb5030c 100644
    }).pipe(
      Effect.provide(
        EnvironmentAuth.layerRuntime.pipe(
-@@ -485,6 +513,10 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
+@@ -485,6 +514,10 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
  
  export const pairCommand = Command.make("pair", {
    baseDir: baseDirFlag,
@@ -721,7 +765,7 @@ index 904182ad..ecb5030c 100644
    scopes: authScopesFlag(AuthStandardClientScopes),
    ttl: ttlFlag,
    label: labelFlag,
-@@ -500,6 +532,16 @@ export const pairCommand = Command.make("pair", {
+@@ -500,6 +533,16 @@ export const pairCommand = Command.make("pair", {
        const logLevel = Option.getOrElse(cliLogLevel, () => "Warn" as const);
  
        const target = yield* discoverPairTarget(Option.getOrUndefined(flags.baseDir));
@@ -738,7 +782,7 @@ index 904182ad..ecb5030c 100644
        // Each protocol keeps auth in its own database, so a token minted here
        // for another protocol's server would never be accepted by it. Refuse
        // before any local layer opens (and migrates) that database.
-@@ -529,7 +571,7 @@ export const pairCommand = Command.make("pair", {
+@@ -529,7 +572,7 @@ export const pairCommand = Command.make("pair", {
          pairingBaseUrl = resolved.baseUrl;
          notes.push(...resolved.notes);
        } else {
@@ -747,7 +791,7 @@ index 904182ad..ecb5030c 100644
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
            notes.push(
              "This URL is only reachable from this machine. To reach it from your other devices, run `t3 up`, or re-run with --tailscale.",
-@@ -552,7 +594,9 @@ export const pairCommand = Command.make("pair", {
+@@ -552,7 +595,9 @@ export const pairCommand = Command.make("pair", {
          scopes: flags.scopes,
          ttl: flags.ttl,
          label: flags.label,
@@ -774,18 +818,18 @@ index 5d9a87ac..b5506477 100644
        "import": "./src/changedFileKind.ts"
 diff --git a/packages/shared/src/homebrewServerOwner.test.ts b/packages/shared/src/homebrewServerOwner.test.ts
 new file mode 100644
-index 00000000..dbda5634
+index 00000000..722c5b0c
 --- /dev/null
 +++ b/packages/shared/src/homebrewServerOwner.test.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,69 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- Tests exercise real Linux SQLite locks and listener ownership.
 +import { DatabaseSync } from "node:sqlite";
 +import { createServer } from "node:http";
-+import { mkdtemp, writeFile, rm } from "node:fs/promises";
++import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 +import { tmpdir } from "node:os";
 +import { join } from "node:path";
 +import { assert, it } from "@effect/vitest";
-+import { readHomebrewServerOwner, ownsSqliteLock } from "./homebrewServerOwner.ts";
++import { readHomebrewServerOwner, ownsSqliteLock, homebrewPackageFromEntry, readHomebrewDesktopPackage } from "./homebrewServerOwner.ts";
 +
 +it("requires the actual SQLite lock holder and its live listener, not stale metadata", async () => {
 +  const dir = await mkdtemp(join(tmpdir(), "t3-homebrew-owner-"));
@@ -823,15 +867,39 @@ index 00000000..dbda5634
 +  assert.isFalse(ownsSqliteLock({ locks: line, pid: 42, device: 32n, inode: 101n }));
 +  assert.isFalse(ownsSqliteLock({ locks: line.replace(": POSIX", ": -> POSIX"), pid: 42, device: 32n, inode: 100n }));
 +});
++
++it("requires the exact immutable package and expected Homebrew receipt source", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "t3-homebrew-package-"));
++  const version = "main.20261107124307.e455200077ce";
++  const keg = join(dir, "Cellar", "t3code-cli-main", version);
++  const entry = join(keg, "libexec", "dist", "bin.mjs");
++  const resources = join(dir, "resources");
++  try {
++    await mkdir(join(keg, "libexec", "dist"), { recursive: true });
++    await mkdir(resources);
++    await writeFile(entry, "export {};\n");
++    assert.isNull(await homebrewPackageFromEntry(entry));
++    await writeFile(join(keg, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap: "foreign/tools" } }));
++    assert.isNull(await homebrewPackageFromEntry(entry));
++    await writeFile(join(keg, "INSTALL_RECEIPT.json"), JSON.stringify({ source: { tap: "joshyorko/tools" } }));
++    assert.equal(await homebrewPackageFromEntry(entry), version);
++    assert.isNull(await homebrewPackageFromEntry(join(dir, "unknown-bin.mjs")));
++    assert.isNull(await readHomebrewDesktopPackage(resources));
++    await writeFile(join(resources, "t3-homebrew-build.json"), JSON.stringify({ packageVersion: version, sourceCommit: "f".repeat(40) }));
++    assert.isNull(await readHomebrewDesktopPackage(resources));
++    await writeFile(join(resources, "t3-homebrew-build.json"), JSON.stringify({ packageVersion: version, sourceCommit: "e455200077ce60806a01c8f28435b58860dcfc74" }));
++    assert.equal(await readHomebrewDesktopPackage(resources), version);
++  } finally { await rm(dir, { recursive: true, force: true }); }
++});
 diff --git a/packages/shared/src/homebrewServerOwner.ts b/packages/shared/src/homebrewServerOwner.ts
 new file mode 100644
-index 00000000..f7963124
+index 00000000..f92d7f06
 --- /dev/null
 +++ b/packages/shared/src/homebrewServerOwner.ts
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,113 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- Linux kernel lock and process identities are the trust boundary.
-+import { readFile, lstat, stat, readdir, readlink } from "node:fs/promises";
-+import { join } from "node:path";
++import { readFile, lstat, stat, readdir, readlink, realpath } from "node:fs/promises";
++import { join, dirname } from "node:path";
 +
 +const processStart = async (pid: number): Promise<string | null> => {
 +  const value = await readFile(`/proc/${pid}/stat`, "utf8");
@@ -873,6 +941,42 @@ index 00000000..f7963124
 +  return sockets.some((socket) => listeners.has(socket.match(/^socket:\[(\d+)\]$/u)?.[1]));
 +};
 +
++const packageVersionPattern = /^main\.\d{14}\.[0-9a-f]{12}$/u;
++
++export async function readHomebrewDesktopPackage(resourcesPath: string): Promise<string | null> {
++  try {
++    const value: unknown = JSON.parse(await readFile(join(resourcesPath, "t3-homebrew-build.json"), "utf8"));
++    if (typeof value !== "object" || value === null ||
++      !("packageVersion" in value) || typeof value.packageVersion !== "string" || !packageVersionPattern.test(value.packageVersion) ||
++      !("sourceCommit" in value) || typeof value.sourceCommit !== "string" || !/^[0-9a-f]{40}$/u.test(value.sourceCommit) ||
++      !value.packageVersion.endsWith("." + value.sourceCommit.slice(0, 12))) return null;
++    return value.packageVersion;
++  } catch { return null; }
++}
++
++export async function homebrewPackageFromEntry(entry: string): Promise<string | null> {
++  const raw = entry.match(/^(.*\/Cellar\/t3code-cli-main\/)([^/]+)\/libexec\/dist\/(?:bin|index)\.mjs$/u);
++  if (raw === null || !packageVersionPattern.test(raw[2] ?? "")) return null;
++  try {
++    const canonical = await realpath(entry);
++    const actual = canonical.match(/^(.*\/Cellar\/t3code-cli-main\/)([^/]+)\/libexec\/dist\/(?:bin|index)\.mjs$/u);
++    if (actual === null || actual[2] !== raw[2]) return null;
++    const receipt: unknown = JSON.parse(await readFile(join(dirname(dirname(dirname(canonical))), "INSTALL_RECEIPT.json"), "utf8"));
++    if (typeof receipt !== "object" || receipt === null || !("source" in receipt) ||
++      typeof receipt.source !== "object" || receipt.source === null || !("tap" in receipt.source) || receipt.source.tap !== "joshyorko/tools") return null;
++    return actual[2] ?? null;
++  } catch { return null; }
++}
++
++const processPackage = async (pid: number): Promise<string | null> => {
++  const args = (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0");
++  for (const arg of args) {
++    const version = await homebrewPackageFromEntry(arg);
++    if (version !== null) return version;
++  }
++  return null;
++};
++
 +export async function readHomebrewServerOwner(stateDir: string) {
 +  if (process.platform !== "linux" || !process.getuid) return null;
 +  try {
@@ -896,11 +1000,12 @@ index 00000000..f7963124
 +    const after = await lstat(lockPath, { bigint: true });
 +    if (!environmentId || before.dev !== after.dev || before.ino !== after.ino ||
 +      start !== await processStart(runtime.pid) || runtimeRaw !== await readFile(runtimePath, "utf8")) return null;
++    const packageVersion = await processPackage(runtime.pid);
 +    const fingerprint = JSON.stringify({
 +      pid: runtime.pid, start, device: before.dev.toString(), inode: before.ino.toString(),
-+      ownerId: runtime.ownerId, environmentId, origin: runtime.origin,
++      ownerId: runtime.ownerId, environmentId, origin: runtime.origin, packageVersion,
 +    });
-+    return { pid: runtime.pid, environmentId, origin: runtime.origin, fingerprint };
++    return { pid: runtime.pid, environmentId, origin: runtime.origin, fingerprint, packageVersion };
 +  } catch {
 +    return null;
 +  }

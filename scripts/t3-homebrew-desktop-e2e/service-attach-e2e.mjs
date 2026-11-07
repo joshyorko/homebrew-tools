@@ -16,7 +16,8 @@ const t3Home = home + "/.t3"
 const stateDir = t3Home + "/userdata"
 const appDir = root + "/squashfs-root"
 const appRun = appDir + "/AppRun"
-const serverEntry = appDir + "/resources/app.asar/apps/server/dist/bin.mjs"
+const bundledServerEntry = appDir + "/resources/app.asar/apps/server/dist/bin.mjs"
+let serverEntry = bundledServerEntry
 const runtimeStatePath = stateDir + "/server-runtime.json"
 const environmentIdPath = stateDir + "/environment-id"
 const markerPaths = [
@@ -49,6 +50,14 @@ for (const path of [home, stateDir, root + "/fakebin", root + "/config", root + 
 const originalDesktopSettings = JSON.stringify({ localEnvironmentEnabled: true, linuxPasswordStore: "basic", updateChannel: "latest", updateChannelConfiguredByUser: true }) + "\n"
 await writeFile(stateDir + "/desktop-settings.json", originalDesktopSettings)
 for (const marker of markerPaths) await writeFile(marker, marker.includes("history") ? "history-marker-v1" : "credential-marker-v1")
+
+const buildIdentity = JSON.parse(await readFile(appDir + "/resources/t3-homebrew-build.json", "utf8"))
+const runningPackageVersion = scenario === "package-mismatch" ? "main.20000101000000.aaaaaaaaaaaa" : buildIdentity.packageVersion
+const activeKeg = root + "/homebrew/Cellar/t3code-cli-main/" + runningPackageVersion
+serverEntry = activeKeg + "/libexec/dist/bin.mjs"
+await mkdir(activeKeg + "/libexec/dist", { recursive: true })
+await writeFile(serverEntry, "import " + JSON.stringify(bundledServerEntry) + "\n")
+await writeFile(activeKeg + "/INSTALL_RECEIPT.json", JSON.stringify({ source: { tap: "joshyorko/tools", version: runningPackageVersion } }))
 
 const unitPath = "/tmp/t3-ui-test/homebrew/opt/t3code-cli-main/bin/t3"
 await mkdir(unitPath.slice(0, unitPath.lastIndexOf("/")), { recursive: true })
@@ -255,6 +264,14 @@ const clickNativeDialog = async (title) => {
   })
   const windowId = result.stdout.trim().split(/\s+/u).at(-1)
   assert.ok(windowId, `native dialog did not appear: ${title}`)
+  if (title === "Homebrew T3 service is already running") {
+    const capture = await app.evaluate(async ({ desktopCapturer }) => {
+      const screens = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1280, height: 900 } })
+      if (!screens[0]) throw new Error("No Xvfb screen was captured")
+      return screens[0].thumbnail.toPNG().toString("base64")
+    })
+    await writeFile(root + "/owner-dialog.png", Buffer.from(capture, "base64"))
+  }
   await exec("xdotool", ["windowfocus", windowId], { timeout: 5000 })
   await exec("xdotool", ["key", "--window", windowId, "Return"], { timeout: 5000 })
 }
@@ -301,6 +318,21 @@ const connectAndVerify = async () => {
   return { ...firstReport, repeatWebsocketUrl: repeatSocket }
 }
 
+const verifyPackageMismatch = async () => {
+  app = await launchDesktop()
+  await clickNativeDialog("Homebrew T3 service is already running")
+  await clickNativeDialog("Could not create a pairing link")
+  const page = await app.firstWindow({ timeout: 90_000 })
+  await page.waitForLoadState("domcontentloaded")
+  await page.screenshot({ path: root + "/package-mismatch.png" })
+  assert.equal(JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8")).localEnvironmentEnabled, false)
+  assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
+  await checkPreserved()
+  await app.close()
+  app = null
+  return { attached: false, differentPackageRefused: true }
+}
+
 const verifyUnknownOwner = async () => {
   app = await launchDesktop()
   await clickNativeDialog("T3 home owner could not be verified")
@@ -321,7 +353,8 @@ try {
   const runtime = JSON.parse(await readFile(runtimeStatePath, "utf8"))
   const descriptor = await fetch(new URL("/.well-known/t3/environment", runtime.origin)).then((response) => response.json())
   assert.equal(descriptor.environmentId, environmentId)
-  const result = scenario === "unknown-owner" ? await verifyUnknownOwner() : await connectAndVerify()
+  const result = scenario === "unknown-owner" ? await verifyUnknownOwner()
+    : scenario === "package-mismatch" ? await verifyPackageMismatch() : await connectAndVerify()
   await writeFile(root + "/report.json", JSON.stringify({
     scenario,
     packageVersion: JSON.parse(await readFile(appDir + "/resources/t3-homebrew-build.json", "utf8")).packageVersion,
@@ -331,7 +364,7 @@ try {
     existingProjectAndIdleThreadPreserved: true,
     existingBearerCredentialAuthenticated: true,
     syntheticMarkersPreserved: true,
-    originalDesktopSettingsBackedUp: scenario === "service-attach",
+    originalDesktopSettingsBackedUp: scenario !== "unknown-owner",
     isolatedHome: true,
     network: "none",
     systemd: "fake user-unit metadata",
