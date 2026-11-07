@@ -38,7 +38,6 @@ import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
 import {
   artifactCheckPlan,
-  buzzArtifactVerificationCommands,
   rejectForbiddenShaCommand,
   t3CliConnectGateChecks,
   t3PublicConnectAsarChecks,
@@ -231,11 +230,6 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Casks\" \"$tap_dir/Formula\"",
         "cp /tap/Casks/devsy-desktop.rb \"$tap_dir/Casks/\"",
         "cp /tap/Formula/devsy.rb \"$tap_dir/Formula/\"",
-      ]
-    case "buzz-linux":
-      return [
-        "mkdir -p \"$tap_dir/Casks\"",
-        "cp /tap/Casks/buzz-linux.rb \"$tap_dir/Casks/\"",
       ]
     case "fizzy-cli-master":
       return [
@@ -655,8 +649,6 @@ export class TapPipeline {
         return `devsy-${version}`
       case "devsy-desktop":
         return `devsy-desktop-${version.split(",", 1)[0]}`
-      case "buzz-linux":
-        return `buzz-linux-${version.replace(/,/g, "-")}`
       case "t3code-cli-main":
         return `t3code-cli-main-${version}`
       case "fizzy-cli-master":
@@ -3137,87 +3129,6 @@ end
       ...plan.commands,
     ]
 
-    if (packageId === "buzz-linux") {
-      const metadataOutput = await dag
-        .container()
-        .from(BREW_IMAGE)
-        .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-        .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-        .withDirectory("/tap", tap)
-        .withExec([
-          "bash",
-          "-lc",
-          [
-            "set -euo pipefail",
-            "repo=$(brew --repository)",
-            "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-            ...tapStagingCommands("buzz-linux"),
-            "brew trust --cask test/tap/buzz-linux >/dev/null",
-            "brew info --json=v2 --cask test/tap/buzz-linux",
-          ].join("\n"),
-        ])
-        .stdout()
-      const metadata = JSON.parse(metadataOutput) as {
-        casks?: Array<{ url?: unknown; sha256?: unknown }>
-      }
-      const buzzCask = metadata.casks?.[0]
-      const url = typeof buzzCask?.url === "string" ? buzzCask.url : ""
-      const sha256 = typeof buzzCask?.sha256 === "string" ? buzzCask.sha256 : ""
-      if (!/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
-        throw new Error("buzz-linux committed cask is missing an immutable AppImage URL or checksum")
-      }
-
-      const artifactContainer = await dag
-        .container()
-        .from(BREW_IMAGE)
-        .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-        .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-        .withDirectory("/tap", tap)
-        .withUser("linuxbrew")
-        .withExec([
-          "bash",
-          "-lc",
-          [
-            "set -euxo pipefail",
-            "repo=$(brew --repository)",
-            "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-            ...tapStagingCommands("buzz-linux"),
-            "brew trust --cask test/tap/buzz-linux",
-            "brew install --cask test/tap/buzz-linux",
-            "artifact=$(brew --cache --cask test/tap/buzz-linux)",
-            "test -s \"$artifact\"",
-            "cp \"$artifact\" /tmp/Buzz.AppImage",
-          ].join("\n"),
-        ])
-        .sync()
-      const artifact = artifactContainer.file("/tmp/Buzz.AppImage")
-      await Promise.all(["ubuntu:24.04", "fedora:latest", "archlinux:latest"].map((image) =>
-        dag
-          .container()
-          .from(image)
-          .withEnvVariable("APPIMAGE_EXTRACT_AND_RUN", "1")
-          .withFile("/tmp/Buzz.AppImage", artifact)
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euxo pipefail",
-              `printf '%s  /tmp/Buzz.AppImage\\n' '${sha256}' | sha256sum -c -`,
-              ...buzzArtifactVerificationCommands("/tmp/Buzz.AppImage").slice(1),
-            ].join("\n"),
-          ])
-          .sync(),
-      ))
-
-      checks.push(
-        `appimage_count=$(find "$(brew --prefix)/Caskroom/buzz-linux" -type f -name '*.AppImage' | wc -l)`,
-        "test \"$appimage_count\" -eq 1",
-        `appimage=$(find "$(brew --prefix)/Caskroom/buzz-linux" -type f -name '*.AppImage' -print -quit)`,
-        "APPIMAGE_EXTRACT_AND_RUN=1 \"$appimage\" --appimage-extract >/dev/null",
-        "test ! -e squashfs-root/usr/etc/fonts/fonts.conf",
-      )
-    }
-
     return container
       .withExec(["bash", "-lc", checks.join("\n")])
       .stdout()
@@ -4182,21 +4093,6 @@ end
       if (!selectedT3SourceVersion?.endsWith(`.${selectedT3SourceRef.slice(0, 12)}`)) {
         throw new Error("T3 source version does not identify the selected commit")
       }
-    }
-
-    if (packageId === "buzz-linux") {
-      const entry = this.packageEntry(packageId)
-      if (entry.upstream.kind !== "github_release") {
-        throw new Error("Expected GitHub release upstream for buzz-linux")
-      }
-      const version = await this.resolveUpstreamVersion(packageId)
-      const sourceRef = await dag.git(entry.upstream.repo).tag(`desktop-v${version}`).commit()
-      return dag.buzzLinuxSmoke().releaseBundle(tap, {
-        sourceRepository: entry.upstream.repo,
-        sourceRef,
-        version,
-        revision: "1",
-      })
     }
 
     const ciLog = await this.ciCheck(

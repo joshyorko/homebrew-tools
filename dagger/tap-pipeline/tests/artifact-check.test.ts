@@ -1,13 +1,12 @@
 import assert from "node:assert/strict"
-import { execFileSync, spawnSync } from "node:child_process"
-import { mkdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
 import test from "node:test"
 
 import { PACKAGE_REGISTRY } from "../src/library.ts"
-import { artifactCheckPlan, buzzArtifactVerificationCommands, rejectForbiddenShaCommand } from "../src/install-checks.ts"
+import { artifactCheckPlan, rejectForbiddenShaCommand } from "../src/install-checks.ts"
 
 const PACKAGE_IDS = PACKAGE_REGISTRY.map((entry) => entry.id)
 
@@ -65,74 +64,9 @@ test("forbidden checksum markers stop an artifact check", () => {
   }
 })
 
-test("Buzz artifact verification keeps the existing portable runtime assertions", () => {
-  const commands = buzzArtifactVerificationCommands("/tmp/Buzz.AppImage")
-  const script = commands.join("\n")
-  const buzzSource = readFileSync(new URL("../../buzz-linux-smoke/src/index.ts", import.meta.url), "utf8")
-
-  for (const marker of [
-    "squashfs-root/AppRun",
-    "squashfs-root/usr/bin/buzz-desktop",
-    "squashfs-root/usr/bin/buzz-desktop.bin",
-    "GST_PLUGIN_SYSTEM_PATH_1_0",
-    'unset "$var"',
-    "libwayland-client.so",
-    "libglib-2.0.so",
-    "libgst*.so",
-  ]) {
-    assert.ok(script.includes(marker), marker)
-    assert.ok(marker.startsWith("unset") ? buzzSource.includes("unset") : buzzSource.includes(marker), `Buzz source lost ${marker}`)
-  }
-})
-
-test("Buzz cask uses the structured flight-step DSL", () => {
-  const caskUrl = new URL("../../../Casks/buzz-linux.rb", import.meta.url)
-  const caskPath = fileURLToPath(caskUrl)
-  execFileSync("ruby", ["-c", caskPath], { stdio: "pipe" })
-  const cask = readFileSync(caskUrl, "utf8")
-  const preflightStart = cask.indexOf("  preflight_steps do")
-  const zapStart = cask.indexOf("\n  zap trash:", preflightStart)
-
-  assert.notEqual(preflightStart, -1, "Buzz cask preflight steps are missing")
-  assert.notEqual(zapStart, -1, "Buzz cask flight-step boundary is missing")
-  const flightSteps = cask.slice(preflightStart, zapStart)
-
-  assert.match(flightSteps, /{{staged_path}}/)
-  assert.doesNotMatch(flightSteps, /#\{staged_path\}/)
-  assert.doesNotMatch(flightSteps, /\bFileUtils\b|\bFile\.(?:read|write|file\?)|^\s*system\b/m)
-  assert.match(flightSteps, /writable_paths: \["\.config", "\.local\/share\/applications"\]/)
-  assert.match(flightSteps, /{{HOMEBREW_PREFIX}}\/bin\/xdg-mime/)
-  assert.match(flightSteps, /{{HOMEBREW_PREFIX}}\/bin\/update-desktop-database/)
-})
-
-test("Buzz Brew runtime bootstrap uses the Ubuntu 24.04 runtime package name", () => {
-  const buzzSource = readFileSync(new URL("../../buzz-linux-smoke/src/index.ts", import.meta.url), "utf8")
-  assert.match(buzzSource, /desktop-file-utils xdg-utils libasound2t64 libgtk-3-0/)
-  assert.doesNotMatch(buzzSource, /apt-get install[^\n]*desktop-file-utils[^\n]*\blibasound2\b/)
-  assert.ok(artifactCheckPlan("buzz-linux").systemPackages.includes("libwayland-server0"))
-})
-
 test("dictation artifact checks provision the same runtime libraries as source CI", () => {
   for (const dependency of ["libasound2t64", "libvulkan1", "libxkbcommon0"]) {
     assert.ok(artifactCheckPlan("voxtype").systemPackages.includes(dependency), dependency)
   }
   assert.ok(artifactCheckPlan("eitype").systemPackages.includes("libxkbcommon0"))
-})
-
-test("Buzz forbidden bundled libraries stop verification before later commands", () => {
-  const root = mkdtempSync(join(tmpdir(), "buzz-forbidden-libraries-"))
-  try {
-    mkdirSync(join(root, "squashfs-root/usr/lib"), { recursive: true })
-    const command = buzzArtifactVerificationCommands("/tmp/Buzz.AppImage")
-      .find((value) => value.includes("libglib-2.0.so"))
-    assert.ok(command)
-    const run = () => spawnSync("bash", ["-c", `set -euo pipefail\n${command}\nprintf continued`], { cwd: root, encoding: "utf8" })
-    assert.equal(run().status, 0)
-    writeFileSync(join(root, "squashfs-root/usr/lib/libglib-2.0.so.0"), "forbidden")
-    const rejected = run()
-    assert.equal(rejected.status, 1)
-    assert.equal(rejected.stdout, "")
-  } finally {
-    rmSync(root, { recursive: true, force: true })
-  }
 })

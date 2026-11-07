@@ -186,7 +186,7 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 }
 
 export function packagedVersionForUpstreamComparison(packageId: string, version: string): string {
-  return ["buzz-linux", "devsy-desktop", "t3-code-linux"].includes(packageId) ? version.split(",", 1)[0] : version
+  return ["devsy-desktop", "t3-code-linux"].includes(packageId) ? version.split(",", 1)[0] : version
 }
 
 export function codexDesktopBuildVersion(
@@ -312,20 +312,6 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
       kind: "github_release",
       repo: "https://github.com/devsy-org/devsy",
       assetName: "Devsy_linux_x86_64.AppImage",
-    },
-  },
-  {
-    id: "buzz-linux",
-    kind: "source_build_rust_appimage_cask",
-    homebrewPath: "Casks/buzz-linux.rb",
-    supportsPrCi: true,
-    autoUpdate: {
-      kind: "github_release_latest_tag",
-      stripPrefix: "desktop-v",
-    },
-    upstream: {
-      kind: "github_release",
-      repo: "https://github.com/block/buzz",
     },
   },
   {
@@ -627,7 +613,6 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["rcc", ["Casks/rcc.rb"]],
   ["action-server", ["Casks/action-server.rb"]],
   ["devpod-linux", ["Casks/devpod-linux.rb", "Formula/devpod-appindicator-runtime-tools.rb"]],
-  ["buzz-linux", ["Casks/buzz-linux.rb", "dagger/buzz-linux-smoke/"]],
   ["t3-code-linux", ["Casks/t3-code-linux.rb", "scripts/check-t3-connect-asar.mjs"]],
 ]
 
@@ -642,7 +627,6 @@ const RUNTIME_INPUT_PATHS: Array<[string, string]> = [
 
 const KNOWN_REGRESSION_TEST_PATHS = [
   /^dagger\/tap-pipeline\/tests\/[^/]+\.test\.ts$/,
-  /^dagger\/buzz-linux-smoke\/tests\/[^/]+\.test\.mjs$/,
 ]
 
 function pathMatches(path: string, prefix: string): boolean {

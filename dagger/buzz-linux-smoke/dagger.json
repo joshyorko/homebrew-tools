@@ -1,7 +1,0 @@
-{
-  "name": "buzz-linux-smoke",
-  "engineVersion": "v0.21.7",
-  "sdk": {
-    "source": "typescript"
-  }
-}
