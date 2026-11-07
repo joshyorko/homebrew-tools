@@ -11,7 +11,7 @@ function checkCall(args, expectedUsage, expectedArguments) {
   const output = execFileSync(
     "dagger",
     ["--silent", "-m", modulePath, "call", ...args, "--help"],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: 180_000 },
   )
 
   assert.ok(output.includes(expectedUsage), `expected generated CLI usage ${expectedUsage}`)
@@ -44,3 +44,9 @@ for (const packageId of ["t3code-cli-main", "t3-code-linux"]) {
     )
   }
 }
+
+checkCall(
+  ["t-3-code-linux-candidate", `--t-3-source-ref=${sourceRef}`, `--t-3-source-version=${sourceVersion}`],
+  "dagger call t-3-code-linux-candidate",
+  ["--t-3-source-ref string", "--t-3-source-version string"],
+)

@@ -2659,6 +2659,8 @@ end
           "install -m 0755 /tap/scripts/t3-homebrew-update.sh /upstream/apps/desktop/resources/t3-homebrew-update.sh",
           "git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch",
           "git -C /upstream apply /tap/patches/t3-homebrew-desktop-update.patch",
+          "git -C /upstream apply --check /tap/patches/t3-homebrew-service-attach.patch",
+          "git -C /upstream apply /tap/patches/t3-homebrew-service-attach.patch",
         ].join("\n"),
       ])
       .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-build.json", JSON.stringify({ packageVersion: resolvedVersion, sourceCommit: commit }))
@@ -2674,9 +2676,15 @@ end
         "--passWithNoTests",
         "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
         "apps/desktop/src/updates/DesktopUpdates.test.ts",
+        "apps/desktop/src/backend/HomebrewServiceOwnership.test.ts",
+        "apps/desktop/src/backend/HomebrewServiceRecovery.test.ts",
+        "apps/desktop/src/backend/DesktopBackendPool.test.ts",
+        "packages/shared/src/homebrewServerOwner.test.ts",
+        "apps/server/src/cli/pair.test.ts",
         "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
         "apps/web/src/components/desktopUpdate.logic.test.ts",
       ])
+      .withExec(["node", "/tap/scripts/check-t3-source-types.mjs", "/upstream", "/tap/patches/t3-homebrew-service-attach.patch", "/tmp/t3-source-typechecks"])
       .withExec([
         "pnpm",
         "dist:desktop:linux",
@@ -3129,6 +3137,19 @@ end
     return container
       .withExec(["bash", "-lc", checks.join("\n")])
       .stdout()
+  }
+
+  @func()
+  async t3CodeLinuxCandidate(
+    t3SourceRef?: string,
+    t3SourceVersion?: string,
+  ): Promise<File> {
+    const build = await this.buildT3CodeArtifact(
+      this.source,
+      t3SourceRef || "main",
+      t3SourceVersion,
+    )
+    return build.container.file(build.artifactPath)
   }
 
   @func()
