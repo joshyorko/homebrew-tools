@@ -19,7 +19,7 @@ index 2b2dd841..ae05784e 100644
          ElectronDialog.layer,
          ElectronApp.layer,
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..97a0230a 100644
+index 77a4aa99..cdc51c7a 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
 @@ -1,4 +1,7 @@
@@ -49,7 +49,7 @@ index 77a4aa99..97a0230a 100644
  
      // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
      const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
-@@ -174,12 +182,59 @@ export const layer = Layer.effect(
+@@ -174,12 +182,60 @@ export const layer = Layer.effect(
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
        onStateDirOwned: () =>
@@ -75,6 +75,7 @@ index 77a4aa99..97a0230a 100644
 +          });
 +          if (recovery._tag === "quit") return yield* electronApp.quit;
 +          if (recovery._tag === "open") {
++            yield* HomebrewServiceOwnerProbe.backupHomebrewDesktopSettings();
 +            yield* appSettings.setLocalEnvironmentEnabled(false);
 +            yield* desktopWindow.createMainIfBackendReady;
 +            if (recovery.pairingLink !== null) {
@@ -105,7 +106,7 @@ index 77a4aa99..97a0230a 100644
 +              Effect.andThen(
 +                electronDialog.showErrorBox(
 +                  "T3 home owner could not be verified",
-+                  "Desktop could not verify the process using this T3 home. No service was stopped and no data was changed.",
++                  "Recovery could not complete. The existing service was not stopped. Review the Desktop logs before retrying.",
 +                ),
 +              ),
 +              Effect.andThen(electronApp.quit),
@@ -117,12 +118,13 @@ index 77a4aa99..97a0230a 100644
      const instancesRef = yield* SynchronizedRef.make<
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 new file mode 100644
-index 00000000..181045c4
+index 00000000..b4cf90de
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,258 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- `/proc/<pid>` ownership identifies the locked state owner on Linux.
-+import { stat } from "node:fs/promises";
++import { stat, readFile, open } from "node:fs/promises";
++import { randomUUID } from "node:crypto";
 +import * as Duration from "effect/Duration";
 +import * as Effect from "effect/Effect";
 +import * as FileSystem from "effect/FileSystem";
@@ -350,6 +352,34 @@ index 00000000..181045c4
 +    return null;
 +  }
 +});
++
++class HomebrewSettingsBackupError extends Schema.TaggedError<HomebrewSettingsBackupError>()(
++  "HomebrewSettingsBackupError", { cause: Schema.Defect() },
++) {}
++
++export async function backupDesktopSettingsFile(settingsPath: string) {
++  let original: Uint8Array;
++  try {
++    original = await readFile(settingsPath);
++  } catch (error) {
++    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return null;
++    throw error;
++  }
++  const backupPath = `${settingsPath}.before-homebrew-attach-${randomUUID()}.bak`;
++  const backup = await open(backupPath, "wx", 0o600);
++  try { await backup.writeFile(original); } finally { await backup.close(); }
++  return backupPath;
++}
++
++export const backupHomebrewDesktopSettings = Effect.fn("homebrewServiceOwnership.backupSettings")(
++  function* () {
++    const environment = yield* DesktopEnvironment.DesktopEnvironment;
++    return yield* Effect.tryPromise({
++      try: () => backupDesktopSettingsFile(environment.desktopSettingsPath),
++      catch: (cause) => new HomebrewSettingsBackupError({ cause }),
++    });
++  },
++);
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
 new file mode 100644
 index 00000000..ad9f57e8
@@ -487,10 +517,15 @@ index 00000000..93c84a1d
 +}
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 new file mode 100644
-index 00000000..4bc40830
+index 00000000..75a4529a
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,66 @@
++// @effect-diagnostics nodeBuiltinImport:off -- Backup assertions exercise actual private Desktop settings files.
++import { mkdtemp, writeFile, readFile, stat, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { backupDesktopSettingsFile } from "./HomebrewServiceOwnerProbe.ts";
 +import { assert, it } from "@effect/vitest";
 +import * as Effect from "effect/Effect";
 +import { prepareHomebrewServiceRecovery, type HomebrewServiceInspection } from "./HomebrewServiceRecovery.ts";
@@ -532,6 +567,26 @@ index 00000000..4bc40830
 +    assert.equal(result._tag, inspection._tag === "verified" ? "quit" : "unverified");
 +  }
 +}));
++
++it("backs up the exact Desktop-only settings privately without overwriting earlier backups", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "t3-desktop-settings-backup-"));
++  const settingsPath = join(dir, "desktop-settings.json");
++  const original = '{"localEnvironmentEnabled":true,"customExistingKey":"preserved"}\n';
++  try {
++    assert.isNull(await backupDesktopSettingsFile(settingsPath));
++    await writeFile(settingsPath, original);
++    const first = await backupDesktopSettingsFile(settingsPath);
++    const second = await backupDesktopSettingsFile(settingsPath);
++    if (first === null || second === null) throw new Error("Expected backups");
++    assert.notEqual(first, second);
++    assert.equal(await readFile(first, "utf8"), original);
++    assert.equal(await readFile(second, "utf8"), original);
++    assert.equal(await readFile(settingsPath, "utf8"), original);
++    assert.equal((await stat(first)).mode & 0o777, 0o600);
++  } finally {
++    await rm(dir, { recursive: true, force: true });
++  }
++});
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 new file mode 100644
 index 00000000..e5fef84c

@@ -1,5 +1,5 @@
 import { _electron as electron } from "/runner/node_modules/playwright-core/index.mjs"
-import { mkdir, copyFile, chmod, writeFile, readFile, stat } from "node:fs/promises"
+import { mkdir, copyFile, chmod, writeFile, readFile, stat, readdir } from "node:fs/promises"
 import { watch } from "node:fs"
 import { createHash } from "node:crypto"
 import { promisify } from "node:util"
@@ -46,6 +46,8 @@ await exec(root + "/candidate.AppImage", ["--appimage-extract"], {
 for (const path of [home, stateDir, root + "/fakebin", root + "/config", root + "/state", root + "/runtime", root + "/data"]) {
   await mkdir(path, { recursive: true, mode: 0o700 })
 }
+const originalDesktopSettings = JSON.stringify({ localEnvironmentEnabled: true, linuxPasswordStore: "basic", updateChannel: "latest", updateChannelConfiguredByUser: true }) + "\n"
+await writeFile(stateDir + "/desktop-settings.json", originalDesktopSettings)
 for (const marker of markerPaths) await writeFile(marker, marker.includes("history") ? "history-marker-v1" : "credential-marker-v1")
 
 const unitPath = "/tmp/t3-ui-test/homebrew/opt/t3code-cli-main/bin/t3"
@@ -270,6 +272,10 @@ const connectAndVerify = async () => {
   assert.equal(connected, false)
   const settings = JSON.parse(await readFile(stateDir + "/desktop-settings.json", "utf8"))
   assert.equal(settings.localEnvironmentEnabled, false)
+  const backups = (await readdir(stateDir)).filter((name) => name.startsWith("desktop-settings.json.before-homebrew-attach-"))
+  assert.equal(backups.length, 1)
+  assert.equal(await readFile(stateDir + "/" + backups[0], "utf8"), originalDesktopSettings)
+  assert.equal((await stat(stateDir + "/" + backups[0])).mode & 0o777, 0o600)
 
   const registry = JSON.parse(await readFile(stateDir + "/saved-environments.json", "utf8"))
   const saved = registry.records?.find((record) => record.environmentId === environmentId)
@@ -303,7 +309,8 @@ const verifyUnknownOwner = async () => {
   await app.close().catch(() => {})
   app = null
   await checkPreserved()
-  assert.equal(await readFile(stateDir + "/desktop-settings.json").then(() => true, () => false), false)
+  assert.equal(await readFile(stateDir + "/desktop-settings.json", "utf8"), originalDesktopSettings)
+  assert.equal((await readdir(stateDir)).some((name) => name.includes(".before-homebrew-attach-")), false)
   assert.equal(await readFile(stateDir + "/saved-environments.json").then(() => true, () => false), false)
   return { owner: "unverified", attached: false, settingsChanged: false }
 }
@@ -324,6 +331,7 @@ try {
     existingProjectAndIdleThreadPreserved: true,
     existingBearerCredentialAuthenticated: true,
     syntheticMarkersPreserved: true,
+    originalDesktopSettingsBackedUp: scenario === "service-attach",
     isolatedHome: true,
     network: "none",
     systemd: "fake user-unit metadata",

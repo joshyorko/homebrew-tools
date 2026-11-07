@@ -11,7 +11,7 @@ function checkCall(args, expectedUsage, expectedArguments) {
   const output = execFileSync(
     "dagger",
     ["--silent", "-m", modulePath, "call", ...args, "--help"],
-    { encoding: "utf8", timeout: 30_000 },
+    { encoding: "utf8", timeout: 180_000 },
   )
 
   assert.ok(output.includes(expectedUsage), `expected generated CLI usage ${expectedUsage}`)

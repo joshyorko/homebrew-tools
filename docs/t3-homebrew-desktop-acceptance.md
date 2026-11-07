@@ -61,7 +61,8 @@ checks the verified-service recovery choice, the in-app pairing confirmation,
 connection to the same environment ID, saved reconnection on a repeat launch,
 and preservation of an existing project, idle thread, and a pre-existing bearer
 credential that remains authenticated through the real service API. Synthetic
-file markers and the ownership-lock inode are checked as additional evidence. A second case
+file markers, the ownership-lock inode, and a private byte-for-byte backup of
+Desktop-only settings are checked as additional evidence. A second case
 uses an unrecognized service command and verifies Desktop does not change its
 settings or attach to that owner.
 
