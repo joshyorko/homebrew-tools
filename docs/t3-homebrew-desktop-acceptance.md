@@ -50,3 +50,37 @@ real formula/cask pair and verifies the shipped helper and manifest.
 No live Dakota installation, service, `~/.t3`, credentials or routes were
 changed. This PR does not publish a patched AppImage; it ships through a later
 normal paired package build after integration.
+
+## Homebrew service attach acceptance
+
+The issue-175 recovery path is exercised against a source-built AppImage and a
+fresh isolated T3 home. The fixture starts a real packaged T3 server inside a
+network-disabled container, supplies synthetic same-user systemd metadata, and
+launches the packaged Desktop with its default local environment enabled. It
+checks the verified-service recovery choice, the in-app pairing confirmation,
+connection to the same environment ID, saved reconnection on a repeat launch,
+and preservation of synthetic history and credential markers. A second case
+uses an unrecognized service command and verifies Desktop does not change its
+settings or attach to that owner.
+
+Build and export the candidate AppImage with the repository's Dagger module,
+then run both isolated cases with fresh evidence directories:
+
+```bash
+git_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+dagger -m ./dagger/tap-pipeline call \
+  --source=. --git-dir="$git_dir" \
+  t-3-code-linux-candidate \
+  --t-3-source-ref=<40-hex-upstream-commit> \
+  --t-3-source-version=<paired-version> \
+  export --path=/tmp/t-3-code-linux-candidate.AppImage
+bash scripts/t3-homebrew-desktop-e2e/run.sh \
+  /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-service-attach service-attach
+bash scripts/t3-homebrew-desktop-e2e/run.sh \
+  /tmp/t-3-code-linux-candidate.AppImage /tmp/t3-unknown-owner unknown-owner
+```
+
+Each runner has no network, a private home, a 4 GiB memory cap, a 256-process
+cap, and a 240-second deadline. It removes only its own container and image.
+The `report.json`, screenshots and logs are generated evidence; they do not
+prove behavior on a live Homebrew installation or systemd manager.

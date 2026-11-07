@@ -1,0 +1,450 @@
+diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
+index 77a4aa99..d826e1e6 100644
+--- a/apps/desktop/src/backend/DesktopBackendPool.ts
++++ b/apps/desktop/src/backend/DesktopBackendPool.ts
+@@ -19,9 +19,11 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
+ import * as DesktopState from "../app/DesktopState.ts";
+ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
++import * as DesktopWebLinks from "../app/DesktopWebLinks.ts";
+ import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
+ import * as DesktopWindow from "../window/DesktopWindow.ts";
+ import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
++import * as HomebrewServiceOwnerProbe from "./HomebrewServiceOwnerProbe.ts";
+ import * as ElectronDialog from "../electron/ElectronDialog.ts";
+ import * as ElectronApp from "../electron/ElectronApp.ts";
+ 
+@@ -174,12 +176,68 @@ export const layer = Layer.effect(
+       onShutdown: () => desktopWindow.handleBackendNotReady,
+       onPreflightFailed: handlePrimaryPreflightFailure,
+       onStateDirOwned: () =>
+-        electronDialog
+-          .showErrorBox(
+-            "This T3 home is unavailable",
+-            "Another T3 Code server, such as the background service, is using this data directory, or an older background service is set up for it. Stop that server or try `t3 update`. If the older launcher cannot update, run `t3 service uninstall` and optionally reinstall with `t3 service install` from a current CLI. Use `npx t3@latest` if `t3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command. Then reopen T3 Code. You can also set a separate T3CODE_HOME and pair with the running server.",
+-          )
+-          .pipe(Effect.andThen(electronApp.quit)),
++        Effect.gen(function* () {
++          const owner = yield* HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner;
++          if (owner._tag === "verified") {
++            const choice = yield* electronDialog.showMessageBox({
++              type: "warning",
++              title: "Homebrew T3 service is already running",
++              message: `Connect this Desktop to ${owner.unit}?`,
++              detail: `The running service was verified for T3 environment ${owner.environmentId}. Connecting disables this Desktop's competing local environment and asks you to confirm pairing with ${owner.origin}. The service keeps running when Desktop closes.`,
++              buttons: ["Connect to running service", "Open pairing settings", "Quit"],
++              defaultId: 0,
++              cancelId: 2,
++            });
++            if (choice.response === 2) return yield* electronApp.quit;
++
++            let pairingAppLink: string | null = null;
++            if (choice.response === 0) {
++              const currentOwner = yield* HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner;
++              if (
++                currentOwner._tag === "verified" &&
++                currentOwner.unit === owner.unit &&
++                currentOwner.environmentId === owner.environmentId &&
++                currentOwner.origin === owner.origin
++              ) {
++                pairingAppLink = yield* HomebrewServiceOwnerProbe.createHomebrewServicePairingAppLink;
++              }
++            }
++
++            yield* appSettings.setLocalEnvironmentEnabled(false);
++            yield* desktopWindow.createMainIfBackendReady;
++            if (pairingAppLink !== null) {
++              const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
++              yield* webLinks.receive(pairingAppLink);
++            } else if (choice.response === 0) {
++              yield* electronDialog.showErrorBox(
++                "Could not create a pairing link",
++                "Desktop is open with its local environment off. The Homebrew service is still running; add it from Settings > Connections.",
++              );
++            }
++            return;
++          }
++
++          const detail =
++            owner._tag === "inactive"
++              ? `The Homebrew unit ${owner.unit} is inactive while another process still owns this T3 home. Check it with systemctl --user status ${owner.unit}. No service was stopped and no data was changed.`
++              : "Another process owns this T3 home, but T3 could not verify it as the same-user Homebrew service or confirm its environment identity. Inspect the owner before reconnecting. No service was stopped and no data was changed.";
++          yield* electronDialog.showErrorBox("T3 home owner could not be verified", detail);
++          yield* electronApp.quit;
++        }).pipe(
++          Effect.catchCause((cause) =>
++            logBackendPoolWarning("failed to recover from T3 home ownership conflict", {
++              cause: Cause.pretty(cause),
++            }).pipe(
++              Effect.andThen(
++                electronDialog.showErrorBox(
++                  "T3 home owner could not be verified",
++                  "Desktop could not verify the process using this T3 home. No service was stopped and no data was changed.",
++                ),
++              ),
++              Effect.andThen(electronApp.quit),
++            ),
++          ),
++        ),
+     });
+ 
+     const instancesRef = yield* SynchronizedRef.make<
+diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
+new file mode 100644
+index 00000000..9176a327
+--- /dev/null
++++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
+@@ -0,0 +1,218 @@
++// @effect-diagnostics nodeBuiltinImport:off -- `/proc/<pid>` ownership identifies the locked state owner on Linux.
++import { stat } from "node:fs/promises";
++import * as Duration from "effect/Duration";
++import * as Effect from "effect/Effect";
++import * as FileSystem from "effect/FileSystem";
++import * as Option from "effect/Option";
++import * as Schema from "effect/Schema";
++import * as Stream from "effect/Stream";
++import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
++import { ChildProcess, ChildProcessSpawner } from "effect/process";
++
++import { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
++import * as HostProcess from "@t3tools/shared/HostProcess";
++
++import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
++import * as HomebrewServiceOwnership from "./HomebrewServiceOwnership.ts";
++
++const PersistedServerRuntimeState = Schema.Struct({
++  version: Schema.Literal(1),
++  pid: Schema.Int,
++  port: Schema.Int,
++  origin: Schema.String,
++});
++
++const parseProperties = (raw: string): Readonly<Record<string, string>> =>
++  Object.fromEntries(
++    raw
++      .split(/\r?\n/u)
++      .flatMap((line) => {
++        const separator = line.indexOf("=");
++        return separator < 0 ? [] : [[line.slice(0, separator), line.slice(separator + 1)]];
++      }),
++  );
++
++const runSystemdShow = (unit: string) =>
++  Effect.scoped(
++    Effect.gen(function* () {
++      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
++      const handle = yield* spawner.spawn(
++        ChildProcess.make(
++          "systemctl",
++          ["--user", "show", unit, "--property=ActiveState,MainPID,ExecStart,Environment"],
++          { stdin: "ignore", stderr: "ignore", stdout: "pipe", forceKillAfter: "1 second" },
++        ),
++      );
++      const [stdout, exitCode] = yield* Effect.all(
++        [handle.stdout.pipe(Stream.decodeText(), Stream.mkString), handle.exitCode],
++        { concurrency: "unbounded" },
++      ).pipe(Effect.timeout(Duration.seconds(3)));
++      return exitCode === 0 ? parseProperties(stdout) : null;
++    }),
++  ).pipe(Effect.orElseSucceed(() => null));
++
++const readDescriptor = (url: URL) =>
++  Effect.gen(function* () {
++    const client = yield* HttpClient.HttpClient;
++    const response = yield* client
++      .execute(HttpClientRequest.get(new URL("/.well-known/t3/environment", url).href))
++      .pipe(Effect.timeout(Duration.seconds(2)), Effect.orElseSucceed(() => null));
++    if (response === null || response.status !== 200) return null;
++    return yield* HttpClientResponse.schemaBodyJson(ExecutionEnvironmentDescriptor)(response).pipe(
++      Effect.orElseSucceed(() => null),
++    );
++  });
++
++const currentProcessUid = (pid: string) =>
++  Effect.tryPromise({
++    try: () => stat(`/proc/${pid}`).then((info) => info.uid),
++    catch: () => null,
++  }).pipe(Effect.orElseSucceed(() => null));
++
++export const inspectHomebrewServiceOwner = Effect.fn("homebrewServiceOwnership.inspect")(
++  function* () {
++    const environment = yield* DesktopEnvironment.DesktopEnvironment;
++    const fileSystem = yield* FileSystem.FileSystem;
++    const userId = yield* HostProcess.UserId;
++    if (environment.platform !== "linux" || userId === undefined) {
++      return { _tag: "unverified" } as const;
++    }
++
++    const runtimeRaw = yield* fileSystem
++      .readFileString(environment.path.join(environment.stateDir, "server-runtime.json"))
++      .pipe(Effect.orElseSucceed(() => null));
++    const idRaw = yield* fileSystem
++      .readFileString(environment.path.join(environment.stateDir, "environment-id"))
++      .pipe(Effect.orElseSucceed(() => null));
++    if (runtimeRaw === null || idRaw === null) return { _tag: "unverified" } as const;
++
++    let parsedRuntime: unknown;
++    try {
++      parsedRuntime = JSON.parse(runtimeRaw);
++    } catch {
++      return { _tag: "unverified" } as const;
++    }
++    const runtime = Schema.decodeUnknownOption(PersistedServerRuntimeState)(parsedRuntime);
++    if (Option.isNone(runtime)) return { _tag: "unverified" } as const;
++    if (runtime.value.pid < 1 || runtime.value.port < 1 || runtime.value.port > 65_535) {
++      return { _tag: "unverified" } as const;
++    }
++
++    let origin: URL;
++    try {
++      origin = new URL(runtime.value.origin);
++    } catch {
++      return { _tag: "unverified" } as const;
++    }
++    if (
++      origin.protocol !== "http:" ||
++      !["127.0.0.1", "localhost", "::1", "[::1]"].includes(origin.hostname) ||
++      Number(origin.port || "80") !== runtime.value.port
++    ) {
++      return { _tag: "unverified" } as const;
++    }
++
++    const environmentId = idRaw.trim();
++    if (!environmentId) return { _tag: "unverified" } as const;
++    const descriptor = yield* readDescriptor(origin);
++    if (descriptor === null) return { _tag: "unverified" } as const;
++
++    const homebrewHome = yield* fileSystem
++      .realPath(environment.baseDir)
++      .pipe(Effect.orElseSucceed(() => null));
++    if (homebrewHome === null) return { _tag: "unverified" } as const;
++
++    let sawActiveUnit = false;
++    let inactiveUnit: string | null = null;
++    for (const unit of HomebrewServiceOwnership.HOMEBREW_T3_SERVICE_UNITS) {
++      const properties = yield* runSystemdShow(unit);
++      if (properties === null) continue;
++      const mainPid = properties.MainPID ?? "";
++      const activeState = properties.ActiveState ?? "";
++      sawActiveUnit ||= activeState === "active";
++      if (activeState !== "active") {
++        inactiveUnit ??= unit;
++        continue;
++      }
++      const configuredHome = HomebrewServiceOwnership.homeDirectoryFromSystemdEnvironment(
++        properties.Environment ?? "",
++      );
++      const serviceT3Home =
++        configuredHome === null
++          ? null
++          : yield* fileSystem.realPath(configuredHome).pipe(Effect.orElseSucceed(() => null));
++      const processUid = /^\d+$/u.test(mainPid) ? yield* currentProcessUid(mainPid) : null;
++      const classification = HomebrewServiceOwnership.classifyHomebrewServiceOwner({
++        unit,
++        activeState,
++        mainPid,
++        execStart: properties.ExecStart ?? "",
++        serviceT3Home,
++        processUid,
++        currentUid: userId,
++        runtimePid: runtime.value.pid,
++        t3Home: homebrewHome,
++        environmentId,
++        serverEnvironmentId: descriptor.environmentId,
++      });
++      if (classification._tag === "verified") {
++        return { ...classification, origin: origin.href } as const;
++      }
++    }
++    if (!sawActiveUnit && inactiveUnit !== null) {
++      return { _tag: "inactive", unit: inactiveUnit } as const;
++    }
++    return { _tag: "unverified" } as const;
++  },
++);
++
++export const createHomebrewServicePairingAppLink = Effect.fn(
++  "homebrewServiceOwnership.createPairingAppLink",
++)(function* () {
++  const environment = yield* DesktopEnvironment.DesktopEnvironment;
++  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
++  const result = yield* Effect.scoped(
++    Effect.gen(function* () {
++      const handle = yield* spawner.spawn(
++        ChildProcess.make(
++          process.execPath,
++          [
++            environment.backendEntryPath,
++            "pair",
++            "--base-dir",
++            environment.baseDir,
++            "--label",
++            "Homebrew T3 Desktop",
++          ],
++          {
++            env: {
++              ELECTRON_RUN_AS_NODE: "1",
++              T3CODE_HOME: environment.baseDir,
++              T3CODE_TELEMETRY_ENABLED: "false",
++            },
++            extendEnv: true,
++            stdin: "ignore",
++            stderr: "ignore",
++            stdout: "pipe",
++            forceKillAfter: "1 second",
++          },
++        ),
++      );
++      const [stdout, exitCode] = yield* Effect.all(
++        [handle.stdout.pipe(Stream.decodeText(), Stream.mkString), handle.exitCode],
++        { concurrency: "unbounded" },
++      ).pipe(Effect.timeout(Duration.seconds(10)));
++      return exitCode === 0 ? stdout : null;
++    }),
++  ).pipe(Effect.orElseSucceed(() => null));
++  if (result === null) return null;
++
++  const appLink = result.match(/^App link:\s+(t3code:\/\/pair\?[^\s]+)$/mu)?.[1];
++  if (appLink === undefined) return null;
++  try {
++    const parsed = new URL(appLink);
++    return parsed.protocol === "t3code:" && parsed.hostname === "pair" ? appLink : null;
++  } catch {
++    return null;
++  }
++});
+diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
+new file mode 100644
+index 00000000..ad9f57e8
+--- /dev/null
++++ b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
+@@ -0,0 +1,54 @@
++import { assert, describe, it } from "@effect/vitest";
++
++import * as HomebrewServiceOwnership from "./HomebrewServiceOwnership.ts";
++
++const knownOwner: HomebrewServiceOwnership.HomebrewServiceOwnerEvidence = {
++  unit: "t3code-homebrew.service",
++  activeState: "active",
++  mainPid: "412",
++  execStart:
++    "{ path=/home/linuxbrew/.linuxbrew/opt/t3code-cli-main/bin/t3 ; argv[]=/home/linuxbrew/.linuxbrew/opt/t3code-cli-main/bin/t3 serve ; ignore_errors=no ; }",
++  serviceT3Home: "/home/alice/.t3",
++  processUid: 1000,
++  currentUid: 1000,
++  runtimePid: 412,
++  t3Home: "/home/alice/.t3",
++  environmentId: "env-existing",
++  serverEnvironmentId: "env-existing",
++};
++
++describe("HomebrewServiceOwnership", () => {
++  it("recognizes an active same-user Homebrew service for the verified environment", () => {
++    assert.deepEqual(HomebrewServiceOwnership.classifyHomebrewServiceOwner(knownOwner), {
++      _tag: "verified",
++      unit: "t3code-homebrew.service",
++      environmentId: "env-existing",
++    });
++  });
++
++  it("keeps unknown, foreign, mismatched, or stale owners unverified", () => {
++    const mismatches: Partial<HomebrewServiceOwnership.HomebrewServiceOwnerEvidence>[] = [
++      { unit: "t3code.service" },
++      { processUid: 2000 },
++      { mainPid: "99" },
++      { execStart: knownOwner.execStart.replace("t3code-cli-main", "other-cli") },
++      { serviceT3Home: "/home/alice/other" },
++      { t3Home: "/home/alice/other" },
++      { serverEnvironmentId: "env-other" },
++    ];
++
++    for (const mismatch of mismatches) {
++      assert.deepEqual(
++        HomebrewServiceOwnership.classifyHomebrewServiceOwner({ ...knownOwner, ...mismatch }),
++        { _tag: "unverified" },
++      );
++    }
++  });
++
++  it("distinguishes an inactive known Homebrew unit from an unknown owner", () => {
++    assert.deepEqual(
++      HomebrewServiceOwnership.classifyHomebrewServiceOwner({ ...knownOwner, activeState: "inactive" }),
++      { _tag: "inactive", unit: knownOwner.unit },
++    );
++  });
++});
+diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.ts
+new file mode 100644
+index 00000000..93c84a1d
+--- /dev/null
++++ b/apps/desktop/src/backend/HomebrewServiceOwnership.ts
+@@ -0,0 +1,69 @@
++export const HOMEBREW_T3_SERVICE_UNITS = [
++  "sh.brew.t3code-cli-main.service",
++  "t3code-homebrew.service",
++] as const;
++
++export interface HomebrewServiceOwnerEvidence {
++  readonly unit: string;
++  readonly activeState: string;
++  readonly mainPid: string;
++  readonly execStart: string;
++  readonly serviceT3Home: string | null;
++  readonly processUid: number | null;
++  readonly currentUid: number;
++  readonly runtimePid: number;
++  readonly t3Home: string;
++  readonly environmentId: string;
++  readonly serverEnvironmentId: string;
++}
++
++export type HomebrewServiceOwnerClassification =
++  | { readonly _tag: "verified"; readonly unit: string; readonly environmentId: string }
++  | { readonly _tag: "inactive"; readonly unit: string }
++  | { readonly _tag: "unverified" };
++
++const homebrewServeCommand = (value: string): boolean => {
++  const path = value.match(/(?:^|[ {])path=([^ ;]+)/u)?.[1];
++  const argv = value.match(/argv\[\]=([^;]+)/u)?.[1]?.trim().split(/\s+/u);
++  return (
++    path !== undefined &&
++    argv !== undefined &&
++    argv[0] === path &&
++    path.endsWith("/opt/t3code-cli-main/bin/t3") &&
++    argv[1] === "serve" &&
++    argv.length === 2
++  );
++};
++
++export const homeDirectoryFromSystemdEnvironment = (value: string): string | null => {
++  const match = value.match(/(?:^|[=\s])T3CODE_HOME=(?:"([^"]+)"|([^\s]+))/u);
++  return match?.[1] ?? match?.[2] ?? null;
++};
++
++export function classifyHomebrewServiceOwner(
++  evidence: HomebrewServiceOwnerEvidence,
++): HomebrewServiceOwnerClassification {
++  if (!HOMEBREW_T3_SERVICE_UNITS.some((unit) => unit === evidence.unit)) {
++    return { _tag: "unverified" };
++  }
++  if (evidence.activeState !== "active") {
++    return { _tag: "inactive", unit: evidence.unit };
++  }
++  if (
++    evidence.processUid === null ||
++    evidence.processUid !== evidence.currentUid ||
++    !/^\d+$/u.test(evidence.mainPid) ||
++    Number(evidence.mainPid) !== evidence.runtimePid ||
++    !homebrewServeCommand(evidence.execStart) ||
++    evidence.serviceT3Home !== evidence.t3Home ||
++    evidence.environmentId.length === 0 ||
++    evidence.serverEnvironmentId !== evidence.environmentId
++  ) {
++    return { _tag: "unverified" };
++  }
++  return {
++    _tag: "verified",
++    unit: evidence.unit,
++    environmentId: evidence.environmentId,
++  };
++}
