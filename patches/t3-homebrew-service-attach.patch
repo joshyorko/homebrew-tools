@@ -1,25 +1,39 @@
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.test.ts b/apps/desktop/src/backend/DesktopBackendPool.test.ts
-index 2b2dd841..ae05784e 100644
+index 2b2dd841..bd354ac9 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.test.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.test.ts
-@@ -10,6 +10,7 @@ import { ChildProcessSpawner } from "effect/process";
+@@ -1,4 +1,5 @@
+ import { assert, describe, it } from "@effect/vitest";
++import * as NodePath from "@effect/platform-node/NodePath";
+ import * as Effect from "effect/Effect";
+ import * as FileSystem from "effect/FileSystem";
+ import * as Layer from "effect/Layer";
+@@ -10,6 +11,8 @@ import { ChildProcessSpawner } from "effect/process";
  
  import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
 +import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
++import * as DesktopConfig from "../app/DesktopConfig.ts";
  import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
  import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
  import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
-@@ -64,6 +65,7 @@ function layerPool(labelRef: Ref.Ref<string>): Layer.Layer<DesktopBackendPool.De
+@@ -64,6 +67,14 @@ function layerPool(labelRef: Ref.Ref<string>): Layer.Layer<DesktopBackendPool.De
          } satisfies DesktopBackendConfiguration.DesktopBackendConfiguration["Service"]),
          DesktopAppSettings.layerTest(),
          DesktopState.layer,
-+        Layer.mock(DesktopEnvironment.DesktopEnvironment)({}),
++        DesktopEnvironment.layer({
++          dirname: "/fixture/desktop", homeDirectory: "/fixture/home", platform: "linux",
++          processArch: "x64", appVersion: "1.2.3", appPath: "/fixture/app",
++          isPackaged: true, resourcesPath: "/fixture/resources", runningUnderArm64Translation: false,
++        }).pipe(
++          Layer.provide(Layer.mergeAll(NodePath.layerPosix, DesktopConfig.layerTest({}))),
++          Layer.orDie,
++        ),
          DesktopWslEnvironment.layerTest(),
          ElectronDialog.layer,
          ElectronApp.layer,
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..33bef409 100644
+index 77a4aa99..a132ca44 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
 @@ -1,4 +1,7 @@
@@ -52,17 +66,19 @@ index 77a4aa99..33bef409 100644
  
      // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
      const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
-@@ -174,12 +183,71 @@ export const layer = Layer.effect(
+@@ -173,13 +182,72 @@ export const layer = Layer.effect(
+         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
-       onStateDirOwned: () =>
+-      onStateDirOwned: () =>
 -        electronDialog
 -          .showErrorBox(
 -            "This T3 home is unavailable",
 -            "Another T3 Code server, such as the background service, is using this data directory, or an older background service is set up for it. Stop that server or try `t3 update`. If the older launcher cannot update, run `t3 service uninstall` and optionally reinstall with `t3 service install` from a current CLI. Use `npx t3@latest` if `t3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command. Then reopen T3 Code. You can also set a separate T3CODE_HOME and pair with the running server.",
 -          )
 -          .pipe(Effect.andThen(electronApp.quit)),
-+        Effect.gen(function* () {
++      onStateDirOwned: Effect.fn("DesktopBackendPool.onStateDirOwned")(
++        function* () {
 +          const recovery = yield* prepareHomebrewServiceRecovery({
 +            inspect: () => HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner().pipe(Effect.provide(recoveryContext)),
 +            pair: (expected) => HomebrewServiceOwnerProbe.createHomebrewServicePairingAppLink(expected).pipe(Effect.provide(recoveryContext)),
@@ -111,7 +127,7 @@ index 77a4aa99..33bef409 100644
 +              : "Another process owns this T3 home, but T3 could not verify it as the same-user Homebrew service or confirm its environment identity. Inspect the owner before reconnecting. No service was stopped and no data was changed.";
 +          yield* electronDialog.showErrorBox("T3 home owner could not be verified", detail);
 +          yield* electronApp.quit;
-+        }).pipe(
++        },
 +          Effect.provide(recoveryContext),
 +          Effect.catchCause((cause) =>
 +            logBackendPoolWarning("failed to recover from T3 home ownership conflict", {
@@ -132,10 +148,10 @@ index 77a4aa99..33bef409 100644
      const instancesRef = yield* SynchronizedRef.make<
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 new file mode 100644
-index 00000000..9ac21bb1
+index 00000000..fa9b45da
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,247 @@
 +// @effect-diagnostics nodeBuiltinImport:off -- `/proc/<pid>` ownership identifies the locked state owner on Linux.
 +import { stat, readFile, open } from "node:fs/promises";
 +import { randomUUID } from "node:crypto";
@@ -191,8 +207,8 @@ index 00000000..9ac21bb1
 +    }),
 +  ).pipe(Effect.orElseSucceed(() => null));
 +
-+const readDescriptor = (url: URL) =>
-+  Effect.gen(function* () {
++const readDescriptor = Effect.fn("homebrewServiceOwnership.readDescriptor")(
++  function* (url: URL) {
 +    const client = yield* HttpClient.HttpClient;
 +    const response = yield* client
 +      .execute(HttpClientRequest.get(new URL("/.well-known/t3/environment", url).href))
@@ -201,7 +217,8 @@ index 00000000..9ac21bb1
 +    return yield* HttpClientResponse.schemaBodyJson(ExecutionEnvironmentDescriptor)(response).pipe(
 +      Effect.orElseSucceed(() => null),
 +    );
-+  });
++  },
++);
 +
 +const currentProcessUid = (pid: string) =>
 +  Effect.tryPromise({
@@ -226,24 +243,14 @@ index 00000000..9ac21bb1
 +      .pipe(Effect.orElseSucceed(() => null));
 +    if (runtimeRaw === null || idRaw === null) return { _tag: "unverified" } as const;
 +
-+    let parsedRuntime: unknown;
-+    try {
-+      parsedRuntime = JSON.parse(runtimeRaw);
-+    } catch {
-+      return { _tag: "unverified" } as const;
-+    }
-+    const runtime = Schema.decodeUnknownOption(PersistedServerRuntimeState)(parsedRuntime);
++    const runtime = Schema.decodeUnknownOption(Schema.fromJsonString(PersistedServerRuntimeState))(runtimeRaw);
 +    if (Option.isNone(runtime)) return { _tag: "unverified" } as const;
 +    if (runtime.value.pid < 1 || runtime.value.port < 1 || runtime.value.port > 65_535) {
 +      return { _tag: "unverified" } as const;
 +    }
 +
-+    let origin: URL;
-+    try {
-+      origin = new URL(runtime.value.origin);
-+    } catch {
-+      return { _tag: "unverified" } as const;
-+    }
++    const origin = yield* Effect.try(() => new URL(runtime.value.origin)).pipe(Effect.orElseSucceed(() => null));
++    if (origin === null) return { _tag: "unverified" } as const;
 +    if (
 +      origin.protocol !== "http:" ||
 +      !["127.0.0.1", "localhost", "::1", "[::1]"].includes(origin.hostname) ||
@@ -361,12 +368,8 @@ index 00000000..9ac21bb1
 +
 +  const appLink = result.match(/^App link:\s+(t3code:\/\/pair\?[^\s]+)$/mu)?.[1];
 +  if (appLink === undefined) return null;
-+  try {
-+    const parsed = new URL(appLink);
-+    return parsed.protocol === "t3code:" && parsed.hostname === "pair" ? appLink : null;
-+  } catch {
-+    return null;
-+  }
++  const parsed = yield* Effect.try(() => new URL(appLink)).pipe(Effect.orElseSucceed(() => null));
++  return parsed?.protocol === "t3code:" && parsed.hostname === "pair" ? appLink : null;
 +});
 +
 +class HomebrewSettingsBackupError extends Schema.TaggedError<HomebrewSettingsBackupError>()(
@@ -635,11 +638,12 @@ index 00000000..6022314d
 +}));
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 new file mode 100644
-index 00000000..12647e2f
+index 00000000..0196f757
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,46 @@
 +import * as Effect from "effect/Effect";
++import type { ElectronDialogShowMessageBoxError } from "../electron/ElectronDialog.ts";
 +
 +export type HomebrewServiceInspection =
 +  | { readonly _tag: "verified"; readonly unit: string; readonly environmentId: string; readonly origin: string; readonly fingerprint: string; readonly pairingCompatible: boolean }
@@ -650,7 +654,7 @@ index 00000000..12647e2f
 +export const prepareHomebrewServiceRecovery = Effect.fn("homebrewServiceRecovery.prepare")(
 +  function* (actions: {
 +    readonly inspect: () => Effect.Effect<HomebrewServiceInspection>;
-+    readonly choose: (owner: VerifiedOwner) => Effect.Effect<number, unknown>;
++    readonly choose: (owner: VerifiedOwner) => Effect.Effect<number, ElectronDialogShowMessageBoxError>;
 +    readonly pair: (fingerprint: string) => Effect.Effect<string | null>;
 +  }) {
 +    const owner = yield* actions.inspect();
