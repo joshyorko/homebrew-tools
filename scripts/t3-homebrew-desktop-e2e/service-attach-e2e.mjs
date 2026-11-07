@@ -205,6 +205,7 @@ const seedServiceState = async () => {
         "content-type": "application/json", accept: "application/json, text/event-stream",
         authorization: "Bearer " + issued.token,
         "mcp-protocol-version": "2025-06-18",
+        connection: "close",
         ...(sessionId === null ? {} : { "mcp-session-id": sessionId }),
       },
       body: JSON.stringify({ jsonrpc: "2.0", ...(notification ? {} : { id: ++sequence }), method, params }),

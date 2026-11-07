@@ -53,6 +53,19 @@ normal paired package build after integration.
 
 ## Homebrew service attach acceptance
 
+All four cases passed locally on 2026-11-07 against the actual AppImage built
+with the service-attachment patch at `423bed7` and upstream source
+`e455200077ce60806a01c8f28435b58860dcfc74`. The artifact SHA256 is
+`a9ee7fb4399de0655343e5b18056a83e9dd7eeb5fb682ac6231b301a1a730b17`.
+The build passed 100 focused source tests. First and repeat attachment connected
+to the same service; the real API returned the seeded conversation history
+using the original bearer credential after Desktop closed. The unknown-owner
+case refused attachment, the package-mismatch case opened Connections without
+minting a credential, and the manual choice opened `/settings/connections`.
+These local runs do not establish hosted CI or source type-check success.
+The paired acceptance CI job uploads reports and screenshots for 14 days in
+its `t3-service-attach-<commit>` artifact, without databases or credentials.
+
 The issue-175 recovery path is exercised against a source-built AppImage and a
 fresh isolated T3 home. The fixture starts a real packaged T3 server inside a
 container without external routing or DNS, supplies synthetic same-user systemd metadata, and
