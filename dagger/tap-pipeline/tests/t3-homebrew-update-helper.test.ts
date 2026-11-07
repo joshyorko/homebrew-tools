@@ -21,6 +21,7 @@ type FixtureOptions = {
   readonly activeUnit?: string
   readonly failCask?: boolean
   readonly mismatchInstalledCask?: boolean
+  readonly lingeringDesktopChild?: boolean
 }
 
 function makeFixture(options: FixtureOptions = {}) {
@@ -188,6 +189,7 @@ exit 0
 `
   const pgrep = `#!/usr/bin/env bash
 printf 'fake.pgrep|%s\\n' "$*" >> "$EVENT_LOG"
+if [[ "$LINGERING_DESKTOP_CHILD" == true ]]; then exit 0; fi
 exit 1
 `
   const desktop = `#!/usr/bin/env bash
@@ -218,6 +220,7 @@ printf 'desktop.relaunch\\n' >> "$EVENT_LOG"
     AVAILABLE_VERSION: availableFull,
     FAIL_CASK: options.failCask ? "true" : "false",
     MISMATCH_INSTALLED_CASK: options.mismatchInstalledCask ? "true" : "false",
+    LINGERING_DESKTOP_CHILD: options.lingeringDesktopChild ? "true" : "false",
     MISMATCH_CASK_VERSION: `${availableCask}-mismatch`,
     DESKTOP_EXIT_MARKER: desktopExitMarker,
     DESKTOP_PID_FILE: join(fakeState, "desktop.pid"),
@@ -502,6 +505,35 @@ test("relaunch closes the updater lock before the next update check", async () =
     assert.equal(checked.status, 0, checked.stderr)
   } finally {
     if (existsSync(pidFile)) { try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGTERM") } catch {} }
+    rmSync(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test("a lingering Desktop child is reported without changing packages or service", async () => {
+  const fixture = makeFixture({ activeService: true, lingeringDesktopChild: true })
+  const desktop = await startDesktopProcess(fixture)
+  try {
+    // This scenario exercises post-exit recovery, not lock contention.
+    writeFileSync(join(fixture.root, "bin", "flock"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
+    writeFileSync(join(fixture.root, "bin", "sleep"), "#!/usr/bin/env bash\nexec /usr/bin/sleep 0.01\n", { mode: 0o755 })
+    assert.equal(check(fixture).status, "available")
+    const result = fixture.run(["apply", "--app-version", originalVersion, "--version", availableVersion, "--wait-for-pid", String(desktop.pid)])
+    await desktop.exited
+    assert.notEqual(result.status, 0)
+    const events = fixture.events().join("\n")
+    assert.match(events, /fake\.pgrep\|/)
+    assert.doesNotMatch(events, /brew\|(upgrade|install|uninstall|link) /)
+    assert.doesNotMatch(events, /service\.(stop|start)|desktop\.relaunch/)
+    assert.equal(readFileSync(join(fixture.fakeState, "linked_formula"), "utf8").trim(), originalVersion)
+    assert.equal(readFileSync(join(fixture.prefix, "Caskroom", "t3-code-linux", ".metadata", "INSTALL_RECEIPT.json"), "utf8").includes(originalVersion), true)
+    assert.equal(existsSync(join(fixture.fakeState, "service-active")), true)
+    const recorded = readResult(fixture.resultPath)
+    assert.equal(recorded.outcome, "failed")
+    assert.match(String(recorded.message), /No Homebrew packages were changed/)
+    assert.match(String(recorded.message), /close all T3 Code Desktop processes/)
+    assert.match(String(recorded.message), /relaunch Desktop and retry the update/)
+  } finally {
+    await desktop.exited
     rmSync(fixture.root, { recursive: true, force: true })
   }
 })

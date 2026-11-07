@@ -120,6 +120,12 @@ in `~/.t3` is used for update bookkeeping. For status outside the Desktop, run
 
 ## Recovery and rollback
 
+If a Desktop child process remains after the main process exits, the helper
+records a failure and stops before changing packages or service state. It does
+not launch a second Desktop while that child may still be using the AppImage.
+Close all T3 Code Desktop processes, then reopen Desktop to see the failure
+toast and retry the update.
+
 If the CLI formula upgrade succeeds but the cask upgrade fails, Homebrew's cask
 transaction restores the previously installed Desktop. The helper relinks the
 retained previous formula keg, then verifies that the CLI and cask versions

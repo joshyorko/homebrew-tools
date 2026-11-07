@@ -406,9 +406,9 @@ wait_for_desktop_exit() {
       fi
       sleep 1
     done
-    fail "A T3 Desktop child process is still using the installed AppImage."
+    fail "A T3 Desktop child process is still using the installed AppImage. No Homebrew packages were changed; close all T3 Code Desktop processes, then relaunch Desktop and retry the update."
   else
-    fail "The pgrep command is required to verify that the Desktop AppImage has exited."
+    fail "The pgrep command is required to verify that the Desktop AppImage has exited. No Homebrew packages were changed; install pgrep, then relaunch Desktop and retry the update."
   fi
 }
 
