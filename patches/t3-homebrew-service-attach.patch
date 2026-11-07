@@ -689,7 +689,7 @@ index 00000000..0196f757
 +  },
 +);
 diff --git a/apps/server/src/cli/pair.test.ts b/apps/server/src/cli/pair.test.ts
-index e6264619..6cbf4dc0 100644
+index e6264619..5f431a5a 100644
 --- a/apps/server/src/cli/pair.test.ts
 +++ b/apps/server/src/cli/pair.test.ts
 @@ -126,6 +126,24 @@ const withDescriptorServer = <A, E, R>(
@@ -711,14 +711,14 @@ index e6264619..6cbf4dc0 100644
 +      } finally {
 +        NodeFS.rmSync(baseDir, { recursive: true, force: true });
 +      }
-+    })).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
++    })).pipe(Effect.provide(layerCliRuntime)),
 +  );
 +
    it.effect("publishes an IPv6-only server through Tailscale Serve when pairing", () =>
      withDescriptorServer(
        (origin) =>
 diff --git a/apps/server/src/cli/pair.ts b/apps/server/src/cli/pair.ts
-index 904182ad..64ed364e 100644
+index 904182ad..1194d54d 100644
 --- a/apps/server/src/cli/pair.ts
 +++ b/apps/server/src/cli/pair.ts
 @@ -1,3 +1,7 @@
@@ -817,7 +817,7 @@ index 904182ad..64ed364e 100644
          scopes: flags.scopes,
          ttl: flags.ttl,
          label: flags.label,
-+        expectedHomebrewOwner,
++        ...(expectedHomebrewOwner === undefined ? {} : { expectedHomebrewOwner }),
        });
 +      yield* verifyHomebrewOwner(config.stateDir, expectedHomebrewOwner);
        const pairingUrl = buildPairingUrl(pairingBaseUrl, issued.credential);

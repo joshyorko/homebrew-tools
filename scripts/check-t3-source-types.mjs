@@ -6,8 +6,15 @@ import { pathToFileURL } from "node:url"
 export function diagnostics(output) {
   const clean = output.replace(/\x1b\[[0-9;]*m/g, "")
   const unique = new Map()
-  for (const match of clean.matchAll(/^(.+\.[cm]?tsx?):(\d+):(\d+) - error (TS\d+): (.+)$/gm)) {
-    unique.set(match[0], { file: match[1], signature: `${match[1]} ${match[4]}: ${match[5]}` })
+  for (const line of clean.split(/\r?\n/)) {
+    const match = line.match(/^(.+\.[cm]?tsx?)(?::(\d+):(\d+) -|\((\d+),(\d+)\):) error (TS\d+): (.+)$/)
+    if (!match) {
+      if (/(?:^|\s)error TS\d+:/.test(line)) throw new Error(`Unrecognized compiler error: ${line}`)
+      continue
+    }
+    const file = match[1].replace(/^\.\//, "")
+    const signature = `${file} ${match[6]}: ${match[7]}`
+    unique.set(`${file}:${match[2] ?? match[4]}:${match[3] ?? match[5]} ${signature}`, { file, signature })
   }
   return [...unique.values()]
 }
