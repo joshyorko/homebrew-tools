@@ -19,7 +19,7 @@ index 2b2dd841..ae05784e 100644
          ElectronDialog.layer,
          ElectronApp.layer,
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..695e9d48 100644
+index 77a4aa99..5c2c8a7c 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
 @@ -1,4 +1,7 @@
@@ -30,7 +30,7 @@ index 77a4aa99..695e9d48 100644
  import * as Deferred from "effect/Deferred";
  import * as Effect from "effect/Effect";
  import * as Exit from "effect/Exit";
-@@ -22,6 +25,8 @@ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublish
+@@ -22,8 +25,11 @@ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublish
  import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
@@ -38,8 +38,11 @@ index 77a4aa99..695e9d48 100644
 +import { prepareHomebrewServiceRecovery, deliverHomebrewServicePairing } from "./HomebrewServiceRecovery.ts";
  import * as ElectronDialog from "../electron/ElectronDialog.ts";
  import * as ElectronApp from "../electron/ElectronApp.ts";
++import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
  
-@@ -112,6 +117,9 @@ export const layer = Layer.effect(
+ const { logWarning: logBackendPoolWarning } =
+   DesktopObservability.makeComponentLogger("desktop-backend-pool");
+@@ -112,6 +118,9 @@ export const layer = Layer.effect(
      // Parent instance scopes to the pool so shutdown runs stop finalizers before the OS kills backends.
      const layerScope = yield* Scope.Scope;
      const factoryContext = yield* Effect.context<BackendInstanceFactoryRequirements>();
@@ -49,7 +52,7 @@ index 77a4aa99..695e9d48 100644
  
      // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
      const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
-@@ -174,12 +182,64 @@ export const layer = Layer.effect(
+@@ -174,12 +183,68 @@ export const layer = Layer.effect(
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
        onStateDirOwned: () =>
@@ -78,6 +81,10 @@ index 77a4aa99..695e9d48 100644
 +            yield* HomebrewServiceOwnerProbe.backupHomebrewDesktopSettings();
 +            yield* appSettings.setLocalEnvironmentEnabled(false);
 +            yield* desktopWindow.createMainIfBackendReady;
++            const environment = yield* DesktopEnvironment.DesktopEnvironment;
++            const window = yield* desktopWindow.ensureMain;
++            // The renderer reads localEnvironmentEnabled only when it boots.
++            yield* Effect.promise(() => window.loadURL(getDesktopUrl(environment.isDevelopment)));
 +            let delivered = false;
 +            if (recovery.pairingLink !== null && recovery.expectedOwner !== null) {
 +              delivered = yield* deliverHomebrewServicePairing({
