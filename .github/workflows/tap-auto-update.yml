@@ -13,7 +13,6 @@ on:
   - cron: "41 6 * * *"
     # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
   - cron: "41 0,12,18 * * *"
-  - cron: "13 10 * * *"
   - cron: "0 10 * * *"
   - cron: "31 10 * * *"
   - cron: "23 10 * * *"
@@ -35,7 +34,6 @@ on:
         - t3-code-6h
         - devsy-daily
         - fizzy-daily
-        - buzz-daily
         - chatgpt-daily
         - headroom-daily
         - camp-daily
@@ -98,7 +96,6 @@ jobs:
             "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
             "41 6 * * *") slot_id="t3-daily" ;;
             "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
-            "13 10 * * *") slot_id="buzz-daily" ;;
             "0 10 * * *") slot_id="chatgpt-daily" ;;
             "31 10 * * *") slot_id="headroom-daily" ;;
             *)
@@ -286,22 +283,7 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Resolve immutable Buzz Linux source
-      if: matrix.package_id == 'buzz-linux'
-      id: buzz_source
-      run: |
-        set -euo pipefail
-        release="$(gh api repos/block/buzz/releases/latest)"
-        tag="$(jq -er '.tag_name | select(startswith("desktop-v"))' <<<"$release")"
-        version="${tag#desktop-v}"
-        commit="$(gh api "repos/block/buzz/commits/$tag" --jq '.sha')"
-        test "$commit" = "$(jq -er '.target_commitish' <<<"$release")"
-        {
-          echo "version=$version"
-          echo "commit=$commit"
-        } >> "$GITHUB_OUTPUT"
     - name: Export release bundle
-      if: matrix.package_id != 'buzz-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
@@ -316,21 +298,6 @@ jobs:
           --codex-desktop-conversion-commit="patchraptor-main"
           --codex-desktop-package-source="${{ matrix.package_id == 'codex-desktop-linux' && 'latest' || 'pinned' }}"
           ${{ (matrix.package_id == 't3code-cli-main' || matrix.package_id == 't3-code-linux') && format('--t-3-source-ref="{0}" --t-3-source-version="{1}"', needs.resolve.outputs.t3_source_commit, needs.resolve.outputs.t3_source_version) || '' }}
-
-    - name: Export Buzz Linux release bundle
-      if: matrix.package_id == 'buzz-linux'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/buzz-linux-smoke
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        enable-github-summary: "true"
-        call: >-
-          -o "$RUNNER_TEMP/bundle"
-          release-bundle
-          --tap=.
-          --source-ref="${{ steps.buzz_source.outputs.commit }}"
-          --version="${{ steps.buzz_source.outputs.version }}"
 
     - name: Upload release bundle artifact
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2

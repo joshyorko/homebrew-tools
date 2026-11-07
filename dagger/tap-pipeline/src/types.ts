@@ -25,7 +25,6 @@ export type AutoUpdateSlotId =
   | "t3-code-6h"
   | "devsy-daily"
   | "fizzy-daily"
-  | "buzz-daily"
   | "chatgpt-daily"
   | "headroom-daily"
   | "codex-memoryd-daily"

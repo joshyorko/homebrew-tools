@@ -55,39 +55,24 @@ jobs:
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
-        module: ${{ inputs.package_id == 'buzz-linux' && './dagger/buzz-linux-smoke' || './dagger/tap-pipeline' }}
+        module: ./dagger/tap-pipeline
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         enable-github-summary: "true"
         call: >-
-          ${{ inputs.package_id == 'buzz-linux' && 'smoke-test --tap=.' || format('ci-check --package-id="{0}" --github-token=env://GH_TOKEN', inputs.package_id) }}
-
-    - name: Resolve selected package source
-      if: (inputs.action == 'release' || inputs.action == 'force-release') && inputs.package_id == 'buzz-linux'
-      id: buzz_source
-      run: |
-        set -euo pipefail
-        release="$(gh api repos/block/buzz/releases/latest)"
-        tag="$(jq -er '.tag_name | select(startswith("desktop-v"))' <<<"$release")"
-        version="${tag#desktop-v}"
-        commit="$(gh api "repos/block/buzz/commits/$tag" --jq '.sha')"
-        test "$commit" = "$(jq -er '.target_commitish' <<<"$release")"
-        {
-          echo "version=$version"
-          echo "commit=$commit"
-        } >> "$GITHUB_OUTPUT"
+          ci-check --package-id="${{ inputs.package_id }}" --github-token=env://GH_TOKEN
 
     - name: Export selected package release bundle
       if: inputs.action == 'release' || inputs.action == 'force-release'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}
-        module: ${{ inputs.package_id == 'buzz-linux' && './dagger/buzz-linux-smoke' || './dagger/tap-pipeline' }}
+        module: ./dagger/tap-pipeline
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         enable-github-summary: "true"
         call: >-
           -o "$RUNNER_TEMP/bundle"
           release-bundle
-          ${{ inputs.package_id == 'buzz-linux' && format('--tap=. --source-ref="{0}" --version="{1}"', steps.buzz_source.outputs.commit, steps.buzz_source.outputs.version) || format('--package-id="{0}"', inputs.package_id) }}
+          ci-check --package-id="${{ inputs.package_id }}" --github-token=env://GH_TOKEN
 
     - name: Publish manual release output
       if: inputs.action == 'release' || inputs.action == 'force-release'

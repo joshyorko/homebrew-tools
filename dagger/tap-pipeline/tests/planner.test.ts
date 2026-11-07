@@ -35,7 +35,6 @@ test("recovery inventory and Brewfile are derived from release-capable registry 
   )
   assert.equal(brewfile, readFileSync(new URL("../../../recovery/Brewfile", import.meta.url), "utf8"))
   assert.equal(packages.some((entry) => entry.id === "antigravity-cli"), false)
-  assert.equal(packages.some((entry) => entry.id === "buzz-linux"), true)
 })
 
 test("recovery Brewfile rejects removed and foreign packages", () => {
@@ -66,7 +65,6 @@ test("recovery Homebrew rendering points tap release assets at the local file se
 })
 
 test("package revisions compare against the first cask version component", () => {
-  assert.equal(packagedVersionForUpstreamComparison("buzz-linux", "0.5.0,4"), "0.5.0")
   assert.equal(packagedVersionForUpstreamComparison("devsy-desktop", "1.14.1,1"), "1.14.1")
   assert.equal(
     packagedVersionForUpstreamComparison("t3-code-linux", "main.20260805060356.3c5bdb84a936,1"),
@@ -115,7 +113,6 @@ test("every PR-enabled package has a changed-path trigger", () => {
     chatgpt: "Casks/chatgpt-linux.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
-    "buzz-linux": "Casks/buzz-linux.rb",
     "fizzy-cli-master": "Formula/fizzy-cli-master.rb",
     "fizzy-popper-self-hosted": "Formula/fizzy-popper-self-hosted.rb",
     "fizzy-symphony": "Formula/fizzy-symphony.rb",
@@ -246,7 +243,6 @@ test("tests and docs schedule no package builds", () => {
     "AGENTS.md",
     "docs/tap-ci.md",
     "dagger/tap-pipeline/tests/planner.test.ts",
-    "dagger/buzz-linux-smoke/tests/contract.test.mjs",
   ]), [])
 })
 
@@ -283,7 +279,6 @@ test("unknown production changes fail safe to the full source-build matrix", () 
     "headroom-self-hosted",
     "devsy",
     "devsy-desktop",
-    "buzz-linux",
     "fizzy-cli-master",
     "fizzy-popper-self-hosted",
     "fizzy-symphony",

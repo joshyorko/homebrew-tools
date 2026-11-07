@@ -516,18 +516,14 @@ test("CI workflows forward the existing GitHub token as a Dagger secret referenc
       const tokenArguments = command.split(/\s+/).filter((value) => value.startsWith("--github-token"))
       assert.deepEqual(tokenArguments, ["--github-token=env://GH_TOKEN"], path)
     }
-    const buzzCi = workflow.split("- name: Run Buzz Linux CI through Dagger")[1]?.split("- name:")[0]
-    assert.ok(buzzCi, `missing direct Buzz CI step in ${path}`)
-    assert.doesNotMatch(buzzCi, /--github-token/)
   }
 })
 
-test("manual runs select one package module without showing Buzz-only steps", () => {
+test("manual runs use the standard tap pipeline for package actions", () => {
   const workflow = read(".github/workflows/tap-manual.yml")
-  assert.doesNotMatch(workflow, /- name: .*Buzz/)
   assert.match(workflow, /name: \$\{\{ inputs\.package_id \}\} \(\$\{\{ inputs\.action \}\}\)/)
-  assert.match(workflow, /inputs\.package_id == 'buzz-linux' && '\.\/dagger\/buzz-linux-smoke' \|\| '\.\/dagger\/tap-pipeline'/)
-  assert.match(workflow, /'smoke-test --tap=\.' \|\| format\('ci-check --package-id="\{0\}" --github-token=env:\/\/GH_TOKEN'/)
+  assert.match(workflow, /module: \.\/dagger\/tap-pipeline/)
+  assert.match(workflow, /ci-check --package-id=.*GH_TOKEN/)
 })
 
 test("independent auto-update slots queue without canceling builds and publication is serialized", () => {

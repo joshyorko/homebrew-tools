@@ -105,7 +105,6 @@ test("package registry covers every planned adapter kind", () => {
       "source_build_go_formula",
       "source_build_node_appimage_cask",
       "source_build_node_formula",
-      "source_build_rust_appimage_cask",
       "source_build_rust_formula",
     ],
   )
@@ -177,7 +176,6 @@ test("auto-update slots cover the expected package set", () => {
     [...coveredPackageIds].sort(),
     [
       "action-server",
-      "buzz-linux",
       "chatgpt",
       "codex-memoryd",
       "devpod-linux",
@@ -194,27 +192,6 @@ test("auto-update slots cover the expected package set", () => {
       "vscode-insiders-linux",
     ],
   )
-})
-
-test("Buzz runs through the standard daily auto-update pipeline", () => {
-  const autoUpdateWorkflow = readFileSync(
-    new URL("../../../.github/workflows/tap-auto-update.yml", import.meta.url),
-    "utf8",
-  )
-  const slots = readFileSync(new URL("../auto-update-slots.json", import.meta.url), "utf8")
-
-  assert.match(autoUpdateWorkflow, /- cron: "13 10 \* \* \*"/)
-  assert.match(autoUpdateWorkflow, /- buzz-daily/)
-  assert.match(autoUpdateWorkflow, /"13 10 \* \* \*"\) slot_id="buzz-daily"/)
-  assert.match(slots, /"id": "buzz-daily"/)
-  assert.match(slots, /"packageIds": \["buzz-linux"\]/)
-  assert.doesNotMatch(autoUpdateWorkflow, /^  buzz:/m)
-  assert.match(autoUpdateWorkflow, /matrix\.package_id != 'buzz-linux'/)
-  assert.match(autoUpdateWorkflow, /module: \.\/dagger\/buzz-linux-smoke/)
-  assert.match(autoUpdateWorkflow, /release-bundle/)
-  assert.match(autoUpdateWorkflow, /repos\/block\/buzz\/releases\/latest/)
-  assert.match(autoUpdateWorkflow, /--source-ref="\$\{\{ steps\.buzz_source\.outputs\.commit \}\}"/)
-  assert.match(autoUpdateWorkflow, /--version="\$\{\{ steps\.buzz_source\.outputs\.version \}\}"/)
 })
 
 test("ChatGPT runs through the standard daily release pipeline", () => {
