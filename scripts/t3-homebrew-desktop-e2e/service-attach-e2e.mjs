@@ -155,7 +155,7 @@ const checkPreserved = async () => {
   const runtime = JSON.parse(await readFile(runtimeStatePath, "utf8"))
   assert.equal(runtime.pid, serverRuntimePid)
   assert.equal((await readFile(environmentIdPath, "utf8")).trim(), environmentId)
-  assert.equal(await readFile(root + "/service.pid", "utf8"), String(server.pid))
+  assert.equal(await readFile(root + "/service.pid", "utf8"), String(serverRuntimePid))
 }
 
 const launchDesktop = () => electron.launch({

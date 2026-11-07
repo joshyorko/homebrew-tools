@@ -1,12 +1,16 @@
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..d826e1e6 100644
+index 77a4aa99..4afc27b1 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
-@@ -19,9 +19,11 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
- import * as DesktopState from "../app/DesktopState.ts";
- import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
- import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
-+import * as DesktopWebLinks from "../app/DesktopWebLinks.ts";
+@@ -1,4 +1,7 @@
+ import * as Context from "effect/Context";
++import * as Cause from "effect/Cause";
++import * as Electron from "electron";
++import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+ import * as Deferred from "effect/Deferred";
+ import * as Effect from "effect/Effect";
+ import * as Exit from "effect/Exit";
+@@ -22,6 +25,7 @@ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublish
  import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
@@ -14,7 +18,17 @@ index 77a4aa99..d826e1e6 100644
  import * as ElectronDialog from "../electron/ElectronDialog.ts";
  import * as ElectronApp from "../electron/ElectronApp.ts";
  
-@@ -174,12 +176,68 @@ export const layer = Layer.effect(
+@@ -112,6 +116,9 @@ export const layer = Layer.effect(
+     // Parent instance scopes to the pool so shutdown runs stop finalizers before the OS kills backends.
+     const layerScope = yield* Scope.Scope;
+     const factoryContext = yield* Effect.context<BackendInstanceFactoryRequirements>();
++    const recoveryContext = yield* Effect.context<
++      BackendInstanceFactoryRequirements | DesktopEnvironment.DesktopEnvironment
++    >();
+ 
+     // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
+     const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
+@@ -174,12 +181,70 @@ export const layer = Layer.effect(
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
        onStateDirOwned: () =>
@@ -54,8 +68,9 @@ index 77a4aa99..d826e1e6 100644
 +            yield* appSettings.setLocalEnvironmentEnabled(false);
 +            yield* desktopWindow.createMainIfBackendReady;
 +            if (pairingAppLink !== null) {
-+              const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
-+              yield* webLinks.receive(pairingAppLink);
++              yield* Effect.sync(() => {
++                Electron.app.emit("open-url", { preventDefault() {} }, pairingAppLink);
++              });
 +            } else if (choice.response === 0) {
 +              yield* electronDialog.showErrorBox(
 +                "Could not create a pairing link",
@@ -72,6 +87,7 @@ index 77a4aa99..d826e1e6 100644
 +          yield* electronDialog.showErrorBox("T3 home owner could not be verified", detail);
 +          yield* electronApp.quit;
 +        }).pipe(
++          Effect.provide(recoveryContext),
 +          Effect.catchCause((cause) =>
 +            logBackendPoolWarning("failed to recover from T3 home ownership conflict", {
 +              cause: Cause.pretty(cause),
