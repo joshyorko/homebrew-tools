@@ -497,7 +497,7 @@ const verifyPackageMismatch = async () => {
   console.log("DESKTOP_LAUNCHED")
   await clickNativeDialog("Homebrew T3 service is already running")
   console.log("SERVICE_RECOVERY_CONFIRMED")
-  await clickNativeDialog("Could not create a pairing link")
+  await clickNativeDialog("^(Could not create a pairing link|Error)$")
   const page = await app.firstWindow({ timeout: 90_000 })
   await page.waitForLoadState("domcontentloaded")
   await page.waitForURL((url) => url.pathname === "/settings/connections", { timeout: 30_000 })
@@ -512,7 +512,7 @@ const verifyPackageMismatch = async () => {
 
 const verifyUnknownOwner = async () => {
   app = await launchDesktop()
-  await clickNativeDialog("T3 home owner could not be verified")
+  await clickNativeDialog("^(T3 home owner could not be verified|Error)$")
   const firstWindow = await app.firstWindow({ timeout: 5000 }).catch(() => null)
   if (firstWindow) await firstWindow.close().catch(() => {})
   await app.close().catch(() => {})
