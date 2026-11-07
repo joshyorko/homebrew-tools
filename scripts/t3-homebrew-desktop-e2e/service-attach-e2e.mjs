@@ -254,6 +254,18 @@ const seedServiceState = async () => {
       (message_id, thread_id, run_id, node_id, role, streaming, created_at, updated_at, payload_json)
       VALUES (?, ?, NULL, NULL, 'assistant', 0, ?, ?, ?)`)
       .run(historyMessage.id, thread.threadId, timestamp, timestamp, JSON.stringify(historyMessage))
+    const historyItem = {
+      id: "item:preserved-history", threadId: thread.threadId, runId: null, nodeId: null,
+      providerThreadId: null, providerTurnId: null, nativeItemRef: null, parentItemId: null,
+      ordinal: 0, type: "assistant_message", status: "completed", title: null,
+      startedAt: timestamp, completedAt: timestamp, updatedAt: timestamp,
+      messageId: historyMessage.id, text: historyMessage.text, streaming: false,
+    }
+    database.prepare(`INSERT INTO orchestration_v2_projection_turn_items
+      (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id,
+       parent_item_id, ordinal, type, status, updated_at, payload_json)
+      VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, 0, 'assistant_message', 'completed', ?, ?)`)
+      .run(historyItem.id, thread.threadId, timestamp, JSON.stringify(historyItem))
   } finally { database.close() }
   const verify = async () => {
     const savedProject = await tool("t3_project_read", { projectId: project.id })
@@ -439,7 +451,7 @@ const connectAndVerify = async () => {
   const firstSocket = await firstConnection
   await page.getByText("Preserved project", { exact: true }).first().waitFor({ timeout: 30_000 })
   await page.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
-  await page.getByText("Existing preserved thread", { exact: true }).first().click()
+  await page.getByRole("button", { name: /Existing preserved thread/ }).first().click()
   await page.getByText("Historical fixture reply preserved across service attachment.", { exact: true }).waitFor({ timeout: 30_000 })
   await page.screenshot({ path: root + "/connected.png" })
   console.log("FIRST_CONNECTION_PROVED")
@@ -453,7 +465,7 @@ const connectAndVerify = async () => {
   const repeatPage = await app.firstWindow({ timeout: 90_000 })
   await repeatPage.waitForLoadState("domcontentloaded")
   await repeatPage.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
-  await repeatPage.getByText("Existing preserved thread", { exact: true }).first().click()
+  await repeatPage.getByRole("button", { name: /Existing preserved thread/ }).first().click()
   await repeatPage.getByText("Historical fixture reply preserved across service attachment.", { exact: true }).waitFor({ timeout: 30_000 })
   const repeatSocket = await waitForWebSocket(repeatPage)
   await repeatPage.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
