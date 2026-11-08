@@ -1,7 +1,0 @@
-{
-  "name": "fizzy-symphony-smoke",
-  "engineVersion": "v0.20.6",
-  "sdk": {
-    "source": "typescript"
-  }
-}
