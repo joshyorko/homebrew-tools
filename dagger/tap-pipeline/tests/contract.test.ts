@@ -183,7 +183,6 @@ test("auto-update slots cover the expected package set", () => {
       "devsy-desktop",
       "fizzy-cli-master",
       "fizzy-popper-self-hosted",
-      "fizzy-symphony",
       "headroom-self-hosted",
       "rcc",
       "review",
@@ -267,17 +266,6 @@ test("timestamped git-head versions sort by commit time before sha", () => {
 
 test("fizzy-popper self-hosted opts into timestamped git-head versions", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "fizzy-popper-self-hosted")
-
-  assert.ok(entry)
-  assert.equal(entry.autoUpdate.kind, "git_head_sha")
-
-  if (entry.autoUpdate.kind === "git_head_sha") {
-    assert.equal(entry.autoUpdate.includeCommitDate, true)
-  }
-})
-
-test("fizzy-symphony opts into timestamped git-head versions", () => {
-  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "fizzy-symphony")
 
   assert.ok(entry)
   assert.equal(entry.autoUpdate.kind, "git_head_sha")
@@ -644,14 +632,6 @@ test("t3code CLI main formula bumps the Homebrew version scheme", () => {
   const formula = readFileSync(new URL("../../../Formula/t3code-cli-main.rb", import.meta.url), "utf8")
 
   assert.match(formula, /^\s*version_scheme 1$/m)
-})
-
-test("fizzy-symphony formula test stays credentialless", () => {
-  const formula = readFileSync(new URL("../../../Formula/fizzy-symphony.rb", import.meta.url), "utf8")
-
-  assert.doesNotMatch(formula, /shell_output\("#{bin}\/fizzy-symphony"\)/)
-  assert.match(formula, /shell_output\("#{bin}\/fizzy-symphony --help"\)/)
-  assert.match(formula, /setup --template-only/)
 })
 
 test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () => {

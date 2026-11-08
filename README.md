@@ -127,7 +127,6 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
 | `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
 | `brew install joshyorko/tools/fizzy-cli-master` | Install Fizzy CLI from upstream `master` |
-| `brew install joshyorko/tools/fizzy-symphony` | Install Fizzy Symphony from `main` |
 | `brew install joshyorko/tools/eitype` | Install Eitype |
 | `brew install joshyorko/tools/voxtype` | Install Voxtype |
 | `brew upgrade --cask joshyorko/tools/rcc` | Upgrade to latest |
@@ -564,45 +563,6 @@ That smoke test exercises the real delivery path:
 - wrap the locally built package into a Homebrew-ready tarball with vendored runtime dependencies
 - install the formula through Linuxbrew in-container
 - run `brew test` and `fizzy-popper --help`
-
-### Fizzy Symphony (Main Formula)
-
-Fizzy Symphony packaged for Linux Homebrew from `joshyorko/fizzy-symphony` `main`.
-The tap builds the Node package from source with Dagger, vendors runtime dependencies into
-an immutable tarball, and installs the CLI as `fizzy-symphony`.
-
-> [!NOTE]
-> Use the full tap path to make the source snapshot explicit:
-> ```bash
-> brew install joshyorko/tools/fizzy-symphony
-> ```
-
-```bash
-brew install joshyorko/tools/fizzy-symphony
-fizzy-symphony
-fizzy-symphony status
-```
-
-Update flow:
-- the `fizzy-daily` auto-update slot tracks `joshyorko/fizzy-symphony@main`
-- to publish or refresh the immutable release asset on demand, run the Tap Manual `release`
-  workflow with `package_id=fizzy-symphony`
-- if you want to freeze to a specific snapshot, pin `upstream.ref` for
-  `fizzy-symphony` in `dagger/tap-pipeline/src/library.ts` to a commit SHA and run
-  that same manual release workflow
-
-The tap also includes a reusable Dagger smoke test for this packaging path:
-
-```bash
-dagger -m ./dagger/fizzy-symphony-smoke call smoke-test --tap=.
-```
-
-That smoke test exercises the real delivery path:
-- build `joshyorko/fizzy-symphony@main` inside the tap pipeline
-- run the upstream package gates (`npm test`, optional `npm run build`, `npm pack`)
-- wrap the locally built package into a Homebrew-ready tarball with vendored runtime dependencies
-- install the formula through Linuxbrew in-container
-- run `brew test` and `fizzy-symphony`
 
 ### Voxtype (Formula)
 

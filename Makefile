@@ -9,7 +9,7 @@ CODEX_DESKTOP_OFFICIAL_BUNDLE_DIR ?= dist/codex-desktop-official
 RECOVERY_OUTPUT ?= dist/homebrew-tools-recovery
 RECOVERY_FILE_SERVER_URL ?= http://127.0.0.1:8000/homebrew-tools-recovery
 DAGGER_GIT_DIR ?= $(shell git rev-parse --git-common-dir)
-.PHONY: recovery-t3code-cli-main recovery-all dictation-install fizzy-symphony-smoke chatgpt uninstall-chatgpt migrate-chatgpt-linux-cask codex-desktop-setup codex-desktop-install codex-install install-codex-desktop test-codex-desktop-feature-wizard
+.PHONY: recovery-t3code-cli-main recovery-all dictation-install chatgpt uninstall-chatgpt migrate-chatgpt-linux-cask codex-desktop-setup codex-desktop-install codex-install install-codex-desktop test-codex-desktop-feature-wizard
 
 recovery-t3code-cli-main:
 	dagger -m ./dagger/tap-pipeline call --git-dir="$(DAGGER_GIT_DIR)" -o "$(RECOVERY_OUTPUT)" recovery-export --package-id=t3code-cli-main --file-server-base-url="$(RECOVERY_FILE_SERVER_URL)"
@@ -19,9 +19,6 @@ recovery-all:
 
 dictation-install:
 	./scripts/install-dictation-local.sh
-
-fizzy-symphony-smoke:
-	dagger -m ./dagger/fizzy-symphony-smoke call smoke-test --tap=.
 
 chatgpt:
 	scripts/install-chatgpt-local.sh
