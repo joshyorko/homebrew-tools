@@ -1419,12 +1419,13 @@ index 6871b91..1d5e14e 100644
    // The desktop updates this machine, whose policy the primary environment reports.
    const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
    const [isActionPending, setIsActionPending] = useState(false);
-@@ -229,7 +248,7 @@ function SidebarUpdateControl() {
+@@ -229,8 +248,8 @@ function SidebarUpdateControl() {
    const isDownloading = state?.status === "downloading";
    const localUpdateVersion =
      state && action !== "none" ? getDesktopUpdateDownloadedVersion(state) : null;
 -  const everything = useUpdateEverything(localUpdateVersion);
 +  const everything = useUpdateEverything(localUpdateVersion, undefined, state?.updateProvider);
+   const checkProviderUpdates = useCheckProviderUpdates();
    const runsEverything = everything.hasUpdates && !isDownloading;
    const run = useUpdateEverythingRun();
    const isRunningEverything = run !== null;
