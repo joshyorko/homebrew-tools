@@ -2530,6 +2530,17 @@ end
     const container = this.withT3PublicConnectConfig(
       this.t3BaseContainer().withEnvVariable("ENABLE_V8_FUNCTIONS", "false"),
     )
+      // Upstream's afterPack hook executes Electron to generate the server compile cache.
+      .withExec([
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "apt-get update",
+          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libasound2 libgbm1 libgtk-3-0 libnspr4 libnss3",
+          "rm -rf /var/lib/apt/lists/*",
+        ].join("\n"),
+      ])
       .withDirectory("/tap", tap)
       .withExec([
         "bash",

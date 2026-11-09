@@ -331,6 +331,18 @@ test("T3 base installs libsecret development metadata and verifies it before dep
   assert.ok(checkIndex < bunInstallIndex, "libsecret verification must happen before tool setup continues")
 })
 
+test("T3 Desktop builder installs Electron runtime libraries before packaging", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const desktopBuild = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  const installIndex = desktopBuild.indexOf("apt-get install")
+  const buildIndex = desktopBuild.indexOf('"dist:desktop:linux"')
+
+  for (const library of ["libnspr4", "libnss3", "libgtk-3-0", "libgbm1", "libasound2"]) {
+    assert.ok(desktopBuild.includes(library), `Desktop compile-cache generation needs ${library}`)
+  }
+  assert.ok(installIndex >= 0 && installIndex < buildIndex, "Electron libraries must be available when the build runs its compile-cache hook")
+})
+
 test("T3 packaging stages only upstream runtime externals and preserves its patch and override", () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "t3-package-test-"))
   try {
