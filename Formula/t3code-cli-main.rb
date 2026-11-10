@@ -1,9 +1,9 @@
 class T3codeCliMain < Formula
   desc "T3 Code CLI built from pingdotgg/t3code main"
   homepage "https://github.com/pingdotgg/t3code"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-main.20261110000359.bbdc7dca320e/t3code-cli-main-main.20261110000359.bbdc7dca320e.tar.gz"
-  version "main.20261110000359.bbdc7dca320e"
-  sha256 "71629da86b522de471d43adacf255faabc67fa2c44fccd942bd10de4cd50bd61"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-main.20261110061418.934c7f8d8e7a/t3code-cli-main-main.20261110061418.934c7f8d8e7a.tar.gz"
+  version "main.20261110061418.934c7f8d8e7a"
+  sha256 "fc7fc80aaf50fcd9314738a30dc78441b9011e7a060bc08e9ff15ffa73495a4e"
   license "MIT"
   version_scheme 1
 
