@@ -54,6 +54,12 @@ at zero. The focused test command now runs from `apps/server` instead of
 loading the other workspace test configurations. The resource budget stays
 unchanged.
 
+Package-scoped tests then failed to spawn Node with `EAGAIN`. The quota still
+exposed CPUs `0-19` through affinity. The launcher now also pins two CPUs;
+the kernel reports `0-1`, and a real Dagger child reports two available CPUs.
+The dedicated engine was restarted under that affinity, retaining all memory
+and process limits. No running T3 service was restarted by this task.
+
 Run local Dagger commands through `bash scripts/dagger-limited.sh`. It creates
 a private engine with 2 CPUs, 3 GiB RAM, 4 GiB RAM plus swap, and 512 processes,
 then checks the configured and effective cgroup limits before any build.

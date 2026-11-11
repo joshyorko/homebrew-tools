@@ -40,7 +40,8 @@ else
   rm "$output/runner-image.tar"
 fi
 docker image inspect --format '{{.Id}}' "$image" > "$output/image.id"
-docker create --name "$container" --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock --pids-limit=512 --memory=3g --memory-swap=4g --cpus=2 "$image" > "$output/container.id"
+cpu_set="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:2])))')"
+docker create --name "$container" --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock --pids-limit=512 --memory=3g --memory-swap=4g --cpus=2 --cpuset-cpus="$cpu_set" "$image" > "$output/container.id"
 docker cp "$runner_dir/." "$container:/work/runner/"
 docker cp "$artifact" "$container:/work/input/candidate.tar.gz"
 docker cp "$formula" "$container:/work/input/t3code-cli-main.rb"
