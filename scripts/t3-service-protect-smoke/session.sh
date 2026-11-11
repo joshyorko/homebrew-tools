@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -E
 trap 'echo "Fixture failure at line $LINENO: $BASH_COMMAND" >&2' ERR
 [[ "$(id -u)" == 0 ]]
 user=linuxbrew
@@ -12,7 +13,7 @@ drop_in=90-t3code-protect.conf
 mkdir -p "$unit_dir"
 chown -R "$user:$user" "$home/.config"
 as_user() {
-  runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" PATH="$prefix/bin:$prefix/sbin:/usr/local/bin:/usr/bin:/bin" HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_FROM_API=1 T3CODE_TELEMETRY_ENABLED=false "$@"
+  runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" PATH="$prefix/bin:$prefix/sbin:/usr/local/bin:/usr/bin:/bin" HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_FROM_API=1 HOMEBREW_DOWNLOAD_CONCURRENCY=1 HOMEBREW_MAKE_JOBS=2 T3CODE_TELEMETRY_ENABLED=false "$@"
 }
 record() {
   printf '%s\tPASS\n' "$1" >> /proof/scenarios.tsv
@@ -74,7 +75,7 @@ source, urls = re.subn(r'^  url "[^"]+"$', '  url "file:///work/input/candidate.
 source, checksums = re.subn(r'^  sha256 "[^"]+"$', f'  sha256 "{hashlib.sha256(artifact.read_bytes()).hexdigest()}"', source, flags=re.M)
 assert urls == checksums == 1
 tap = Path(sys.argv[1]) / "Homebrew/Library/Taps/test/homebrew-protect"
-(tap / "Formula").mkdir(parents=True)
+(tap / "Formula").mkdir(parents=True, exist_ok=True)
 (tap / "Formula/t3code-cli-main.rb").write_text(source)
 PY
 chown -R "$user:$user" "$prefix/Homebrew/Library/Taps/test"
@@ -105,7 +106,9 @@ assert_file "$unit_dir/$unit.d/$drop_in" $'[Service]\nOOMScoreAdjust=-900'
 [[ "$(as_user systemctl --user show "$unit" --property=MainPID --value)" == "$pid" ]]
 [[ "$(as_user systemctl --user show "$unit" --property=OOMScoreAdjust --value)" == -900 ]]
 cat "/proc/$pid/oom_score_adj" > /proof/running-score-before-restart.txt
-python3 - "$pid" <<'PY'
+configured_low="$(as_user systemctl --user show app.slice --property=MemoryLow --value)"
+[[ "$configured_low" == 1610612736 ]]
+python3 - "$pid" "$configured_low" <<'PY'
 import json
 from pathlib import Path
 import sys
@@ -115,9 +118,12 @@ parts = Path(group).parts[1:]
 chain = []
 for depth, unit_name in enumerate(parts, 1):
     directory = Path("/sys/fs/cgroup").joinpath(*parts[:depth])
-    chain.append({"unit": unit_name, "memory.low": (directory / "memory.low").read_text().strip(), "memory.min": (directory / "memory.min").read_text().strip()})
-assert next(row for row in chain if row["unit"] == "app.slice")["memory.low"] == "1610612736"
-Path("/proof/memory-chain.json").write_text(json.dumps(chain, indent=2) + "\n")
+    read = lambda name: (directory / name).read_text().strip() if (directory / name).exists() else None
+    chain.append({"unit": unit_name, "memory.low": read("memory.low"), "memory.min": read("memory.min")})
+app_low = next(row for row in chain if row["unit"] == "app.slice")["memory.low"]
+if app_low is not None:
+    assert app_low == "1610612736"
+Path("/proof/memory-chain.json").write_text(json.dumps({"ancestors": chain, "configuredAppSliceLow": int(sys.argv[2]), "kernelMemoryControllerAvailable": app_low is not None}, indent=2) + "\n")
 PY
 grep -F 'brew services restart t3code-cli-main' /proof/apply.log
 [[ "$(as_user systemctl --user show t3code.service --property=LoadState --value)" == masked ]]
@@ -225,5 +231,7 @@ report = {
     "scenarios": scenarios,
     "gaps": (["Native pinned runtime was not supplied; native runtime remains untested."] if not (root / "native-artifact.sha256").exists() else []) + ["Two competing verified active services remain untested in real systemd.", "Live Dakota acceptance was not authorized or run."],
 }
+if not json.loads((root / "memory-chain.json").read_text())["kernelMemoryControllerAvailable"]:
+    report["gaps"].append("The Docker fixture does not expose descendant memory.low files; configured defaults were verified, kernel ancestor protection was not.")
 (root / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 PY

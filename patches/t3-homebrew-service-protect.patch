@@ -618,10 +618,10 @@ index 780aee8..063e94f 100644
  });
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.test.ts b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 new file mode 100644
-index 0000000..6175cae
+index 0000000..f1969fd
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.test.ts
-@@ -0,0 +1,371 @@
+@@ -0,0 +1,405 @@
 +// @effect-diagnostics nodeBuiltinImport:off
 +import * as NodeFS from "node:fs";
 +import * as NodeOS from "node:os";
@@ -860,6 +860,40 @@ index 0000000..6175cae
 +  );
 +});
 +
++it.effect("selects native beside a failed unit whose Homebrew definition was removed", () => {
++  const f = fixture({ native: "running" });
++  f.units.get(HOMEBREW_SERVICE_UNIT)!.set("ActiveState", "failed");
++  return f.provide(
++    Effect.gen(function* () {
++      expect((yield* resolveProtectionTarget(f.input)).unit).toBe(NATIVE);
++    }),
++  );
++});
++
++it.effect("selects Homebrew beside a failed masked native unit without a process", () => {
++  const f = fixture({ native: "masked", homebrew: "running" });
++  f.units.get(NATIVE)!.set("ActiveState", "failed");
++  return f.provide(
++    Effect.gen(function* () {
++      expect((yield* resolveProtectionTarget(f.input)).unit).toBe(HOMEBREW_SERVICE_UNIT);
++    }),
++  );
++});
++
++it.effect.each([
++  { property: "MainPID", value: "9999" },
++  { property: "ControlGroup", value: "/remaining-processes" },
++])("refuses a failed missing unit with remaining $property evidence", ({ property, value }) => {
++  const f = fixture({ native: "running" });
++  f.units.get(HOMEBREW_SERVICE_UNIT)!.set("ActiveState", "failed");
++  f.units.get(HOMEBREW_SERVICE_UNIT)!.set(property, value);
++  return f.provide(
++    Effect.gen(function* () {
++      expect((yield* resolveProtectionTarget(f.input).pipe(Effect.exit))._tag).toBe("Failure");
++    }),
++  );
++});
++
 +it.effect("refuses incomplete property responses even when systemctl succeeds", () => {
 +  const f = fixture({ native: "stopped" });
 +  f.units.get(NATIVE)!.delete("Environment");
@@ -995,10 +1029,10 @@ index 0000000..6175cae
 +});
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.ts b/apps/server/src/cloud/serviceProtectionTarget.ts
 new file mode 100644
-index 0000000..3002f63
+index 0000000..31d40c6
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.ts
-@@ -0,0 +1,278 @@
+@@ -0,0 +1,283 @@
 +import * as Effect from "effect/Effect";
 +import * as FileSystem from "effect/FileSystem";
 +import * as Option from "effect/Option";
@@ -1100,7 +1134,12 @@ index 0000000..3002f63
 +      const load = values.get("LoadState");
 +      const active = values.get("ActiveState");
 +      const pid = Number(values.get("MainPID"));
-+      if ((load === "not-found" || load === "masked") && active === "inactive" && pid === 0)
++      if (
++        (load === "not-found" || load === "masked") &&
++        (active === "inactive" || active === "failed") &&
++        pid === 0 &&
++        (values.get("ControlGroup") ?? "") === ""
++      )
 +        continue;
 +      if (
 +        values.get("Id") !== unit ||
