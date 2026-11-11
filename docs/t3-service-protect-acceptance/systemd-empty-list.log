@@ -1,0 +1,9 @@
+MainPID=216
+ExecStart={ path=/usr/bin/sleep ; argv[]=/usr/bin/sleep infinity ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+ControlGroup=/user.slice/user-1000.slice/user@1000.service/app.slice/sh.brew.t3code-cli-main.service
+Environment=T3CODE_HOME=/home/linuxbrew/.t3
+Id=sh.brew.t3code-cli-main.service
+LoadState=loaded
+ActiveState=active
+FragmentPath=/home/linuxbrew/.config/systemd/user/sh.brew.t3code-cli-main.service
+a(sb) 0

@@ -1,0 +1,8 @@
+T3 Code service
+  Status: needs an update or repair
+  Unit: /home/linuxbrew/.config/systemd/user/t3code.service
+  Logs: /home/linuxbrew/native-t3-home/userdata/logs/boot-service.log
+  Memory protection: off, user.slice grants none. Run `t3 service protect`.
+  OOM score: -900
+  [service-disabled] The service is not enabled to start automatically. Run `t3 service install` to repair it.
+  Next: Run `t3 service install` to repair it.

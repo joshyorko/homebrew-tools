@@ -1,0 +1,63 @@
+{
+  "upstream": {
+    "kind": "git",
+    "repo": "https://github.com/pingdotgg/t3code",
+    "ref": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a",
+    "version": "main.20261111.d2c25950b4d9",
+    "commit": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a"
+  },
+  "tapBuildHead": "e21e37cd5d46855d4d8fb4deddc53e9bf52e7958",
+  "protectionPatchSha256": "dffb2fb7db0c12377622f7f9bd6e8e047ecb0c9bf366f7195b6f4854c01f6807",
+  "artifact": {
+    "name": "t3code-cli-main-main.20261111.d2c25950b4d9.tar.gz",
+    "version": "main.20261111.d2c25950b4d9",
+    "sha256": "c45c6c3a4a92ae2cf6b9edaee89bd586dfb3ef55b72ce920b47d1de096d27738"
+  },
+  "sourceTests": {
+    "files": 3,
+    "passed": 75,
+    "log": "source-tests.log"
+  },
+  "packageQualification": {
+    "result": "PASS",
+    "log": "ci.log"
+  },
+  "engineBudget": {
+    "cpuQuota": 2,
+    "cpuAffinity": [
+      0,
+      1
+    ],
+    "memoryGiB": 4,
+    "swapGiB": 1,
+    "pids": 512
+  },
+  "systemdQualification": {
+    "result": "PASS",
+    "scenarios": 14,
+    "report": "report.json",
+    "gaps": [
+      "Two competing verified active services remain untested in real systemd.",
+      "Live Dakota acceptance was not authorized or run.",
+      "The Docker fixture does not expose descendant memory.low files; configured defaults were verified, kernel ancestor protection was not."
+    ]
+  },
+  "hostedCi": "Final review-fix push not qualified",
+  "liveDakota": "not authorized or run",
+  "published": false,
+  "tapTests": {
+    "fullBeforeFinalRouting": {
+      "passed": 207,
+      "skipped": 1,
+      "log": "tap-tests.log"
+    },
+    "afterRoutingChange": {
+      "passed": 66,
+      "log": "routing-tests.log"
+    }
+  },
+  "reviewFixTapChecks": {
+    "passed": 66,
+    "log": "review-fix-tap-tests.log"
+  }
+}

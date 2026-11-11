@@ -160,6 +160,16 @@ test("resource monitor build helper schedules t3code CLI CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
 })
 
+test("service protection patch and systemd fixture schedule only CLI package CI", () => {
+  for (const path of ["patches/t3-homebrew-service-protect.patch", "scripts/t3-service-protect-smoke/run.sh"]) {
+    assert.deepEqual(changedCiPackagesFromPaths([path]), ["t3code-cli-main"])
+    assert.equal(ciPlanFromPaths([path])[0]?.mode, "build")
+  }
+  const localControls = ["Makefile", "scripts/dagger-limited.sh"]
+  assert.deepEqual(ciPlanFromPaths(localControls), [])
+  assert.deepEqual(ciPlanFromPaths([...localControls, "patches/t3-homebrew-service-protect.patch"]).map((entry) => entry.package_id), ["t3code-cli-main"])
+})
+
 test("T3 ASAR verifier changes schedule Desktop CI", () => {
   assert.deepEqual(changedCiPackagesFromPaths(["scripts/check-t3-connect-asar.mjs"]), ["t3-code-linux"])
 })

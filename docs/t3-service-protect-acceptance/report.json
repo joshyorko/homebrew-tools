@@ -1,0 +1,68 @@
+{
+  "upstreamSourceSha": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a",
+  "artifactSha256": "c45c6c3a4a92ae2cf6b9edaee89bd586dfb3ef55b72ce920b47d1de096d27738",
+  "boundary": "Homebrew-installed CLI and real systemd inside a disposable Docker container",
+  "scenarios": [
+    {
+      "scenario": "preview-without-sudo",
+      "result": "PASS"
+    },
+    {
+      "scenario": "stale-definition-after-confirmation",
+      "result": "PASS"
+    },
+    {
+      "scenario": "masked-native-and-active-homebrew",
+      "result": "PASS"
+    },
+    {
+      "scenario": "repeated-protect",
+      "result": "PASS"
+    },
+    {
+      "scenario": "running-score-after-fixture-restart",
+      "result": "PASS"
+    },
+    {
+      "scenario": "stopped-and-repeated-undo",
+      "result": "PASS"
+    },
+    {
+      "scenario": "stopped-effective-home-unset",
+      "result": "PASS"
+    },
+    {
+      "scenario": "homebrew-unregistered-unit-undo",
+      "result": "PASS"
+    },
+    {
+      "scenario": "stale-native-drop-in",
+      "result": "PASS"
+    },
+    {
+      "scenario": "conflicting-protection-file",
+      "result": "PASS"
+    },
+    {
+      "scenario": "linked-protection-file",
+      "result": "PASS"
+    },
+    {
+      "scenario": "foreign-command",
+      "result": "PASS"
+    },
+    {
+      "scenario": "missing-unit",
+      "result": "PASS"
+    },
+    {
+      "scenario": "native-preview-apply-effective-status-and-undo",
+      "result": "PASS"
+    }
+  ],
+  "gaps": [
+    "Two competing verified active services remain untested in real systemd.",
+    "Live Dakota acceptance was not authorized or run.",
+    "The Docker fixture does not expose descendant memory.low files; configured defaults were verified, kernel ancestor protection was not."
+  ]
+}

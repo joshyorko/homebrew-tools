@@ -176,6 +176,23 @@ test("T3 builds inject one shared audited public Connect config before compilati
   }
 })
 
+test("T3 CLI checks its service protection patch and tests before bundling", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const build = section(pipeline, "private async buildT3Artifact", "private async buildFizzyArtifact")
+  const check = build.indexOf("git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch")
+  const apply = build.indexOf("git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch")
+  const tests = build.indexOf('"src/cloud/serviceProtectionTarget.test.ts"')
+  const bundle = build.indexOf('"build:bundle"')
+  assert.ok(check >= 0 && check < apply && apply < tests && tests < bundle)
+  assert.match(build, /"src\/cloud\/serviceProtection\.test\.ts"/)
+  assert.match(build, /"src\/cli\/service\.test\.ts"/)
+  assert.match(build, /"pnpm", "--dir", "apps\/server", "exec", "vp", "test", "run"/)
+  const patchPaths = Array.from(read("patches/t3-homebrew-service-protect.patch").matchAll(/^\+\+\+ b\/(.+)$/gm), (match) => match[1] ?? "")
+  assert.ok(patchPaths.length > 0 && patchPaths.every((path) => path.startsWith("apps/server/src/")), "Dependency changes must apply before pnpm install")
+  const desktop = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  assert.doesNotMatch(desktop, /t3-homebrew-service-protect\.patch/)
+})
+
 test("T3 Desktop build packages its Homebrew updater patch and helper before compilation", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const desktopBuild = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
@@ -212,6 +229,8 @@ test("T3 acceptance proves compiled Connect in the CLI and the shipped Desktop a
   const desktopCi = section(pipeline, 'case "t3-code-linux": {', 'case "headroom-self-hosted": {')
 
   assert.match(cliCi, /t3CliConnectGateChecks\(\)/)
+  assert.match(cliCi, /withEnvVariable\("HOMEBREW_DOWNLOAD_CONCURRENCY", "1"\)/)
+  assert.match(cliCi, /withEnvVariable\("HOMEBREW_MAKE_JOBS", "2"\)/)
   assert.match(desktopCi, /t3PublicConnectAsarChecks\(\)/)
 })
 

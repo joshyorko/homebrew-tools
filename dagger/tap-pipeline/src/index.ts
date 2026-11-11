@@ -1347,7 +1347,6 @@ end
     const artifactPath = `/tmp/${assetName}`
 
     const container = this.withT3PublicConnectConfig(this.t3BaseContainer())
-      .withDirectory("/tap", tap)
       .withMountedCache(
         "/upstream/native/resource-monitor/target",
         dag.cacheVolume("tap-pipeline-t3-resource-monitor-target-cache"),
@@ -1369,6 +1368,18 @@ end
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withDirectory("/tap", tap)
+      .withExec([
+        "bash", "-lc",
+        "git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch && git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch",
+      ])
+      .withExec([
+        "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
+        "--maxWorkers=1",
+        "src/cloud/serviceProtection.test.ts",
+        "src/cloud/serviceProtectionTarget.test.ts",
+        "src/cli/service.test.ts",
+      ])
       .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
       .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])
       .withExec(["bash", "-lc", "rm -rf apps/server/dist/client && cp -R apps/web/dist apps/server/dist/client"])
@@ -3234,6 +3245,8 @@ end
           .container()
           .from(BREW_IMAGE)
           .withUser("linuxbrew")
+          .withEnvVariable("HOMEBREW_DOWNLOAD_CONCURRENCY", "1")
+          .withEnvVariable("HOMEBREW_MAKE_JOBS", "2")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")

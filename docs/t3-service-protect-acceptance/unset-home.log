@@ -1,0 +1,7 @@
+[17:17:03.890] ERROR (#2): ServiceProtectionError: Could not verify T3 service ownership: ambiguous environment unsets for sh.brew.t3code-cli-main.service.
+    at refuse (file:///home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9/libexec/dist/binCli-DioFNmwY.mjs:7802:28)
+    at file:///home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9/libexec/dist/binCli-DioFNmwY.mjs:7958:21
+    at ServiceProtectionTarget.resolve (file:///home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9/libexec/dist/binCli-DioFNmwY.mjs:8247:25)
+    at ServiceProtectionTarget.resolve (definition) (file:///home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9/libexec/dist/binCli-DioFNmwY.mjs:7921:33)
+    at cli.service.run (file:///home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9/libexec/dist/binCli-DioFNmwY.mjs:8216:16)
+    at cli.service.run (definition) (file:///home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9/libexec/dist/binCli-DioFNmwY.mjs:8150:27)

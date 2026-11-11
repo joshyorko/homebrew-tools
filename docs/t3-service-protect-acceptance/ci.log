@@ -1,0 +1,330 @@
+Trusted formula: test/tap/t3code-cli-main
+==> Would install 1 formula:
+test/tap/t3code-cli-main main.20261111.d2c25950b4d9
+==> Would install 26 dependencies for t3code-cli-main:
+brotli           1.2.1
+c-ares           1.34.9
+zlib-ng-compat   2.3.3_1
+hdrhistogram_c   0.12.1
+icu4c@79         79.1
+libnghttp2       1.71.0
+libnghttp3       1.19.0
+ca-certificates  2026-11-05
+openssl@4        4.1.0
+libngtcp2        1.26.0
+libuv            1.53.0
+simdjson         5.1.1
+ncurses          6.6
+readline         8.3.6
+sqlite           3.54.1
+uvwasi           0.0.23
+lz4              1.11.1
+xz               5.8.4
+zstd             1.5.7_1
+mpdecimal        4.0.1
+bzip2            1.0.8
+expat            2.10.0
+libedit          20260512-3.1
+libffi           3.8.0
+python@3.15      3.15.2
+node@24          24.22.2_2
+==> Downloading https://ghcr.io/v2/homebrew/core/brotli/manifests/1.2.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/49b26d728c88a5dd61298ad8b4a5151073a1c4175375f63b7f2866f57e4b9548--brotli-1.2.1.bottle_manifest.json
+SHA-256: 423247031d5a867b4967b67c2f684dd9577b99cca38bfcc73458793b573168e6
+==> Downloading https://ghcr.io/v2/homebrew/core/brotli/blobs/sha256:cb1fe9a81c06db13b0c0824450e9616d0f2a633f03f83047d1dfa88e4f981981
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/6d37559f97126e96787ff2ad9c4f01327f0f2c390075386a341739f59fa08b71--brotli--1.2.1.x86_64_linux.bottle.tar.gz
+SHA-256: cb1fe9a81c06db13b0c0824450e9616d0f2a633f03f83047d1dfa88e4f981981
+==> Downloading https://ghcr.io/v2/homebrew/core/c-ares/manifests/1.34.9
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/801e000b97ad72319a9618e9265de8b9d39e0b738044a73b22e222e5b7ba5789--c-ares-1.34.9.bottle_manifest.json
+SHA-256: 43d0174c8d4e67d215d666a56638c65b5e03003dd53c662dbbb7538e1a4d7824
+==> Downloading https://ghcr.io/v2/homebrew/core/c-ares/blobs/sha256:294f16cb130751af8a596f93ff602004486b88f0417b45c2ba30be1372ba3d3a
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/deebbd5f15db4d743ec7ede4b2b7ea60d74fa13099fd3cb335d7d953585304bf--c-ares--1.34.9.x86_64_linux.bottle.tar.gz
+SHA-256: 294f16cb130751af8a596f93ff602004486b88f0417b45c2ba30be1372ba3d3a
+==> Downloading https://ghcr.io/v2/homebrew/core/zlib-ng-compat/manifests/2.3.3_1-1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/ac25eeabee9199cbf998d894928df4d036eea108f2126f05b340db1117be41ea--zlib-ng-compat-2.3.3_1-1.bottle_manifest.json
+SHA-256: 262cc6df441cae1e4141e475f37ae2e46e418e6e6a1bdb02fede041b3a281e07
+==> Downloading https://ghcr.io/v2/homebrew/core/zlib-ng-compat/blobs/sha256:b8d7e8802092be9ecc516a0a43f35da61f3a83c73ba2e65b55419195a7ce7718
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/23dde977a08c60e26db01a1177c1a3136b4ed05f3ddfd4fd1a62c45b7c3f8919--zlib-ng-compat--2.3.3_1.x86_64_linux.bottle.1.tar.gz
+SHA-256: b8d7e8802092be9ecc516a0a43f35da61f3a83c73ba2e65b55419195a7ce7718
+==> Downloading https://ghcr.io/v2/homebrew/core/hdrhistogram_c/manifests/0.12.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/1ad40f4c29dadc152ce3de1043573c921fb4ee425a87a28e7238e8e6a3d32c47--hdrhistogram_c-0.12.1.bottle_manifest.json
+SHA-256: c9debfa2cb318d3b88b4c954a13d80d8c4ee3a6c6ae437042fe732673f3c53fd
+==> Downloading https://ghcr.io/v2/homebrew/core/hdrhistogram_c/blobs/sha256:5c10dd53f8f44d1ae7ef10a0ba3247c159b810a418b3a232d447a394289125c3
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/c5ab100d1adf265b373f42fadce7cb3dc13720f842a2751cf03bb2ced11bfd42--hdrhistogram_c--0.12.1.x86_64_linux.bottle.tar.gz
+SHA-256: 5c10dd53f8f44d1ae7ef10a0ba3247c159b810a418b3a232d447a394289125c3
+==> Downloading https://ghcr.io/v2/homebrew/core/icu4c/79/manifests/79.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/819c98e89170a20e6d2f88c1c4709f32ee0497d9905cba67bfcb89bf65753541--icu4c@79-79.1.bottle_manifest.json
+SHA-256: b100e6d8b5225d02fb5fc4eabd3ab0c891be0611b1e2741ca73ebb725f0638f1
+==> Downloading https://ghcr.io/v2/homebrew/core/icu4c/79/blobs/sha256:8e06c733d9e465f5151d7eb76a3e8b460c8ccfa8020da3ce2b8b5e2f45435c43
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/b28b45f10cf79ed289f6e28fea207c3de260af70c61ffd0ce6d0f83fc33a1bbf--icu4c@79--79.1.x86_64_linux.bottle.tar.gz
+SHA-256: 8e06c733d9e465f5151d7eb76a3e8b460c8ccfa8020da3ce2b8b5e2f45435c43
+==> Downloading https://ghcr.io/v2/homebrew/core/libnghttp2/manifests/1.71.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/3fce7c4ec00eb0fa986548c092dcd0b942a01387205c5313e7a48344f9c3f8ce--libnghttp2-1.71.0.bottle_manifest.json
+SHA-256: cd894e70d512e1982485cab4bffe367a9b881c3bd44e65a80082177e699e8894
+==> Downloading https://ghcr.io/v2/homebrew/core/libnghttp2/blobs/sha256:82b44983f47398ff3ebfe86e84d97e1bcb71916f93428c90bb95b7bb814b1671
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/69dc80e78279711048a130af50c94aba88958e70b0c8641b1a996245a68e5232--libnghttp2--1.71.0.x86_64_linux.bottle.tar.gz
+SHA-256: 82b44983f47398ff3ebfe86e84d97e1bcb71916f93428c90bb95b7bb814b1671
+==> Downloading https://ghcr.io/v2/homebrew/core/libnghttp3/manifests/1.19.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/9cd2eb2f1dfd95f814d9cf2b949deef0dc0f0c349c01e6c2e89e6ec4464d3677--libnghttp3-1.19.0.bottle_manifest.json
+SHA-256: f2c5bd98c2d0284d45d947b5c14aa4b778b80df191c32f1261a125003ee18cbb
+==> Downloading https://ghcr.io/v2/homebrew/core/libnghttp3/blobs/sha256:a824afb5435ebc4fa4133b95adef827bcda9307455def65e56e88f81daab635c
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/3a544a633d6bef38afc57a2eaed80e9f8a345662e4e80bf69c10295774da885a--libnghttp3--1.19.0.x86_64_linux.bottle.tar.gz
+SHA-256: a824afb5435ebc4fa4133b95adef827bcda9307455def65e56e88f81daab635c
+==> Downloading https://ghcr.io/v2/homebrew/core/ca-certificates/manifests/2026-11-05
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/67314617287d32358cd696789ae54c253459f15a4fb8e9424a5c01cf2f596620--ca-certificates-2026-11-05.bottle_manifest.json
+SHA-256: 0d9bed8093966a8372a95f5d487db851d9a3fe36be88e957cb9ffe3d6fcb8f51
+==> Downloading https://ghcr.io/v2/homebrew/core/ca-certificates/blobs/sha256:8a5a35e1a3223e6bc6ca7c853e0ac3d2568de2cc329b61688682bdf57165dab9
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/f89bbdb47b08d05910ffe2b16f6c8e2db5e940007493d038b87f3e5504d9c25e--ca-certificates--2026-11-05.all.bottle.tar.gz
+SHA-256: 8a5a35e1a3223e6bc6ca7c853e0ac3d2568de2cc329b61688682bdf57165dab9
+==> Downloading https://ghcr.io/v2/homebrew/core/openssl/4/manifests/4.1.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/5af22dbf16746a00108f01eb3ec1c010f19da2e7071814b40972545eef69bf92--openssl@4-4.1.0.bottle_manifest.json
+SHA-256: 5334787c00d0174476fcb17e00b3bd4ef11379589acec0ae3d2639d5bdddd541
+==> Downloading https://ghcr.io/v2/homebrew/core/openssl/4/blobs/sha256:4818b19c5662c2ec0c699d5bc8ebddb91f92d799fb91420de26a98fac6ca68c3
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/1940a2c211a286ecd10569abd65fbd1ca47700b261072f9772fed59801a5f020--openssl@4--4.1.0.x86_64_linux.bottle.tar.gz
+SHA-256: 4818b19c5662c2ec0c699d5bc8ebddb91f92d799fb91420de26a98fac6ca68c3
+==> Downloading https://ghcr.io/v2/homebrew/core/libngtcp2/manifests/1.26.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/b6345e69b8ccbcc876f1a44f0be82e1a35769d2dd9ac2b5d57a6a2648cc318e6--libngtcp2-1.26.0.bottle_manifest.json
+SHA-256: 7dd15b85cc4719e6b9581c67e875dbee16caf7d3ee0a71dac42284ac17db4b24
+==> Downloading https://ghcr.io/v2/homebrew/core/libngtcp2/blobs/sha256:8b78cd71163fa19134d6551c5232c08dde780c8c7deeeeec56d403070920c2b5
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/4ba1b6b7e6e014587ddf221f8819b6cbfd4e874ac51f34676b8fc6e1830a536f--libngtcp2--1.26.0.x86_64_linux.bottle.tar.gz
+SHA-256: 8b78cd71163fa19134d6551c5232c08dde780c8c7deeeeec56d403070920c2b5
+==> Downloading https://ghcr.io/v2/homebrew/core/libuv/manifests/1.53.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/d03e30c6dfb7ddc17ea7b7d28ba6e114d597921ffd2b230f8812d18980d4080e--libuv-1.53.0.bottle_manifest.json
+SHA-256: 04d4978d96bdf444518cef4d9bd52124e10f7301698e9ba5ff1037241d7ec937
+==> Downloading https://ghcr.io/v2/homebrew/core/libuv/blobs/sha256:5697a3e2ebf129603045c088824fb7fcf5e99fcf139eeed6239bc50375ad4cae
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/d29f6b67e028a9465b2f6e1f92bc88bfce1ba3553953241b4e05f6efd505eebb--libuv--1.53.0.x86_64_linux.bottle.tar.gz
+SHA-256: 5697a3e2ebf129603045c088824fb7fcf5e99fcf139eeed6239bc50375ad4cae
+==> Downloading https://ghcr.io/v2/homebrew/core/simdjson/manifests/5.1.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/56464f0b53ed0cfe216229535cbfd7d26982222ab5c5522f5b1d097f51bbcb86--simdjson-5.1.1.bottle_manifest.json
+SHA-256: 41d1e31b157cd26cbcd827770ce03a0d646505309a69065808886422ff5449de
+==> Downloading https://ghcr.io/v2/homebrew/core/simdjson/blobs/sha256:5bcd4587e9cfba7e1123587b38b14117ebf3101b1780a3ed1378bad2780b1571
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/af1f8841eaf282672392fda55469dc4ae5e1f20cde3ac6aa36a7e84aa5f58b06--simdjson--5.1.1.x86_64_linux.bottle.tar.gz
+SHA-256: 5bcd4587e9cfba7e1123587b38b14117ebf3101b1780a3ed1378bad2780b1571
+==> Downloading https://ghcr.io/v2/homebrew/core/ncurses/manifests/6.6
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/40b3748b8b6030c832b016714eee3f2018860e2a20eca25067c7568cbfe3b5e2--ncurses-6.6.bottle_manifest.json
+SHA-256: 88bfccdd8ba4b78c9341cdf8f4e77f2e052a47ca1e3ebe51cd737844265f34f4
+==> Downloading https://ghcr.io/v2/homebrew/core/ncurses/blobs/sha256:12c037b176c3300398cc53f0f278ba14195ae525cb6188dc085fd07236e5db48
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/a34a5108ff35d2b05751d79a536cce137930de771c2404cb9f87c048fd6e5560--ncurses--6.6.x86_64_linux.bottle.tar.gz
+SHA-256: 12c037b176c3300398cc53f0f278ba14195ae525cb6188dc085fd07236e5db48
+==> Downloading https://ghcr.io/v2/homebrew/core/readline/manifests/8.3.6
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/86390acc2bbeae5b2803050d5af9e2f6b7edb39e0b3b33519b4efec1ddb46b46--readline-8.3.6.bottle_manifest.json
+SHA-256: cf6434889ede9b443c44a678b7467b6a196038eaebc74e310e5d72060d3903ac
+==> Downloading https://ghcr.io/v2/homebrew/core/readline/blobs/sha256:4edcc5d53fb104818fd0e642f18edaace69e60c24b5e892df2bd437670c32857
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/07d3a52989cacf7e067a97f72b4e1dce944740a068311356c1f2254c9a22d506--readline--8.3.6.x86_64_linux.bottle.tar.gz
+SHA-256: 4edcc5d53fb104818fd0e642f18edaace69e60c24b5e892df2bd437670c32857
+==> Downloading https://ghcr.io/v2/homebrew/core/sqlite/manifests/3.54.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/634ebfaa359526f81034cd1bf1bcc70f7ef898ce755187d3754b7db11e1109d2--sqlite-3.54.1.bottle_manifest.json
+SHA-256: 1d6f2c346a8f32cf370107eb38479cb43d217e5fb31550fe741b810bc3f0333a
+==> Downloading https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:8783ecd3f534390d2cb8733f0c21d6a9e7ae85802226ee4a891bedd8654271b7
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/c8a6d4edc1ea956665517e8a817289a8d321c25212be93da12c0d6c5d452e88f--sqlite--3.54.1.x86_64_linux.bottle.tar.gz
+SHA-256: 8783ecd3f534390d2cb8733f0c21d6a9e7ae85802226ee4a891bedd8654271b7
+==> Downloading https://ghcr.io/v2/homebrew/core/uvwasi/manifests/0.0.23-1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/d9fc39e8e8eb3c4e33b14bafb8f46ce7c30a8814a9d2ff809f4a27525ec96893--uvwasi-0.0.23-1.bottle_manifest.json
+SHA-256: 1e4b1060e3c83495d109d3a3ffed7567c40b75e8f00e33d4b60a127fbe8c0bed
+==> Downloading https://ghcr.io/v2/homebrew/core/uvwasi/blobs/sha256:2befd108f0cf4fffab4832dc834e0b7c4b8aec470ad95994435792c6b3ab9bcc
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/6a4664f2bc6f4b45da46e8360a35f6fc9326e0e1c231a2232e3d94cb3495cc84--uvwasi--0.0.23.x86_64_linux.bottle.1.tar.gz
+SHA-256: 2befd108f0cf4fffab4832dc834e0b7c4b8aec470ad95994435792c6b3ab9bcc
+==> Downloading https://ghcr.io/v2/homebrew/core/lz4/manifests/1.11.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/0389d926b2f90177e0aea8504cd02bb67cf40e4ec9740a027ddce04eb688524b--lz4-1.11.1.bottle_manifest.json
+SHA-256: 160e9cec1407f6f3331e0c05b5388c09c660ecad808c397128e921061331af34
+==> Downloading https://ghcr.io/v2/homebrew/core/lz4/blobs/sha256:f89740f8da822dda3870cefc3993db46d721944f4c8eb10755aee79ec5b0706e
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/5a1e85b66aaa5c0b75d4e12d83758541fef5b3ab07cf5f59c83f0baca4e99428--lz4--1.11.1.x86_64_linux.bottle.tar.gz
+SHA-256: f89740f8da822dda3870cefc3993db46d721944f4c8eb10755aee79ec5b0706e
+==> Downloading https://ghcr.io/v2/homebrew/core/xz/manifests/5.8.4
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/87a710ae3061016dad6986fdef36b90db543a5d3e6a284110b008b3aa3af7822--xz-5.8.4.bottle_manifest.json
+SHA-256: 431d66aacc75ad15b7c5e3dc039bceff47122ed930c53545e4d2282be0afced7
+==> Downloading https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:aa3b18af4d682e52746cd73dca60cec5422bfe1dc8bf4fff3c38a63fe4d516f5
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/0f47c079c9d50e396e45dad54663f281366085e31e77f86affd584d25bedd063--xz--5.8.4.x86_64_linux.bottle.tar.gz
+SHA-256: aa3b18af4d682e52746cd73dca60cec5422bfe1dc8bf4fff3c38a63fe4d516f5
+==> Downloading https://ghcr.io/v2/homebrew/core/zstd/manifests/1.5.7_1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/8f19204c5a651e5d20e99979f9083e806638abc74381e4a6ac991da6a1a62531--zstd-1.5.7_1.bottle_manifest.json
+SHA-256: 690fa2169706f8a75602ee52ad84cccb36285abc07ac3e68e71fedd8c0cf314f
+==> Downloading https://ghcr.io/v2/homebrew/core/zstd/blobs/sha256:3d5ca8948526a2e3a487db0cd0acec9f4b415d5a4b08cffe27e2ea0c339c9dbe
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/512991f8f73486e7ad688030d0d71aa0b5c1d575433caa2a0f185e853cd3f2fd--zstd--1.5.7_1.x86_64_linux.bottle.tar.gz
+SHA-256: 3d5ca8948526a2e3a487db0cd0acec9f4b415d5a4b08cffe27e2ea0c339c9dbe
+==> Downloading https://ghcr.io/v2/homebrew/core/mpdecimal/manifests/4.0.1-1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/4271245d162de67cca62f36f16de706e4d79824063c350e0672a21fef2e189fc--mpdecimal-4.0.1-1.bottle_manifest.json
+SHA-256: 2787c23a840f497a49adbbbe7b8f28fe5e71427d60fea9667acb2196e09de4d5
+==> Downloading https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:d92d8706831c7dfa2fdd0f1a0d8548137a7ef325ae5c5a7f98fb5090182d6974
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/cb71a1f6e39144009be28e8d63ab31a89d65cccbe886816187e1b4f961e26d79--mpdecimal--4.0.1.x86_64_linux.bottle.1.tar.gz
+SHA-256: d92d8706831c7dfa2fdd0f1a0d8548137a7ef325ae5c5a7f98fb5090182d6974
+==> Downloading https://ghcr.io/v2/homebrew/core/bzip2/manifests/1.0.8-2
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/c1a79a32cc9082c99fc318e6b2596b8b1f6e99abacb32bcbe88f979e4be5e4ea--bzip2-1.0.8-2.bottle_manifest.json
+SHA-256: d716db5c9030ea1ad48977b8ddf9e3edb7a5bdadbbd47a2495e66d13184f4d91
+==> Downloading https://ghcr.io/v2/homebrew/core/bzip2/blobs/sha256:a731afa70daaafec28359b4f10f1c68455c1955ae66cdbb6b6d52eee277bbd3e
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/db074a718e02557eff8cf3cd1476e2fedc40d4ec894870c864b8251d75dec576--bzip2--1.0.8.x86_64_linux.bottle.2.tar.gz
+SHA-256: a731afa70daaafec28359b4f10f1c68455c1955ae66cdbb6b6d52eee277bbd3e
+==> Downloading https://ghcr.io/v2/homebrew/core/expat/manifests/2.10.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/1914f3bc9887735a88c364761feac465bbba987d4566e4865b8e67d187228dca--expat-2.10.0.bottle_manifest.json
+SHA-256: 7449dfc831cb09277dc764a70b951a3e6006a0c8babb6a587699c36374f3ea9c
+==> Downloading https://ghcr.io/v2/homebrew/core/expat/blobs/sha256:0e4aca0d27cf5976531f1ff8ba07ecb7495c65342abb0bbe486e5eca25e725f5
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/34f12413e3b6ba94f8c2614dceab94f5e58f7f18cc495d5ad9263a1185e9dc6d--expat--2.10.0.x86_64_linux.bottle.tar.gz
+SHA-256: 0e4aca0d27cf5976531f1ff8ba07ecb7495c65342abb0bbe486e5eca25e725f5
+==> Downloading https://ghcr.io/v2/homebrew/core/libedit/manifests/20260512-3.1
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/a4ef306bdb362c35faef337b62233a51f79e778ea8e85f6f1b67fcd27f69d207--libedit-20260512-3.1.bottle_manifest.json
+SHA-256: f122c322a0248ce1c82086c89b5006924a49ba0907a56cf7d0e52311b5405b0f
+==> Downloading https://ghcr.io/v2/homebrew/core/libedit/blobs/sha256:4d9a605075987c2f832b9caa24b1a5b56dee88ae662cb6a4efee375fce1d8dcf
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/54f7ceecea9120ffa05eff0084e6877fb078c7de480a0bb960603c93b9785273--libedit--20260512-3.1.x86_64_linux.bottle.tar.gz
+SHA-256: 4d9a605075987c2f832b9caa24b1a5b56dee88ae662cb6a4efee375fce1d8dcf
+==> Downloading https://ghcr.io/v2/homebrew/core/libffi/manifests/3.8.0
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/338478934da104b98f85f45130c3022c84abfbeae9f23ac48822c2daf91d5c9f--libffi-3.8.0.bottle_manifest.json
+SHA-256: 6c02a92b7b9abe0ce86c7dd05f4fb2aab3c6ba0c08d392763089318388893007
+==> Downloading https://ghcr.io/v2/homebrew/core/libffi/blobs/sha256:250d5150db65018e524595cae9de93f8d72ebe8a078bfde968eae51bdc1787fc
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/ac2ebe9440d1f0b15fd9e9df87d81c719caf98aab8184b8fbb58b62252bc24d6--libffi--3.8.0.x86_64_linux.bottle.tar.gz
+SHA-256: 250d5150db65018e524595cae9de93f8d72ebe8a078bfde968eae51bdc1787fc
+==> Downloading https://ghcr.io/v2/homebrew/core/python/3.15/manifests/3.15.2
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/acf8a6f01eabec8c681a47140910f1a36f89b5d37e96eecf4f97e321223c4f40--python@3.15-3.15.2.bottle_manifest.json
+SHA-256: 625dc15badb74fc019db93e64603b07c38ac842494865436980812cf90346a1f
+==> Downloading https://ghcr.io/v2/homebrew/core/python/3.15/blobs/sha256:417a51e9c3eb37e23af5779c404bf7cdad283436bdf01ba2464d53562d589a6e
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/66963d7f08e8a6fbd0d2b86bcfbc311d94b1b779004120353d23bbf38ef5e370--python@3.15--3.15.2.x86_64_linux.bottle.tar.gz
+SHA-256: 417a51e9c3eb37e23af5779c404bf7cdad283436bdf01ba2464d53562d589a6e
+==> Downloading https://ghcr.io/v2/homebrew/core/node/24/manifests/24.22.2_2
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/3ecd719cc6c913ce57ceba71aac578808fcb2f07dc274816f82c50d0b0e84b88--node@24-24.22.2_2.bottle_manifest.json
+SHA-256: 8ed424f67643e607a100c77feec72d3701c015bcb1ad10aa6e68646913c95d7b
+==> Downloading https://ghcr.io/v2/homebrew/core/node/24/blobs/sha256:9edabeeedd5c7fac415e4fa645b0ad4cf0b91850e9e6d34aba6ec563761a319c
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/59c7ae71afc219ac9217040d749ce5f950e1ea2fdd2e9ec25dc94219983fa7a5--node@24--24.22.2_2.x86_64_linux.bottle.tar.gz
+SHA-256: 9edabeeedd5c7fac415e4fa645b0ad4cf0b91850e9e6d34aba6ec563761a319c
+==> Downloading file:///artifacts/t3code-cli-main-main.20261111.d2c25950b4d9.tar.gz
+Downloaded to: /home/linuxbrew/.cache/Homebrew/downloads/a2dac92ff6963cbcf5530011c015c2a8277bbc08e154686944135963ce5d1c46--t3code-cli-main-main.20261111.d2c25950b4d9.tar.gz
+SHA-256: c45c6c3a4a92ae2cf6b9edaee89bd586dfb3ef55b72ce920b47d1de096d27738
+==> Installing t3code-cli-main from test/tap
+==> Installing dependencies for test/tap/t3code-cli-main: brotli, c-ares, zlib-ng-compat, hdrhistogram_c, icu4c@79, libnghttp2, libnghttp3, ca-certificates, openssl@4, libngtcp2, libuv, simdjson, ncurses, readline, sqlite, uvwasi, lz4, xz, zstd, mpdecimal, bzip2, expat, libedit, libffi, python@3.15 and node@24
+==> Installing test/tap/t3code-cli-main dependency: brotli (1.2.1)
+==> Pouring brotli--1.2.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/brotli/1.2.1: 33 files, 2MB
+==> Installing test/tap/t3code-cli-main dependency: c-ares (1.34.9)
+==> Pouring c-ares--1.34.9.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/c-ares/1.34.9: 176 files, 1.4MB
+==> Installing test/tap/t3code-cli-main dependency: zlib-ng-compat (2.3.3_1)
+==> Pouring zlib-ng-compat--2.3.3_1.x86_64_linux.bottle.1.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/zlib-ng-compat/2.3.3_1: 17 files, 600.7KB
+==> Installing test/tap/t3code-cli-main dependency: hdrhistogram_c (0.12.1)
+==> Pouring hdrhistogram_c--0.12.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/hdrhistogram_c/0.12.1: 23 files, 233.4KB
+==> Installing test/tap/t3code-cli-main dependency: icu4c@79 (79.1)
+==> Pouring icu4c@79--79.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/icu4c@79/79.1: 279 files, 95.6MB
+==> Installing test/tap/t3code-cli-main dependency: libnghttp2 (1.71.0)
+==> Pouring libnghttp2--1.71.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libnghttp2/1.71.0: 15 files, 898.6KB
+==> Installing test/tap/t3code-cli-main dependency: libnghttp3 (1.19.0)
+==> Pouring libnghttp3--1.19.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libnghttp3/1.19.0: 20 files, 704.1KB
+==> Installing test/tap/t3code-cli-main dependency: ca-certificates (2026-11-05)
+==> Pouring ca-certificates--2026-11-05.all.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/ca-certificates/2026-11-05: 5 files, 195.8KB
+==> Installing test/tap/t3code-cli-main dependency: openssl@4 (4.1.0)
+==> Pouring openssl@4--4.1.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/openssl@4/4.1.0: 6,878 files, 31.3MB
+==> Installing test/tap/t3code-cli-main dependency: libngtcp2 (1.26.0)
+==> Pouring libngtcp2--1.26.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libngtcp2/1.26.0: 23 files, 1.7MB
+==> Installing test/tap/t3code-cli-main dependency: libuv (1.53.0)
+==> Pouring libuv--1.53.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libuv/1.53.0: 35 files, 1.5MB
+==> Installing test/tap/t3code-cli-main dependency: simdjson (5.1.1)
+==> Pouring simdjson--5.1.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/simdjson/5.1.1: 19 files, 11.3MB
+==> Installing test/tap/t3code-cli-main dependency: ncurses (6.6)
+==> Pouring ncurses--6.6.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/ncurses/6.6: 4,071 files, 11.5MB
+==> Installing test/tap/t3code-cli-main dependency: readline (8.3.6)
+==> Pouring readline--8.3.6.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/readline/8.3.6: 56 files, 3MB
+==> Installing test/tap/t3code-cli-main dependency: sqlite (3.54.1)
+==> Pouring sqlite--3.54.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/sqlite/3.54.1: 13 files, 6.9MB
+==> Installing test/tap/t3code-cli-main dependency: uvwasi (0.0.23)
+==> Pouring uvwasi--0.0.23.x86_64_linux.bottle.1.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/uvwasi/0.0.23: 15 files, 340KB
+==> Installing test/tap/t3code-cli-main dependency: lz4 (1.11.1)
+==> Pouring lz4--1.11.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/lz4/1.11.1: 28 files, 917.9KB
+==> Installing test/tap/t3code-cli-main dependency: xz (5.8.4)
+==> Pouring xz--5.8.4.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/xz/5.8.4: 97 files, 2.8MB
+==> Installing test/tap/t3code-cli-main dependency: zstd (1.5.7_1)
+==> Pouring zstd--1.5.7_1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/zstd/1.5.7_1: 32 files, 3.1MB
+==> Installing test/tap/t3code-cli-main dependency: mpdecimal (4.0.1)
+==> Pouring mpdecimal--4.0.1.x86_64_linux.bottle.1.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/mpdecimal/4.0.1: 22 files, 787.8KB
+==> Installing test/tap/t3code-cli-main dependency: bzip2 (1.0.8)
+==> Pouring bzip2--1.0.8.x86_64_linux.bottle.2.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/bzip2/1.0.8: 31 files, 583.3KB
+==> Installing test/tap/t3code-cli-main dependency: expat (2.10.0)
+==> Pouring expat--2.10.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/expat/2.10.0: 23 files, 940.6KB
+==> Installing test/tap/t3code-cli-main dependency: libedit (20260512-3.1)
+==> Pouring libedit--20260512-3.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libedit/20260512-3.1: 61 files, 1.8MB
+==> Installing test/tap/t3code-cli-main dependency: libffi (3.8.0)
+==> Pouring libffi--3.8.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libffi/3.8.0: 19 files, 968.8KB
+==> Installing test/tap/t3code-cli-main dependency: python@3.15 (3.15.2)
+==> Pouring python@3.15--3.15.2.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/python@3.15/3.15.2: 3,535 files, 86.9MB
+==> Installing test/tap/t3code-cli-main dependency: node@24 (24.22.2_2)
+==> Pouring node@24--24.22.2_2.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/node@24/24.22.2_2: 2,103 files, 104.7MB
+==> Installing test/tap/t3code-cli-main
+🍺  /home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9: 4,758 files, 457.8MB, built in 5 seconds
+==> Caveats
+==> t3code-cli-main
+Warning: t3code-cli-main provides a service which can only be used on macOS or systemd!
+You can manually execute the service instead with:
+  T3CODE_HOME="/home/linuxbrew/.t3" T3CODE_TELEMETRY_ENABLED="false" /home/linuxbrew/.linuxbrew/opt/t3code-cli-main/bin/t3 serve
+==> Testing test/tap/t3code-cli-main
+[34m==>[0m [1m/home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9[0m
+DESCRIPTION
+  Run T3 Code in this terminal and open it in your browser. To use it from your other devices, run `t3 up`.
+
+USAGE
+  t3 <subcommand> [flags] [<cwd>]
+
+ARGUMENTS
+  cwd string    Working directory for provider sessions (defaults to the current directory). (optional)
+
+FLAGS
+  --mode choice                              Runtime mode. `desktop` keeps loopback defaults unless overridden. (choices: web, desktop)
+  --port integer                             Port for the HTTP/WebSocket server.
+  --host string                              Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a Tailnet IP).
+  --base-dir string                          Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --dev-url string                           Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL).
+  --no-browser                               Disable automatic browser opening.
+  --bootstrap-fd integer                     Read one-time bootstrap secrets from the given file descriptor.
+  --auto-bootstrap-project-from-cwd          Create a project for the current working directory on startup when missing.
+  --log-websocket-events, --log-ws-events    Emit server-side logs for outbound WebSocket push traffic (equivalent to T3CODE_LOG_WS_EVENTS).
+  --tailscale-serve                          Configure Tailscale Serve to expose this backend over HTTPS on the Tailnet.
+  --tailscale-serve-port integer             HTTPS port for Tailscale Serve when --tailscale-serve is enabled.
+  --lan                                      Accept connections from your local network and tailnet, not only this machine (equivalent to T3CODE_LAN).
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+SUBCOMMANDS
+  help           Show command help.
+  serve          Run T3 Code in this terminal, with no browser.
+  app            Open a project in the running T3 Code desktop app.
+  pair           Mint a pairing token for a running T3 Code server and print it as a QR code.
+  auth           Manage the local auth control plane for headless deployments.
+  environment    Link other T3 Code environments, so agents here can work there.
+  browser        Manage T3's headless browser on this host.
+  project        Manage projects.
+  thread         Start, message, and read threads on the running server.
+  up             Set up remote access and the T3 Code background service.
+  status         Show service setup and remote access settings.
+  service        Manage the T3 Code background service.
+  update         Download a newer t3 and switch this machine to it, including the background service when one is installed.
+  install        Install this version as the `t3` command.
+  uninstall      Remove t3 from this machine: the background service, the launcher, and every downloaded version. Your projects and threads are kept.
+  theme          Inspect and set environment-wide theme defaults.
+  trace          Inspect the local server trace file.
+  doctor         Inspect this T3 Code data directory and repair it. Pauses and restarts the background service as needed.
+  policy         Inspect the administrator's managed policy.
+  triage         Investigate a T3 Code problem on this machine with claude or codex, and help file a good issue.
+  connect        Set up T3 Connect for this machine. Same as `t3 up --connect`.

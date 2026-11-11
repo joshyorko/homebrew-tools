@@ -1,0 +1,5 @@
+MainPID=0
+ControlGroup=
+Id=sh.brew.t3code-cli-main.service
+LoadState=not-found
+ActiveState=failed

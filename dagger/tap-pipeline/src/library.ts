@@ -546,6 +546,8 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "scripts/package-t3code-cli-main.mjs",
       "scripts/lib/apply-pnpm-package-patch.mjs",
       "scripts/build-t3code-resource-monitor.sh",
+      "patches/t3-homebrew-service-protect.patch",
+      "scripts/t3-service-protect-smoke/",
       "dagger/t3code-cli-main-smoke/",
     ],
   ],
@@ -615,6 +617,8 @@ function isTestOrDocumentationPath(path: string): boolean {
   return runtimeInputPackageIds(path).length === 0 && (
     path === "AGENTS.md"
     || path === "README.md"
+    || path === "Makefile"
+    || path === "scripts/dagger-limited.sh"
     || path.startsWith("docs/")
     || ["scripts/test-cask-icon-paths.mjs", "scripts/test-prune-package-releases.mjs", "scripts/package-vscode-insiders-linux.test.mjs", "scripts/codex-memoryd-update.test.mjs"].includes(path)
     || path === "scripts/plan-tap-ci.mjs"

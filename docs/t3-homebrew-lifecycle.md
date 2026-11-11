@@ -79,6 +79,34 @@ The Homebrew service should be running; both legacy units should be inactive
 and masked. `systemctl` may report an inactive or unknown unit when a legacy
 unit was not installed.
 
+## Protect the server from memory pressure
+
+The packaged CLI's `t3 service protect` verifies either the native
+`t3code.service` or Homebrew's `sh.brew.t3code-cli-main.service` before showing
+its drop-in plan. A matching name alone is insufficient. Ambiguous services,
+foreign commands, or conflicting protection files stop the command before
+it changes settings. A masked, inactive native unit does not disqualify a
+verified Homebrew service.
+
+Review the selected unit and exact `90-t3code-protect.conf` path before
+confirming. Run the command as the service user, without sudo; it retains
+the interactive confirmation and asks for sudo for system settings only.
+`t3 service protect --undo` removes the feature's validated drop-ins,
+including a stale native protection drop-in, and preserves shared settings
+while another user remains protected. It also works with a verified stopped
+service without starting it.
+
+Installing the drop-in does not change the running server's OOM score.
+For Homebrew, wait until agents are idle before an operator runs
+`brew services restart t3code-cli-main`. The native `t3 service restart`
+command does not manage the Homebrew service. Neither protection nor undo
+restarts a server automatically.
+
+The service's `MemoryLow=0` alone does not mean protection failed; its
+`app.slice` ancestor can reserve memory. Check the ancestor chain and
+`/proc/<MainPID>/oom_score_adj` after an authorized restart. Isolated test
+results do not qualify either live Dakota host.
+
 ## Update from the T3 Desktop
 
 The packaged Linux Desktop's update control uses the Homebrew provider. It
