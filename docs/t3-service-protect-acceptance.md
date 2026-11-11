@@ -43,10 +43,18 @@ historical source results, not installed package or live-host acceptance.
 
 ## Artifact and runtime gates
 
-The Dagger build/install run was interrupted before completion. The real
-systemd runner has not yet completed. Native installed-runtime acceptance and
-two competing verified services remain open. Live Dakota acceptance is not
-authorized and has not run. No formula publication, merge, or release occurred.
+The first complete bounded Dagger build/install run passed, including formula
+tests, the resource monitor handshake, and the compiled Connect command.
+Its real systemd run then exposed an ownership-query defect: empty
+`EnvironmentFiles` is omitted unless `systemctl show --all` is requested.
+The CLI now requests the complete properties rather than treating a missing
+property as safe. The test fixture models systemd's default omission behavior
+and still rejects incomplete responses. Qualification of that correction is
+in progress. The earlier candidate receipts are tied to their exact build.
+
+Native installed-runtime acceptance and two competing verified services remain
+open. Live Dakota acceptance is not authorized and has not run. No formula
+publication, merge, or release occurred.
 
 The first bounded run exited 134 during workspace-wide test discovery.
 The engine's process-limit counter increased while its OOM-kill counter stayed

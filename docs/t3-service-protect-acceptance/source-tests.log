@@ -1,0 +1,10 @@
+RUN  v5.0.5 /upstream/apps/server
+
+✓ src/cloud/serviceProtection.test.ts (13 tests) 89ms
+✓ src/cli/service.test.ts (17 tests) 105ms
+✓ src/cloud/serviceProtectionTarget.test.ts (26 tests) 78ms
+
+Test Files  3 passed (3)
+Tests  56 passed (56)
+Start at  14:41:08
+Duration  2.72s (import 38%, transform 33%, setup 18%, tests 11%)

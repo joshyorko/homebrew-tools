@@ -1,0 +1,41 @@
+{
+  "upstream": {
+    "kind": "git",
+    "repo": "https://github.com/pingdotgg/t3code",
+    "ref": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a",
+    "version": "main.20261111.d2c25950b4d9",
+    "commit": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a"
+  },
+  "tapBuildHead": "fc723df76ffc8504e589db51cc83a0cb4c04cecb",
+  "protectionPatchSha256": "ed09741fae3cc1db3101fb5f7a0ec3d94e51d921de4d5e8bd855a59b26323f70",
+  "artifact": {
+    "name": "t3code-cli-main-main.20261111.d2c25950b4d9.tar.gz",
+    "version": "main.20261111.d2c25950b4d9",
+    "sha256": "cf04df1efa4a4ca8a9340c87f7cf5892d1187a472bac93019ca80c20199f3d39"
+  },
+  "sourceTests": {
+    "files": 3,
+    "passed": 56,
+    "log": "source-tests.log"
+  },
+  "packageQualification": {
+    "result": "PASS",
+    "log": "ci.log"
+  },
+  "engineBudget": {
+    "cpuQuota": 2,
+    "cpuAffinity": [
+      0,
+      1
+    ],
+    "memoryGiB": 4,
+    "swapGiB": 1,
+    "pids": 512
+  },
+  "systemdQualification": {
+    "result": "PENDING"
+  },
+  "hostedCi": "not verified",
+  "liveDakota": "not authorized or run",
+  "published": false
+}

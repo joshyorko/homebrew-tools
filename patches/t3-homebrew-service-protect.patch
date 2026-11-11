@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/cli/service.test.ts b/apps/server/src/cli/service.test.ts
-index 900c41e6..6d2721d3 100644
+index 900c41e..6d2721d 100644
 --- a/apps/server/src/cli/service.test.ts
 +++ b/apps/server/src/cli/service.test.ts
 @@ -12,8 +12,16 @@ import { afterEach, vi } from "vite-plus/test";
@@ -156,7 +156,7 @@ index 900c41e6..6d2721d3 100644
 +  );
  });
 diff --git a/apps/server/src/cli/service.ts b/apps/server/src/cli/service.ts
-index ce431541..a8ef986d 100644
+index ce43154..a8ef986 100644
 --- a/apps/server/src/cli/service.ts
 +++ b/apps/server/src/cli/service.ts
 @@ -12,6 +12,7 @@ import { FetchHttpClient } from "effect/http";
@@ -227,7 +227,7 @@ index ce431541..a8ef986d 100644
          }).pipe(Effect.provide(ProcessRunner.layer)),
        );
 diff --git a/apps/server/src/cloud/serviceProtection.test.ts b/apps/server/src/cloud/serviceProtection.test.ts
-index eef78cd3..14375ad4 100644
+index eef78cd..14375ad 100644
 --- a/apps/server/src/cloud/serviceProtection.test.ts
 +++ b/apps/server/src/cloud/serviceProtection.test.ts
 @@ -190,7 +190,10 @@ it.effect("lowers no score before the manager default is in place, and undoes in
@@ -467,7 +467,7 @@ index eef78cd3..14375ad4 100644
 +  },
 +);
 diff --git a/apps/server/src/cloud/serviceProtection.ts b/apps/server/src/cloud/serviceProtection.ts
-index 780aee83..063e94f2 100644
+index 780aee8..063e94f 100644
 --- a/apps/server/src/cloud/serviceProtection.ts
 +++ b/apps/server/src/cloud/serviceProtection.ts
 @@ -8,6 +8,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -618,10 +618,10 @@ index 780aee83..063e94f2 100644
  });
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.test.ts b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 new file mode 100644
-index 00000000..085ab6c8
+index 0000000..c64bf8f
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.test.ts
-@@ -0,0 +1,357 @@
+@@ -0,0 +1,371 @@
 +// @effect-diagnostics nodeBuiltinImport:off
 +import * as NodeFS from "node:fs";
 +import * as NodeOS from "node:os";
@@ -738,7 +738,11 @@ index 00000000..085ab6c8
 +        else if (command === "systemctl" && args[0] === "--user" && args[1] === "show") {
 +          const values = units.get(args[2] ?? "");
 +          if (values === undefined) throw new Error("Probe outside the service allowlist");
-+          stdout = [...values].map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
++          stdout =
++            [...values]
++              .filter(([, value]) => args.includes("--all") || value !== "")
++              .map(([key, value]) => `${key}=${value}`)
++              .join("\n") + "\n";
 +          if (values.get("LoadState") === "not-found") code = 1;
 +        } else throw new Error(`Unexpected command: ${command}`);
 +        return {
@@ -852,6 +856,16 @@ index 00000000..085ab6c8
 +    Effect.gen(function* () {
 +      const result = yield* resolveProtectionTarget(f.input).pipe(Effect.exit);
 +      expect(result._tag).toBe("Failure");
++    }),
++  );
++});
++
++it.effect("refuses incomplete property responses even when systemctl succeeds", () => {
++  const f = fixture({ native: "stopped" });
++  f.units.get(NATIVE)!.delete("EnvironmentFiles");
++  return f.provide(
++    Effect.gen(function* () {
++      expect((yield* resolveProtectionTarget(f.input).pipe(Effect.exit))._tag).toBe("Failure");
 +    }),
 +  );
 +});
@@ -981,10 +995,10 @@ index 00000000..085ab6c8
 +});
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.ts b/apps/server/src/cloud/serviceProtectionTarget.ts
 new file mode 100644
-index 00000000..4c5a3577
+index 0000000..63cc4e2
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.ts
-@@ -0,0 +1,278 @@
+@@ -0,0 +1,284 @@
 +import * as Effect from "effect/Effect";
 +import * as FileSystem from "effect/FileSystem";
 +import * as Option from "effect/Option";
@@ -1081,7 +1095,13 @@ index 00000000..4c5a3577
 +    const userUnitDir = path.resolve(input.userUnitDir);
 +    const candidates: ProtectionTarget[] = [];
 +    for (const unit of [BOOT_SERVICE_UNIT_FILE, HOMEBREW_SERVICE_UNIT] satisfies ProtectionUnit[]) {
-+      const shown = yield* query("systemctl", ["--user", "show", unit, `--property=${properties}`]);
++      const shown = yield* query("systemctl", [
++        "--user",
++        "show",
++        unit,
++        "--all",
++        `--property=${properties}`,
++      ]);
 +      const values = showValues(shown);
 +      const load = values.get("LoadState");
 +      const active = values.get("ActiveState");

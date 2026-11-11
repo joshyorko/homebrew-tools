@@ -1,0 +1,171 @@
+Trusted formula: test/tap/t3code-cli-main
+==> Would install 1 formula:
+test/tap/t3code-cli-main main.20261111.d2c25950b4d9
+==> Would install 26 dependencies for t3code-cli-main:
+brotli           1.2.1
+c-ares           1.34.9
+zlib-ng-compat   2.3.3_1
+hdrhistogram_c   0.12.1
+icu4c@79         79.1
+libnghttp2       1.71.0
+libnghttp3       1.19.0
+ca-certificates  2026-11-05
+openssl@4        4.1.0
+libngtcp2        1.26.0
+libuv            1.53.0
+simdjson         5.1.1
+ncurses          6.6
+readline         8.3.6
+sqlite           3.54.1
+uvwasi           0.0.23
+lz4              1.11.1
+xz               5.8.4
+zstd             1.5.7_1
+mpdecimal        4.0.1
+bzip2            1.0.8
+expat            2.10.0
+libedit          20260512-3.1
+libffi           3.8.0
+python@3.15      3.15.2
+node@24          24.22.2_2
+==> Installing t3code-cli-main from test/tap
+==> Installing dependencies for test/tap/t3code-cli-main: brotli, c-ares, zlib-ng-compat, hdrhistogram_c, icu4c@79, libnghttp2, libnghttp3, ca-certificates, openssl@4, libngtcp2, libuv, simdjson, ncurses, readline, sqlite, uvwasi, lz4, xz, zstd, mpdecimal, bzip2, expat, libedit, libffi, python@3.15 and node@24
+==> Installing test/tap/t3code-cli-main dependency: brotli (1.2.1)
+==> Pouring brotli--1.2.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/brotli/1.2.1: 33 files, 2MB
+==> Installing test/tap/t3code-cli-main dependency: c-ares (1.34.9)
+==> Pouring c-ares--1.34.9.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/c-ares/1.34.9: 176 files, 1.4MB
+==> Installing test/tap/t3code-cli-main dependency: zlib-ng-compat (2.3.3_1)
+==> Pouring zlib-ng-compat--2.3.3_1.x86_64_linux.bottle.1.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/zlib-ng-compat/2.3.3_1: 17 files, 600.7KB
+==> Installing test/tap/t3code-cli-main dependency: hdrhistogram_c (0.12.1)
+==> Pouring hdrhistogram_c--0.12.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/hdrhistogram_c/0.12.1: 23 files, 233.4KB
+==> Installing test/tap/t3code-cli-main dependency: icu4c@79 (79.1)
+==> Pouring icu4c@79--79.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/icu4c@79/79.1: 279 files, 95.6MB
+==> Installing test/tap/t3code-cli-main dependency: libnghttp2 (1.71.0)
+==> Pouring libnghttp2--1.71.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libnghttp2/1.71.0: 15 files, 898.6KB
+==> Installing test/tap/t3code-cli-main dependency: libnghttp3 (1.19.0)
+==> Pouring libnghttp3--1.19.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libnghttp3/1.19.0: 20 files, 704.1KB
+==> Installing test/tap/t3code-cli-main dependency: ca-certificates (2026-11-05)
+==> Pouring ca-certificates--2026-11-05.all.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/ca-certificates/2026-11-05: 5 files, 195.8KB
+==> Installing test/tap/t3code-cli-main dependency: openssl@4 (4.1.0)
+==> Pouring openssl@4--4.1.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/openssl@4/4.1.0: 6,878 files, 31.3MB
+==> Installing test/tap/t3code-cli-main dependency: libngtcp2 (1.26.0)
+==> Pouring libngtcp2--1.26.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libngtcp2/1.26.0: 23 files, 1.7MB
+==> Installing test/tap/t3code-cli-main dependency: libuv (1.53.0)
+==> Pouring libuv--1.53.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libuv/1.53.0: 35 files, 1.5MB
+==> Installing test/tap/t3code-cli-main dependency: simdjson (5.1.1)
+==> Pouring simdjson--5.1.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/simdjson/5.1.1: 19 files, 11.3MB
+==> Installing test/tap/t3code-cli-main dependency: ncurses (6.6)
+==> Pouring ncurses--6.6.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/ncurses/6.6: 4,071 files, 11.5MB
+==> Installing test/tap/t3code-cli-main dependency: readline (8.3.6)
+==> Pouring readline--8.3.6.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/readline/8.3.6: 56 files, 3MB
+==> Installing test/tap/t3code-cli-main dependency: sqlite (3.54.1)
+==> Pouring sqlite--3.54.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/sqlite/3.54.1: 13 files, 6.9MB
+==> Installing test/tap/t3code-cli-main dependency: uvwasi (0.0.23)
+==> Pouring uvwasi--0.0.23.x86_64_linux.bottle.1.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/uvwasi/0.0.23: 15 files, 340KB
+==> Installing test/tap/t3code-cli-main dependency: lz4 (1.11.1)
+==> Pouring lz4--1.11.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/lz4/1.11.1: 28 files, 917.9KB
+==> Installing test/tap/t3code-cli-main dependency: xz (5.8.4)
+==> Pouring xz--5.8.4.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/xz/5.8.4: 97 files, 2.8MB
+==> Installing test/tap/t3code-cli-main dependency: zstd (1.5.7_1)
+==> Pouring zstd--1.5.7_1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/zstd/1.5.7_1: 32 files, 3.1MB
+==> Installing test/tap/t3code-cli-main dependency: mpdecimal (4.0.1)
+==> Pouring mpdecimal--4.0.1.x86_64_linux.bottle.1.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/mpdecimal/4.0.1: 22 files, 787.8KB
+==> Installing test/tap/t3code-cli-main dependency: bzip2 (1.0.8)
+==> Pouring bzip2--1.0.8.x86_64_linux.bottle.2.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/bzip2/1.0.8: 31 files, 583.3KB
+==> Installing test/tap/t3code-cli-main dependency: expat (2.10.0)
+==> Pouring expat--2.10.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/expat/2.10.0: 23 files, 940.6KB
+==> Installing test/tap/t3code-cli-main dependency: libedit (20260512-3.1)
+==> Pouring libedit--20260512-3.1.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libedit/20260512-3.1: 61 files, 1.8MB
+==> Installing test/tap/t3code-cli-main dependency: libffi (3.8.0)
+==> Pouring libffi--3.8.0.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/libffi/3.8.0: 19 files, 968.8KB
+==> Installing test/tap/t3code-cli-main dependency: python@3.15 (3.15.2)
+==> Pouring python@3.15--3.15.2.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/python@3.15/3.15.2: 3,535 files, 86.9MB
+==> Installing test/tap/t3code-cli-main dependency: node@24 (24.22.2_2)
+==> Pouring node@24--24.22.2_2.x86_64_linux.bottle.tar.gz
+🍺  /home/linuxbrew/.linuxbrew/Cellar/node@24/24.22.2_2: 2,103 files, 104.7MB
+==> Installing test/tap/t3code-cli-main
+🍺  /home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9: 4,758 files, 457.8MB, built in 7 seconds
+==> Caveats
+==> t3code-cli-main
+Warning: t3code-cli-main provides a service which can only be used on macOS or systemd!
+You can manually execute the service instead with:
+  T3CODE_HOME="/home/linuxbrew/.t3" T3CODE_TELEMETRY_ENABLED="false" /home/linuxbrew/.linuxbrew/opt/t3code-cli-main/bin/t3 serve
+==> Testing test/tap/t3code-cli-main
+[34m==>[0m [1m/home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9[0m
+DESCRIPTION
+  Run T3 Code in this terminal and open it in your browser. To use it from your other devices, run `t3 up`.
+
+USAGE
+  t3 <subcommand> [flags] [<cwd>]
+
+ARGUMENTS
+  cwd string    Working directory for provider sessions (defaults to the current directory). (optional)
+
+FLAGS
+  --mode choice                              Runtime mode. `desktop` keeps loopback defaults unless overridden. (choices: web, desktop)
+  --port integer                             Port for the HTTP/WebSocket server.
+  --host string                              Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a Tailnet IP).
+  --base-dir string                          Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --dev-url string                           Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL).
+  --no-browser                               Disable automatic browser opening.
+  --bootstrap-fd integer                     Read one-time bootstrap secrets from the given file descriptor.
+  --auto-bootstrap-project-from-cwd          Create a project for the current working directory on startup when missing.
+  --log-websocket-events, --log-ws-events    Emit server-side logs for outbound WebSocket push traffic (equivalent to T3CODE_LOG_WS_EVENTS).
+  --tailscale-serve                          Configure Tailscale Serve to expose this backend over HTTPS on the Tailnet.
+  --tailscale-serve-port integer             HTTPS port for Tailscale Serve when --tailscale-serve is enabled.
+  --lan                                      Accept connections from your local network and tailnet, not only this machine (equivalent to T3CODE_LAN).
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+SUBCOMMANDS
+  help           Show command help.
+  serve          Run T3 Code in this terminal, with no browser.
+  app            Open a project in the running T3 Code desktop app.
+  pair           Mint a pairing token for a running T3 Code server and print it as a QR code.
+  auth           Manage the local auth control plane for headless deployments.
+  environment    Link other T3 Code environments, so agents here can work there.
+  browser        Manage T3's headless browser on this host.
+  project        Manage projects.
+  thread         Start, message, and read threads on the running server.
+  up             Set up remote access and the T3 Code background service.
+  status         Show service setup and remote access settings.
+  service        Manage the T3 Code background service.
+  update         Download a newer t3 and switch this machine to it, including the background service when one is installed.
+  install        Install this version as the `t3` command.
+  uninstall      Remove t3 from this machine: the background service, the launcher, and every downloaded version. Your projects and threads are kept.
+  theme          Inspect and set environment-wide theme defaults.
+  trace          Inspect the local server trace file.
+  doctor         Inspect this T3 Code data directory and repair it. Pauses and restarts the background service as needed.
+  policy         Inspect the administrator's managed policy.
+  triage         Investigate a T3 Code problem on this machine with claude or codex, and help file a good issue.
+  connect        Set up T3 Connect for this machine. Same as `t3 up --connect`.
