@@ -16,6 +16,13 @@ brew test ./Formula/t3code-cli-main.rb
 
 Use the Dagger smoke tests for real packaging verification:
 
+On the workstation, replace `dagger` with `bash scripts/dagger-limited.sh` in
+local commands. The launcher verifies a private engine cgroup with 2 CPUs,
+3 GiB RAM, 4 GiB total RAM plus swap, and 512 processes before starting it.
+Run heavy builds sequentially. Do not bypass these limits to retry a failure.
+The Makefile recovery targets already use this launcher. CI keeps its own
+runner configuration.
+
 ```bash
 dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
 dagger -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
