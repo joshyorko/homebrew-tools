@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/cli/service.test.ts b/apps/server/src/cli/service.test.ts
-index 900c41e..6d2721d 100644
+index 900c41e..a67ce84 100644
 --- a/apps/server/src/cli/service.test.ts
 +++ b/apps/server/src/cli/service.test.ts
 @@ -12,8 +12,16 @@ import { afterEach, vi } from "vite-plus/test";
@@ -19,7 +19,7 @@ index 900c41e..6d2721d 100644
  afterEach(() => vi.restoreAllMocks());
  
  const status = {
-@@ -258,4 +266,135 @@ it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("service commands
+@@ -258,4 +266,131 @@ it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("service commands
        expect(output).toContain(input.otherHome ? "--base-dir '/home/me/.t3'" : "Removed");
      }),
    );
@@ -101,25 +101,19 @@ index 900c41e..6d2721d 100644
 +    }),
 +  );
 +
-+  it.effect("protect undo uses the verified stopped Homebrew unit without restarting it", () =>
++  it.effect("protect undo removes known settings after the Homebrew unit is gone", () =>
 +    Effect.gen(function* () {
 +      const fs = yield* FileSystem.FileSystem;
 +      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-service-cli-test-" });
-+      const { service, installOptions, restarts } = makeTestService(status);
++      const { service, installOptions, restarts } = makeTestService({ ...status, installed: false, current: false });
 +      vi.spyOn(BootService, "layer").mockReturnValue(
 +        Layer.succeed(BootService.BootService, service),
 +      );
-+      vi.spyOn(ServiceProtectionTarget, "resolveProtectionTarget").mockReturnValue(
-+        Effect.succeed({
-+          unit: "sh.brew.t3code-cli-main.service",
-+          state: "stopped",
-+          userUnitDir: "/home/me/.config/systemd/user",
-+          restartCommand: "brew services restart t3code-cli-main",
-+          fingerprint: "verified-fixture",
-+        }),
++      const resolve = vi.spyOn(ServiceProtectionTarget, "resolveProtectionTarget").mockReturnValue(
++        Effect.fail(new ServiceProtection.ServiceProtectionError({ step: "no installed unit" })),
 +      );
-+      vi.spyOn(ServiceProtectionTarget, "revalidateProtectionTarget").mockReturnValue(
-+        Effect.undefined,
++      const revision = vi.spyOn(ServiceProtectionTarget, "readProtectionUnitRevision").mockReturnValue(
++        Effect.succeed("unchanged known unit files"),
 +      );
 +      vi.spyOn(ServiceProtection, "installedProtection").mockImplementation((plan) =>
 +        Effect.succeed({ ...plan, system: [...plan.system], user: [...plan.user] }),
@@ -147,8 +141,10 @@ index 900c41e..6d2721d 100644
 +        ),
 +      );
 +      expect(remove).toHaveBeenCalledOnce();
-+      expect(remove.mock.calls[0]?.[0].user.at(-1)?.unit).toBe("sh.brew.t3code-cli-main.service");
-+      expect(output).toContain("Removed protection for sh.brew.t3code-cli-main.service");
++      expect(resolve).not.toHaveBeenCalled();
++      expect(revision).toHaveBeenCalledTimes(2);
++      expect(output).toContain("Removed T3 Code service protection");
++      expect(output).not.toContain("Selected ");
 +      expect(output).not.toContain("`t3 service restart`");
 +      expect(installOptions).toEqual([]);
 +      expect(restarts).toEqual([]);
@@ -156,7 +152,7 @@ index 900c41e..6d2721d 100644
 +  );
  });
 diff --git a/apps/server/src/cli/service.ts b/apps/server/src/cli/service.ts
-index ce43154..a8ef986 100644
+index ce43154..d179f08 100644
 --- a/apps/server/src/cli/service.ts
 +++ b/apps/server/src/cli/service.ts
 @@ -12,6 +12,7 @@ import { FetchHttpClient } from "effect/http";
@@ -167,10 +163,46 @@ index ce43154..a8ef986 100644
  import { compareExactServiceVersions, SERVICE_ENV_FILE } from "../cloud/serviceProtocol.ts";
  import * as ServerConfig from "../config.ts";
  import * as ProcessRunner from "../processRunner.ts";
-@@ -383,12 +384,21 @@ const serviceProtectCommand = Command.make("protect", {
+@@ -377,13 +378,11 @@ const serviceProtectCommand = Command.make("protect", {
+         flags,
+         Effect.gen(function* () {
+           const uid = yield* HostProcess.UserId;
+-          const remote = yield* ServiceProtection.detectRemoteAccessUnits;
+           const { unitPath } = yield* (yield* BootService.BootService).status;
+-          if (uid === undefined || remote === undefined || unitPath === "") {
++          if (uid === undefined || unitPath === "") {
              return yield* Console.log(unsupported);
            }
            const userUnitDir = (yield* Path.Path).dirname(unitPath);
+-
+           if (flags.undo) {
+             const installed = yield* ServiceProtection.installedProtection(
+               ServiceProtection.protectionPlan({
+@@ -395,6 +394,7 @@ const serviceProtectCommand = Command.make("protect", {
+             if (installed === undefined) {
+               return yield* Console.log("T3 Code service protection is not set up.");
+             }
++            const revision = yield* ServiceProtectionTarget.readProtectionUnitRevision(userUnitDir);
+             yield* Console.log(
+               [
+                 "Removes:",
+@@ -405,12 +405,26 @@ const serviceProtectCommand = Command.make("protect", {
+               ].join("\n"),
+             );
+             if (!(yield* confirm(flags.yes, "Remove T3 Code service protection?"))) return;
++            if ((yield* ServiceProtectionTarget.readProtectionUnitRevision(userUnitDir)) !== revision)
++              return yield* new ServiceProtection.ServiceProtectionError({
++                step: "verify T3 service ownership: service changed after confirmation",
++              });
+             yield* ServiceProtection.removeProtection(installed);
+             return yield* Console.log(
+-              "Removed T3 Code service protection. The server's OOM score returns to normal after `t3 service restart`.",
++              "Removed T3 Code service protection. Running servers keep their current OOM score until their owner restarts them when agents are idle.",
+             );
+           }
+ 
++          const remote = yield* ServiceProtection.detectRemoteAccessUnits;
++          if (remote === undefined) return yield* Console.log(unsupported);
 +          const { baseDir } = yield* ServerConfig.ServerConfig;
 +          const targetInput = { uid, baseDir, userUnitDir };
 +          const target = yield* ServiceProtectionTarget.resolveProtectionTarget(targetInput);
@@ -179,30 +211,10 @@ index ce43154..a8ef986 100644
 +            target.state === "stopped"
 +              ? "The server is stopped. Its next start picks up the configured OOM score."
 +              : `The running server keeps its current OOM score until a restart. When agents are idle, run \`${target.restartCommand}\`.`;
- 
-           if (flags.undo) {
-             const installed = yield* ServiceProtection.installedProtection(
-               ServiceProtection.protectionPlan({
-                 uid,
-                 userUnitDir,
-+                serverUnit: target.unit,
-                 remoteAccessUnits: ServiceProtection.REMOTE_ACCESS_UNITS,
-               }),
-             );
-@@ -405,10 +415,9 @@ const serviceProtectCommand = Command.make("protect", {
-               ].join("\n"),
-             );
-             if (!(yield* confirm(flags.yes, "Remove T3 Code service protection?"))) return;
-+            yield* ServiceProtectionTarget.revalidateProtectionTarget(targetInput, target);
-             yield* ServiceProtection.removeProtection(installed);
--            return yield* Console.log(
--              "Removed T3 Code service protection. The server's OOM score returns to normal after `t3 service restart`.",
--            );
-+            return yield* Console.log(`Removed protection for ${target.unit}. ${restart}`);
-           }
- 
            yield* Console.log(
-@@ -429,8 +438,10 @@ const serviceProtectCommand = Command.make("protect", {
+             [
+               "Keeps T3 Code running when agents fill this machine's memory:",
+@@ -429,8 +443,10 @@ const serviceProtectCommand = Command.make("protect", {
            const plan = ServiceProtection.protectionPlan({
              uid,
              userUnitDir,
@@ -213,7 +225,7 @@ index ce43154..a8ef986 100644
            yield* Console.log(
              [
                "Drop-ins it writes, as root through sudo:",
-@@ -440,9 +451,11 @@ const serviceProtectCommand = Command.make("protect", {
+@@ -440,9 +456,11 @@ const serviceProtectCommand = Command.make("protect", {
              ].join("\n"),
            );
            if (!(yield* confirm(flags.yes, "Apply these settings?"))) return;
@@ -227,7 +239,7 @@ index ce43154..a8ef986 100644
          }).pipe(Effect.provide(ProcessRunner.layer)),
        );
 diff --git a/apps/server/src/cloud/serviceProtection.test.ts b/apps/server/src/cloud/serviceProtection.test.ts
-index eef78cd..14375ad 100644
+index eef78cd..812e5c8 100644
 --- a/apps/server/src/cloud/serviceProtection.test.ts
 +++ b/apps/server/src/cloud/serviceProtection.test.ts
 @@ -190,7 +190,10 @@ it.effect("lowers no score before the manager default is in place, and undoes in
@@ -242,7 +254,7 @@ index eef78cd..14375ad 100644
              }
            }),
          ),
-@@ -268,3 +271,223 @@ it.effect("counts memory.min as protection and names the first cgroup that grant
+@@ -268,3 +271,251 @@ it.effect("counts memory.min as protection and names the first cgroup that grant
      Effect.provide(NodeServices.layer),
    );
  });
@@ -466,8 +478,36 @@ index eef78cd..14375ad 100644
 +    );
 +  },
 +);
++
++it.effect("undo discovers owned Homebrew settings without a unit or selected owner", () => {
++  const root = temporaryDirectory();
++  return Effect.gen(function* () {
++    const plan = ServiceProtection.protectionPlan({
++      uid: 1000,
++      userUnitDir: NodePath.join(root, "user"),
++      systemUnitDir: NodePath.join(root, "system"),
++      remoteAccessUnits: [],
++    });
++    const marker = NodePath.join(root, "user/sh.brew.t3code-cli-main.service.d/90-t3code-protect.conf");
++    const admin = NodePath.join(NodePath.dirname(marker), "50-admin.conf");
++    NodeFS.mkdirSync(NodePath.dirname(marker), { recursive: true });
++    NodeFS.writeFileSync(marker, "[Service]\nOOMScoreAdjust=-900\n");
++    NodeFS.writeFileSync(admin, "[Service]\nNice=2\n");
++    const installed = yield* ServiceProtection.installedProtection(plan);
++    expect(installed?.user.map(({ path }) => path)).toContain(marker);
++    yield* ServiceProtection.removeProtection(installed!);
++    expect(NodeFS.existsSync(marker)).toBe(false);
++    expect(NodeFS.readFileSync(admin, "utf8")).toBe("[Service]\nNice=2\n");
++    expect(yield* ServiceProtection.installedProtection(plan)).toBeUndefined();
++  }).pipe(
++    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true }))),
++    Effect.provideService(ProcessRunner.ProcessRunner, runner("")),
++    Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, fakeSudo(0, () => {})),
++    Effect.provide(NodeServices.layer),
++  );
++});
 diff --git a/apps/server/src/cloud/serviceProtection.ts b/apps/server/src/cloud/serviceProtection.ts
-index 780aee8..063e94f 100644
+index 780aee8..0040684 100644
 --- a/apps/server/src/cloud/serviceProtection.ts
 +++ b/apps/server/src/cloud/serviceProtection.ts
 @@ -8,6 +8,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -558,19 +598,24 @@ index 780aee8..063e94f 100644
    yield* removeDropIns(plan.user);
    yield* reloadUserManager;
    if (plan.system.length > 0) yield* runPrivileged(renderPrivilegedScript(plan, "undo"));
-@@ -291,8 +328,19 @@ export const installedProtection = Effect.fn("ServiceProtection.installed")(func
+@@ -291,8 +328,24 @@ export const installedProtection = Effect.fn("ServiceProtection.installed")(func
  ) {
    const fs = yield* FileSystem.FileSystem;
    const exists = (dropIn: DropIn) => fs.exists(dropIn.path).pipe(Effect.orElseSucceed(() => false));
-+  const server = plan.user.find(({ unit }) => unit === "sh.brew.t3code-cli-main.service");
++  const serverUnits = [
++    BOOT_SERVICE_UNIT_FILE,
++    "sh.brew.t3code-cli-main.service",
++  ] satisfies ProtectionUnit[];
++  const isServer = (unit: string) => serverUnits.some((known) => known === unit);
++  const server = plan.user.find(({ unit }) => isServer(unit));
 +  const userDropIns =
 +    server === undefined
 +      ? plan.user
 +      : [
-+          ...plan.user,
-+          dropIn(directoryOf(directoryOf(server.path)), BOOT_SERVICE_UNIT_FILE, "Service", [
-+            PROTECTED_OOM_SCORE,
-+          ]),
++          ...plan.user.filter(({ unit }) => !isServer(unit)),
++          ...serverUnits.map((unit) =>
++            dropIn(directoryOf(directoryOf(server.path)), unit, "Service", [PROTECTED_OOM_SCORE]),
++          ),
 +        ];
 +  yield* validateProtection({ ...plan, user: userDropIns });
    const system = yield* Effect.filter(plan.system, exists);
@@ -579,7 +624,7 @@ index 780aee8..063e94f 100644
    const managerDefaults = yield* exists(plan.managerDefaults);
    return system.length + user.length === 0 && !managerDefaults
      ? undefined
-@@ -307,13 +355,16 @@ export interface ServiceProtectionState {
+@@ -307,13 +360,16 @@ export interface ServiceProtectionState {
  }
  
  /** Reads what the kernel applies to the running service, whoever configured it. */
@@ -598,7 +643,7 @@ index 780aee8..063e94f 100644
      "--property=ControlGroup,MainPID",
    ]).pipe(Effect.option);
    if (Option.isNone(shown)) return undefined;
-@@ -327,7 +378,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
+@@ -327,7 +383,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
      );
    let unprotected: string | undefined;
    const grants = (value: string) => value !== "" && value !== "0";
@@ -607,7 +652,7 @@ index 780aee8..063e94f 100644
      const directory = path.join("/sys/fs/cgroup", ...controlGroup.slice(0, depth));
      const low = yield* read(path.join(directory, "memory.low"));
      const min = yield* read(path.join(directory, "memory.min"));
-@@ -339,7 +390,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
+@@ -339,7 +395,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
      unprotected,
      oomScoreAdj: score === "" ? undefined : Number(score),
      setByProtect: yield* fs
@@ -618,10 +663,10 @@ index 780aee8..063e94f 100644
  });
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.test.ts b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 new file mode 100644
-index 0000000..f1969fd
+index 0000000..12e5199
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.test.ts
-@@ -0,0 +1,405 @@
+@@ -0,0 +1,505 @@
 +// @effect-diagnostics nodeBuiltinImport:off
 +import * as NodeFS from "node:fs";
 +import * as NodeOS from "node:os";
@@ -636,6 +681,7 @@ index 0000000..f1969fd
 +import * as ProcessRunner from "../processRunner.ts";
 +import {
 +  HOMEBREW_SERVICE_UNIT,
++  readProtectionUnitRevision,
 +  resolveProtectionTarget,
 +  revalidateProtectionTarget,
 +} from "./serviceProtectionTarget.ts";
@@ -700,13 +746,16 @@ index 0000000..f1969fd
 +      ["LoadState", state === undefined ? "not-found" : state === "masked" ? "masked" : "loaded"],
 +      ["ActiveState", running ? "active" : "inactive"],
 +      ["MainPID", running ? String(pid) : "0"],
-+      ["FragmentPath", `${userUnitDir}/${unit}`],
++      ["FragmentPath", state === undefined ? "" : `${userUnitDir}/${unit}`],
 +      [
 +        "ExecStart",
 +        `{ path=${program} ; argv[]=${program} ${suffix} ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=${running ? pid : 0} ; code=(null) ; status=0/0 }`,
 +      ],
 +      ["Environment", environment],
 +      ["EnvironmentFiles", ""],
++      ["UnsetEnvironment", ""],
++      ["NeedDaemonReload", "no"],
++      ["DropInPaths", ""],
 +      ["ControlGroup", running ? cgroup : ""],
 +    ]);
 +    units.set(unit, values);
@@ -1027,12 +1076,108 @@ index 0000000..f1969fd
 +    }),
 +  );
 +});
++
++it.effect.each([NATIVE, HOMEBREW_SERVICE_UNIT] as const)(
++  "refuses cached %s properties when definition bytes change after preview",
++  (unit) => {
++    const f = fixture(unit === NATIVE ? { native: "running" } : { homebrew: "running" });
++    return f.provide(Effect.gen(function* () {
++      const selected = yield* resolveProtectionTarget(f.input);
++      const file = NodePath.join(f.userUnitDir, unit);
++      const before = NodeFS.statSync(file);
++      NodeFS.writeFileSync(file, "[Service]\nExecStart=/usr/bin/sleep infinity\n");
++      NodeFS.utimesSync(file, before.atime, before.mtime);
++      expect((yield* revalidateProtectionTarget(f.input, selected).pipe(Effect.exit))._tag).toBe("Failure");
++    }));
++  },
++);
++
++it.effect("refuses a new unit drop-in that is absent from cached systemd properties", () => {
++  const f = fixture({ homebrew: "running" });
++  return f.provide(Effect.gen(function* () {
++    const selected = yield* resolveProtectionTarget(f.input);
++    const directory = NodePath.join(f.userUnitDir, `${HOMEBREW_SERVICE_UNIT}.d`);
++    NodeFS.mkdirSync(directory);
++    NodeFS.writeFileSync(NodePath.join(directory, "50-foreign.conf"), "[Service]\nExecStart=\nExecStart=/usr/bin/sleep infinity\n");
++    expect((yield* revalidateProtectionTarget(f.input, selected).pipe(Effect.exit))._tag).toBe("Failure");
++  }));
++});
++
++it.effect("refuses changes to a cached global drop-in after preview", () => {
++  const f = fixture({ homebrew: "running" });
++  const file = NodePath.join(f.root, "50-global.conf");
++  NodeFS.writeFileSync(file, "[Service]\nNice=1\n");
++  f.units.get(HOMEBREW_SERVICE_UNIT)!.set("DropInPaths", file);
++  return f.provide(Effect.gen(function* () {
++    const selected = yield* resolveProtectionTarget(f.input);
++    NodeFS.writeFileSync(file, "[Service]\nUnsetEnvironment=T3CODE_HOME\n");
++    expect((yield* revalidateProtectionTarget(f.input, selected).pipe(Effect.exit))._tag).toBe("Failure");
++  }));
++});
++
++it.effect("refuses a changed ignored native mask after Homebrew preview", () => {
++  const f = fixture({ native: "masked", homebrew: "running" });
++  return f.provide(Effect.gen(function* () {
++    const selected = yield* resolveProtectionTarget(f.input);
++    const file = NodePath.join(f.userUnitDir, NATIVE);
++    NodeFS.unlinkSync(file);
++    NodeFS.writeFileSync(file, "[Service]\nExecStart=/usr/bin/sleep infinity\n");
++    expect((yield* revalidateProtectionTarget(f.input, selected).pipe(Effect.exit))._tag).toBe("Failure");
++  }));
++});
++
++it.effect("refuses a loaded unit that needs daemon-reload before preview", () => {
++  const f = fixture({ homebrew: "stopped" });
++  f.units.get(HOMEBREW_SERVICE_UNIT)!.set("NeedDaemonReload", "yes");
++  return f.provide(Effect.gen(function* () {
++    expect((yield* resolveProtectionTarget(f.input).pipe(Effect.exit))._tag).toBe("Failure");
++  }));
++});
++
++it.effect.each([NATIVE, HOMEBREW_SERVICE_UNIT] as const)(
++  "refuses stopped %s when its configured home is unset before execution",
++  (unit) => {
++    const f = fixture(unit === NATIVE ? { native: "stopped" } : { homebrew: "stopped" });
++    f.units.get(unit)!.set("UnsetEnvironment", "T3CODE_HOME");
++    return f.provide(Effect.gen(function* () {
++      expect((yield* resolveProtectionTarget(f.input).pipe(Effect.exit))._tag).toBe("Failure");
++    }));
++  },
++);
++
++it.effect.each(["T3CODE_HOME=/different-home", "T3_BOOT_SERVICE_UNIT", '"T3CODE_HOME'])(
++  "refuses a critical or malformed environment removal %s",
++  (unset) => {
++    const f = fixture({ native: "stopped" });
++    f.units.get(NATIVE)!.set("UnsetEnvironment", unset);
++    return f.provide(Effect.gen(function* () {
++      expect((yield* resolveProtectionTarget(f.input).pipe(Effect.exit))._tag).toBe("Failure");
++    }));
++  },
++);
++
++it.effect("permits unrelated environment removals", () => {
++  const f = fixture({ homebrew: "stopped" });
++  f.units.get(HOMEBREW_SERVICE_UNIT)!.set("UnsetEnvironment", "HTTP_PROXY");
++  return f.provide(Effect.gen(function* () {
++    expect((yield* resolveProtectionTarget(f.input)).unit).toBe(HOMEBREW_SERVICE_UNIT);
++  }));
++});
++
++it.effect("can guard cleanup revisions without installed units or a server home", () => {
++  const f = fixture({});
++  NodeFS.rmSync(f.baseDir, { recursive: true });
++  return f.provide(Effect.gen(function* () {
++    const before = yield* readProtectionUnitRevision(f.userUnitDir);
++    expect(yield* readProtectionUnitRevision(f.userUnitDir)).toBe(before);
++  }));
++});
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.ts b/apps/server/src/cloud/serviceProtectionTarget.ts
 new file mode 100644
-index 0000000..31d40c6
+index 0000000..e03046d
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.ts
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,397 @@
 +import * as Effect from "effect/Effect";
 +import * as FileSystem from "effect/FileSystem";
 +import * as Option from "effect/Option";
@@ -1062,7 +1207,7 @@ index 0000000..31d40c6
 +const refuse = (reason: string) =>
 +  new ServiceProtectionError({ step: `verify T3 service ownership: ${reason}` });
 +const properties =
-+  "Id,LoadState,ActiveState,MainPID,FragmentPath,ExecStart,Environment,EnvironmentFiles,ControlGroup";
++  "Id,LoadState,ActiveState,MainPID,FragmentPath,DropInPaths,NeedDaemonReload,ExecStart,Environment,EnvironmentFiles,UnsetEnvironment,ControlGroup";
 +const safePath = /^\/[A-Za-z0-9_./@+\-]+$/;
 +const showValues = (text: string) =>
 +  new Map(
@@ -1121,12 +1266,111 @@ index 0000000..31d40c6
 +  return result.stdout;
 +});
 +
++const revisionFields = (...fields: ReadonlyArray<string>) =>
++  fields.map((field) => `${field.length}:${field}`).join("");
++
++const definitionInfo = Effect.fn("ServiceProtectionTarget.definitionInfo")(function* (file: string) {
++  const fs = yield* FileSystem.FileSystem;
++  return yield* fs.lstat(file).pipe(
++    Effect.catch((cause) =>
++      cause.reason._tag === "NotFound"
++        ? Effect.undefined
++        : Effect.fail(cause),
++    ),
++  );
++});
++
++const readDefinition = Effect.fn("ServiceProtectionTarget.readDefinition")(function* (
++  file: string,
++  deviceMask = false,
++) {
++  const fs = yield* FileSystem.FileSystem;
++  let info = yield* definitionInfo(file);
++  if (info === undefined)
++    return { hasDefinition: false, revision: revisionFields(file, "missing") };
++  let link = "";
++  let resolved = file;
++  if (info.type === "SymbolicLink") {
++    link = yield* fs.readLink(file);
++    resolved = yield* fs.realPath(file);
++    if (resolved === "/dev/null")
++      return { hasDefinition: false, revision: revisionFields(file, "mask", link, resolved) };
++    info = yield* fs.lstat(resolved);
++  } else if (file === "/dev/null" && deviceMask) {
++    return { hasDefinition: false, revision: revisionFields(file, "mask") };
++  }
++  if (info.type !== "File") return yield* refuse(`non-regular unit definition ${file}`);
++  const bytes = yield* fs.readFile(resolved);
++  const contents = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
++  return {
++    hasDefinition: true,
++    revision: revisionFields(file, "file", link, resolved, contents),
++  };
++});
++
++export const readProtectionUnitRevision = Effect.fn("ServiceProtectionTarget.readUnitRevision")(
++  function* (userUnitDirectory: string) {
++    const fs = yield* FileSystem.FileSystem;
++    const path = yield* Path.Path;
++    const userUnitDir = path.resolve(userUnitDirectory);
++    const revisions: string[] = [];
++    for (const unit of [BOOT_SERVICE_UNIT_FILE, HOMEBREW_SERVICE_UNIT] satisfies ProtectionUnit[]) {
++      const shown = yield* query("systemctl", ["--user", "show", unit, `--property=${properties}`]);
++      const values = showValues(shown);
++      const load = values.get("LoadState");
++      const absent =
++        (load === "not-found" || load === "masked") &&
++        ["inactive", "failed"].includes(values.get("ActiveState") ?? "") &&
++        Number(values.get("MainPID")) === 0 &&
++        (values.get("ControlGroup") ?? "") === "";
++      if (values.get("Id") !== unit || (load !== "loaded" && !absent))
++        return yield* refuse(`unrecognized or transitioning ${unit}`);
++      if (load === "loaded" && values.get("NeedDaemonReload") !== "no")
++        return yield* refuse(`pending unit definition changes for ${unit}`);
++      const unitFile = path.join(userUnitDir, unit);
++      const ownDefinition = yield* readDefinition(unitFile);
++      const fragment = values.get("FragmentPath") ?? "";
++      if ((load === "loaded" && fragment === "") || (fragment !== "" && !safePath.test(fragment)))
++        return yield* refuse(`unsupported unit definition path for ${unit}`);
++      const fragmentDefinition =
++        fragment === "" || fragment === unitFile
++          ? ownDefinition
++          : yield* readDefinition(fragment, load === "masked");
++      if (load === "loaded" && !fragmentDefinition.hasDefinition)
++        return yield* refuse(`missing unit definition for ${unit}`);
++      if (absent && (ownDefinition.hasDefinition || fragmentDefinition.hasDefinition))
++        return yield* refuse(`pending unit definition changes for ${unit}`);
++      const dropIns = environmentWords(values.get("DropInPaths") ?? "");
++      if (dropIns === undefined || dropIns.some((file) => !safePath.test(file)))
++        return yield* refuse(`unsupported drop-in paths for ${unit}`);
++      const files = [ownDefinition.revision, fragmentDefinition.revision];
++      for (const file of dropIns) files.push((yield* readDefinition(file)).revision);
++      const directory = `${unitFile}.d`;
++      const info = yield* definitionInfo(directory);
++      if (info === undefined) files.push(revisionFields(directory, "missing"));
++      else {
++        if (info.type !== "Directory") return yield* refuse(`non-directory drop-ins for ${unit}`);
++        files.push(revisionFields(directory, "directory"));
++        const names = (yield* fs.readDirectory(directory)).filter((name) => name.endsWith(".conf"));
++        for (const name of names.sort())
++          files.push((yield* readDefinition(path.join(directory, name))).revision);
++      }
++      revisions.push(revisionFields(unit, shown, ...files));
++    }
++    return revisionFields(...revisions);
++  },
++  Effect.mapError((cause) =>
++    Schema.is(ServiceProtectionError)(cause) ? cause : refuse("inspection failed"),
++  ),
++);
++
 +export const resolveProtectionTarget = Effect.fn("ServiceProtectionTarget.resolve")(
 +  function* (input: ProtectionTargetInput) {
 +    const fs = yield* FileSystem.FileSystem;
 +    const path = yield* Path.Path;
 +    const baseDir = yield* fs.realPath(input.baseDir);
 +    const userUnitDir = path.resolve(input.userUnitDir);
++    const unitRevision = yield* readProtectionUnitRevision(userUnitDir);
 +    const candidates: ProtectionTarget[] = [];
 +    for (const unit of [BOOT_SERVICE_UNIT_FILE, HOMEBREW_SERVICE_UNIT] satisfies ProtectionUnit[]) {
 +      const shown = yield* query("systemctl", ["--user", "show", unit, `--property=${properties}`]);
@@ -1148,6 +1392,8 @@ index 0000000..31d40c6
 +      ) {
 +        return yield* refuse(`unrecognized or transitioning ${unit}`);
 +      }
++      if (values.get("NeedDaemonReload") !== "no")
++        return yield* refuse(`pending unit definition changes for ${unit}`);
 +      const running = active === "active";
 +      if (!Number.isSafeInteger(pid) || (running ? pid <= 0 : pid !== 0))
 +        return yield* refuse(`inconsistent process state for ${unit}`);
@@ -1158,6 +1404,19 @@ index 0000000..31d40c6
 +      const realFragment = yield* fs.realPath(fragment);
 +      const environment = environmentWords(values.get("Environment") ?? "");
 +      const homes = environment?.filter((entry) => entry.startsWith("T3CODE_HOME="));
++      const unsets = environmentWords(values.get("UnsetEnvironment") ?? "");
++      if (
++        unsets === undefined ||
++        unsets.some((entry) => {
++          const key = entry.split("=", 1)[0] ?? "";
++          return (
++            !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ||
++            key === "T3CODE_HOME" ||
++            (unit === BOOT_SERVICE_UNIT_FILE && key === SERVICE_UNIT_ENV)
++          );
++        })
++      )
++        return yield* refuse(`ambiguous environment unsets for ${unit}`);
 +      if (homes?.length !== 1 || (values.get("EnvironmentFiles") ?? "") !== "")
 +        return yield* refuse(`ambiguous environment for ${unit}`);
 +      const configuredHome = homes[0]?.slice("T3CODE_HOME=".length) ?? "";
@@ -1293,7 +1552,7 @@ index 0000000..31d40c6
 +          unit === HOMEBREW_SERVICE_UNIT
 +            ? "brew services restart t3code-cli-main"
 +            : "t3 service restart",
-+        fingerprint: [shown, resolvedProgram, processEntry].join("\0"),
++        fingerprint: revisionFields(shown, resolvedProgram, processEntry, unitRevision),
 +      });
 +    }
 +    if (candidates.length !== 1 || candidates[0] === undefined)

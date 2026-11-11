@@ -101,6 +101,17 @@ cmp /proof/before.sha256 /proof/after.sha256
 [[ ! -s /proof/sudo.log ]]
 grep -F "$unit.d/$drop_in" /proof/preview.log
 record preview-without-sudo
+cp "$unit_dir/$unit" /proof/unit-before-confirmation.service
+snapshot > /proof/before.sha256
+as_user env "T3_PROTECT_EDIT_UNIT=$unit_dir/$unit" python3 /work/runner/preview.py t3 service protect > /proof/stale-confirmation.log 2>&1
+snapshot > /proof/after.sha256
+cmp /proof/before.sha256 /proof/after.sha256
+[[ ! -s /proof/sudo.log ]]
+cp /proof/unit-before-confirmation.service "$unit_dir/$unit"
+chown "$user:$user" "$unit_dir/$unit"
+as_user systemctl --user daemon-reload
+[[ "$(as_user systemctl --user show "$unit" --property=MainPID --value)" == "$pid" ]]
+record stale-definition-after-confirmation
 as_user t3 service protect --yes > /proof/apply.log 2>&1
 assert_file "$unit_dir/$unit.d/$drop_in" $'[Service]\nOOMScoreAdjust=-900'
 [[ "$(as_user systemctl --user show "$unit" --property=MainPID --value)" == "$pid" ]]
@@ -141,6 +152,33 @@ as_user t3 service protect --undo --yes > /proof/stopped-undo.log 2>&1
 [[ ! -e "$unit_dir/$unit.d/$drop_in" ]]
 as_user t3 service protect --undo --yes > /proof/repeated-undo.log 2>&1
 record stopped-and-repeated-undo
+custom_home="$home/review-custom-home"
+mkdir -p "$custom_home" "$unit_dir/$unit.d"
+printf '[Service]\nEnvironment=T3CODE_HOME=%s\nUnsetEnvironment=T3CODE_HOME\n' "$custom_home" > "$unit_dir/$unit.d/50-unset-home.conf"
+chown -R "$user:$user" "$custom_home" "$unit_dir/$unit.d"
+as_user systemctl --user daemon-reload
+snapshot > /proof/before.sha256
+unset_status=0
+as_user t3 service protect --yes --base-dir "$custom_home" > /proof/unset-home.log 2>&1 || unset_status=$?
+[[ "$unset_status" != 0 ]]
+grep -F 'ambiguous environment unsets' /proof/unset-home.log
+snapshot > /proof/after.sha256
+cmp /proof/before.sha256 /proof/after.sha256
+rm "$unit_dir/$unit.d/50-unset-home.conf"
+as_user systemctl --user daemon-reload
+record stopped-effective-home-unset
+as_user brew services start test/protect/t3code-cli-main
+wait_active
+as_user t3 service protect --yes > /proof/before-brew-stop.log 2>&1
+as_user brew services stop test/protect/t3code-cli-main
+[[ ! -e "$unit_dir/$unit" && -f "$unit_dir/$unit.d/$drop_in" ]]
+as_user t3 service protect --undo --yes > /proof/brew-stop-undo.log 2>&1
+[[ ! -e "$unit_dir/$unit" && ! -e "$unit_dir/$unit.d/$drop_in" ]]
+as_user t3 service protect --undo --yes > /proof/brew-stop-repeated-undo.log 2>&1
+record homebrew-unregistered-unit-undo
+as_user brew services start test/protect/t3code-cli-main
+wait_active
+as_user systemctl --user stop "$unit"
 mkdir -p "$unit_dir/t3code.service.d"
 printf '[Service]\nOOMScoreAdjust=-900\n' > "$unit_dir/t3code.service.d/$drop_in"
 printf '[Service]\nNice=1\n' > "$unit_dir/t3code.service.d/50-admin.conf"
