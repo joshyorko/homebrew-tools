@@ -61,10 +61,10 @@ The dedicated engine was restarted under that affinity, retaining all memory
 and process limits. No running T3 service was restarted by this task.
 
 Run local Dagger commands through `bash scripts/dagger-limited.sh`. It creates
-a private engine with 2 CPUs, 3 GiB RAM, 4 GiB RAM plus swap, and 512 processes,
+a private engine with 2 CPUs, 4 GiB RAM, 5 GiB RAM plus swap, and 512 processes,
 then checks the configured and effective cgroup limits before any build.
-Run heavy jobs sequentially. A budget failure must fail the build, not prompt
-an automatic increase in its limits.
+Run heavy jobs sequentially. A failed run never increases its own limits. Any budget change must remain
+explicit and leave room for the workstation and other processes.
 
 After exporting a candidate bundle, run:
 
@@ -90,3 +90,9 @@ It does not mount the host home, systemd directories, or cgroup filesystem.
 Its image is built through the same bounded Dagger launcher.
 Protection and undo never restart a server; the fixture's explicit restart
 applies only to its own container service.
+
+The web build subsequently exceeded the 3 GiB memory budget. Kernel records
+showed two worker kills constrained to the dedicated engine cgroup, not a
+host-wide OOM. The final explicit engine budget is 4 GiB RAM plus 1 GiB swap,
+with two pinned CPUs and 512 processes. The runtime fixture remains capped at
+3 GiB RAM plus 1 GiB swap. Heavy jobs run sequentially.
