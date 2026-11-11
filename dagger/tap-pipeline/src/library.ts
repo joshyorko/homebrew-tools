@@ -546,6 +546,8 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
       "scripts/package-t3code-cli-main.mjs",
       "scripts/lib/apply-pnpm-package-patch.mjs",
       "scripts/build-t3code-resource-monitor.sh",
+      "patches/t3-homebrew-service-protect.patch",
+      "scripts/t3-service-protect-smoke/",
       "dagger/t3code-cli-main-smoke/",
     ],
   ],

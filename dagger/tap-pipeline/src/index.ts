@@ -1363,12 +1363,21 @@ end
           `git -C /upstream remote add origin ${JSON.stringify(entry.upstream.repo)}`,
           `git -C /upstream fetch --depth=1 --no-tags origin ${JSON.stringify(commit)}`,
           "git -C /upstream checkout --detach FETCH_HEAD",
+          "git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch",
+          "git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch",
           "rm -rf /upstream/.git",
         ].join("\n"),
       ])
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withExec([
+        "pnpm", "exec", "vp", "test", "run",
+        "--maxWorkers=1",
+        "apps/server/src/cloud/serviceProtection.test.ts",
+        "apps/server/src/cloud/serviceProtectionTarget.test.ts",
+        "apps/server/src/cli/service.test.ts",
+      ])
       .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
       .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])
       .withExec(["bash", "-lc", "rm -rf apps/server/dist/client && cp -R apps/web/dist apps/server/dist/client"])

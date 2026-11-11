@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$(cat /proc/1/comm)" == systemd && "$(id -u)" == 0 ]]
+user=linuxbrew
+uid="$(id -u "$user")"
+home="$(getent passwd "$user" | cut -d: -f6)"
+prefix=/home/linuxbrew/.linuxbrew
+unit=sh.brew.t3code-cli-main.service
+unit_dir="$home/.config/systemd/user"
+drop_in=90-t3code-protect.conf
+mkdir -p "$unit_dir"
+chown -R "$user:$user" "$home/.config"
+as_user() {
+  runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" PATH="$prefix/bin:$prefix/sbin:/usr/local/bin:/usr/bin:/bin" HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_FROM_API=1 T3CODE_TELEMETRY_ENABLED=false "$@"
+}
+record() {
+  printf '%s\tPASS\n' "$1" >> /proof/scenarios.tsv
+}
+wait_active() {
+  local previous_pid=0
+  local stable=0
+  local current_pid
+  for _ in {1..60}; do
+    current_pid="$(as_user systemctl --user show "$unit" --property=MainPID --value)"
+    if as_user systemctl --user is-active --quiet "$unit" && [[ "$current_pid" != 0 && "$current_pid" == "$previous_pid" ]]; then
+      stable=$((stable + 1))
+      if [[ "$stable" == 3 ]]; then return; fi
+    else
+      stable=0
+    fi
+    previous_pid="$current_pid"
+    sleep 1
+  done
+  as_user systemctl --user status "$unit"
+  return 1
+}
+snapshot() {
+  find /etc/systemd/system "$home/.config/systemd" -name "$drop_in" -type f -exec sha256sum {} + | sort
+}
+assert_file() {
+  [[ "$(cat "$1")" == "$2" ]]
+}
+reject_without_changes() {
+  local scenario="$1"
+  local diagnostic="${2:-verify T3 service ownership:}"
+  snapshot > /proof/before.sha256
+  as_user t3 service protect --yes > "/proof/$scenario.log" 2>&1 || true
+  snapshot > /proof/after.sha256
+  cmp /proof/before.sha256 /proof/after.sha256
+  grep -F "$diagnostic" "/proof/$scenario.log"
+  ! grep -q 'Protected T3 Code' "/proof/$scenario.log"
+  record "$scenario"
+}
+for _ in {1..30}; do
+  if systemctl show-environment >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+loginctl enable-linger "$user"
+systemctl start "user@$uid.service"
+python3 - "$prefix" <<'PY'
+from pathlib import Path
+import hashlib
+import os
+import re
+import sys
+
+source = Path("/work/input/t3code-cli-main.rb").read_text()
+artifact = Path("/work/input/candidate.tar.gz")
+version = re.search(r'^  version "([^"]+)"$', source, re.M)
+assert version and version.group(1).endswith(os.environ["T3_PROTECT_SOURCE_SHA"][:12]), "The formula version does not identify the requested upstream source"
+source, urls = re.subn(r'^  url "[^"]+"$', '  url "file:///work/input/candidate.tar.gz"', source, flags=re.M)
+source, checksums = re.subn(r'^  sha256 "[^"]+"$', f'  sha256 "{hashlib.sha256(artifact.read_bytes()).hexdigest()}"', source, flags=re.M)
+assert urls == checksums == 1
+tap = Path(sys.argv[1]) / "Homebrew/Library/Taps/test/homebrew-protect"
+(tap / "Formula").mkdir(parents=True)
+(tap / "Formula/t3code-cli-main.rb").write_text(source)
+PY
+chown -R "$user:$user" "$prefix/Homebrew/Library/Taps/test"
+as_user brew trust --formula test/protect/t3code-cli-main
+as_user brew install test/protect/t3code-cli-main > /proof/install.log 2>&1
+as_user brew test test/protect/t3code-cli-main > /proof/brew-test.log 2>&1
+as_user brew info --json=v2 test/protect/t3code-cli-main > /proof/package.json
+as_user t3 --version > /proof/cli-version.txt
+as_user systemctl --user mask t3code.service
+as_user brew services start test/protect/t3code-cli-main
+wait_active
+as_user systemctl --user show "$unit" > /proof/homebrew-before.properties
+pid="$(as_user systemctl --user show "$unit" --property=MainPID --value)"
+[[ "$pid" =~ ^[1-9][0-9]*$ ]]
+cat "/proc/$pid/cgroup" > /proof/homebrew.cgroup
+tr '\0' ' ' < "/proc/$pid/cmdline" > /proof/homebrew.cmdline
+: > /proof/sudo.log
+snapshot > /proof/before.sha256
+as_user python3 /work/runner/preview.py t3 service protect > /proof/preview.log 2>&1
+snapshot > /proof/after.sha256
+cmp /proof/before.sha256 /proof/after.sha256
+[[ ! -s /proof/sudo.log ]]
+grep -F "$unit.d/$drop_in" /proof/preview.log
+record preview-without-sudo
+as_user t3 service protect --yes > /proof/apply.log 2>&1
+assert_file "$unit_dir/$unit.d/$drop_in" $'[Service]\nOOMScoreAdjust=-900'
+[[ "$(as_user systemctl --user show "$unit" --property=MainPID --value)" == "$pid" ]]
+[[ "$(as_user systemctl --user show "$unit" --property=OOMScoreAdjust --value)" == -900 ]]
+cat "/proc/$pid/oom_score_adj" > /proof/running-score-before-restart.txt
+python3 - "$pid" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+group = next(line.split(":", 2)[2] for line in Path(f"/proc/{sys.argv[1]}/cgroup").read_text().splitlines() if line.startswith("0::"))
+parts = Path(group).parts[1:]
+chain = []
+for depth, unit_name in enumerate(parts, 1):
+    directory = Path("/sys/fs/cgroup").joinpath(*parts[:depth])
+    chain.append({"unit": unit_name, "memory.low": (directory / "memory.low").read_text().strip(), "memory.min": (directory / "memory.min").read_text().strip()})
+assert next(row for row in chain if row["unit"] == "app.slice")["memory.low"] == "1610612736"
+Path("/proof/memory-chain.json").write_text(json.dumps(chain, indent=2) + "\n")
+PY
+grep -F 'brew services restart t3code-cli-main' /proof/apply.log
+[[ "$(as_user systemctl --user show t3code.service --property=LoadState --value)" == masked ]]
+record masked-native-and-active-homebrew
+as_user t3 service protect --yes > /proof/reapply.log 2>&1
+record repeated-protect
+as_user brew services restart test/protect/t3code-cli-main
+wait_active
+pid="$(as_user systemctl --user show "$unit" --property=MainPID --value)"
+[[ "$(cat "/proc/$pid/oom_score_adj")" == -900 ]]
+cat "/proc/$pid/oom_score_adj" > /proof/running-score-after-restart.txt
+record running-score-after-fixture-restart
+as_user systemctl --user stop "$unit"
+as_user t3 service protect --undo --yes > /proof/stopped-undo.log 2>&1
+[[ ! -e "$unit_dir/$unit.d/$drop_in" ]]
+as_user t3 service protect --undo --yes > /proof/repeated-undo.log 2>&1
+record stopped-and-repeated-undo
+mkdir -p "$unit_dir/t3code.service.d"
+printf '[Service]\nOOMScoreAdjust=-900\n' > "$unit_dir/t3code.service.d/$drop_in"
+printf '[Service]\nNice=1\n' > "$unit_dir/t3code.service.d/50-admin.conf"
+chown -R "$user:$user" "$unit_dir/t3code.service.d"
+as_user t3 service protect --undo --yes > /proof/stale-native-undo.log 2>&1
+[[ ! -e "$unit_dir/t3code.service.d/$drop_in" ]]
+assert_file "$unit_dir/t3code.service.d/50-admin.conf" $'[Service]\nNice=1'
+record stale-native-drop-in
+mkdir -p "$unit_dir/$unit.d"
+printf '[Service]\nNice=10\n' > "$unit_dir/$unit.d/$drop_in"
+chown -R "$user:$user" "$unit_dir/$unit.d"
+reject_without_changes conflicting-protection-file 'verify protection files:'
+assert_file "$unit_dir/$unit.d/$drop_in" $'[Service]\nNice=10'
+rm "$unit_dir/$unit.d/$drop_in"
+printf '[Service]\nNice=11\n' > /proof/admin-override.conf
+ln -s /proof/admin-override.conf "$unit_dir/$unit.d/$drop_in"
+reject_without_changes linked-protection-file 'verify protection files:'
+assert_file /proof/admin-override.conf $'[Service]\nNice=11'
+rm "$unit_dir/$unit.d/$drop_in"
+printf '[Service]\nExecStart=\nExecStart=/usr/bin/sleep infinity\n' > "$unit_dir/$unit.d/50-foreign.conf"
+chown -R "$user:$user" "$unit_dir/$unit.d"
+as_user systemctl --user daemon-reload
+reject_without_changes foreign-command
+rm "$unit_dir/$unit.d/50-foreign.conf"
+as_user systemctl --user daemon-reload
+as_user brew services stop test/protect/t3code-cli-main
+rm -f "$unit_dir/$unit"
+as_user systemctl --user daemon-reload
+reject_without_changes missing-unit
+python3 - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+root = Path("/proof")
+scenarios = [dict(zip(["scenario", "result"], row.split("\t"))) for row in (root / "scenarios.tsv").read_text().splitlines()]
+report = {
+    "upstreamSourceSha": os.environ["T3_PROTECT_SOURCE_SHA"],
+    "artifactSha256": hashlib.sha256(Path("/work/input/candidate.tar.gz").read_bytes()).hexdigest(),
+    "boundary": "Homebrew-installed CLI and real systemd inside a disposable Docker container",
+    "scenarios": scenarios,
+    "gaps": ["Native pinned runtime was not supplied; native runtime and two competing verified services remain untested.", "Live Dakota acceptance was not authorized or run."],
+}
+(root / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+PY

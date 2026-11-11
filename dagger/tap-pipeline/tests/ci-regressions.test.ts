@@ -176,6 +176,20 @@ test("T3 builds inject one shared audited public Connect config before compilati
   }
 })
 
+test("T3 CLI checks its service protection patch and tests before bundling", () => {
+  const pipeline = read("dagger/tap-pipeline/src/index.ts")
+  const build = section(pipeline, "private async buildT3Artifact", "private async buildFizzyArtifact")
+  const check = build.indexOf("git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch")
+  const apply = build.indexOf("git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch")
+  const tests = build.indexOf('"apps/server/src/cloud/serviceProtectionTarget.test.ts"')
+  const bundle = build.indexOf('"build:bundle"')
+  assert.ok(check >= 0 && check < apply && apply < tests && tests < bundle)
+  assert.match(build, /"apps\/server\/src\/cloud\/serviceProtection\.test\.ts"/)
+  assert.match(build, /"apps\/server\/src\/cli\/service\.test\.ts"/)
+  const desktop = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
+  assert.doesNotMatch(desktop, /t3-homebrew-service-protect\.patch/)
+})
+
 test("T3 Desktop build packages its Homebrew updater patch and helper before compilation", () => {
   const pipeline = read("dagger/tap-pipeline/src/index.ts")
   const desktopBuild = section(pipeline, "private async buildT3CodeArtifact", "private async buildHeadroomArtifact")
