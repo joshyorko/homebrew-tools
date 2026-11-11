@@ -2,8 +2,8 @@ cask "t3-code-linux" do
   arch intel: "x86_64"
   os linux: "linux"
 
-  version "main.20261110184319.5f2bb934d8f2"
-  sha256 x86_64_linux: "decd09223170701d9014e17be94331504971ec5b325022396a5b984aa0020809"
+  version "main.20261111003011.3a8c250cb0c8"
+  sha256 x86_64_linux: "93a2c790b7e762cdc1e86b41ea8d8f356ea6613a92a5187341dab51199ed81f7"
 
   url "https://github.com/joshyorko/homebrew-tools/releases/download/t3-code-linux-#{version}/T3-Code-#{version}-#{arch}.AppImage"
   name "T3 Code"
