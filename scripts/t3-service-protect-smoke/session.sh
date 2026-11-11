@@ -190,11 +190,13 @@ record stale-native-drop-in
 mkdir -p "$unit_dir/$unit.d"
 printf '[Service]\nNice=10\n' > "$unit_dir/$unit.d/$drop_in"
 chown -R "$user:$user" "$unit_dir/$unit.d"
+as_user systemctl --user daemon-reload
 reject_without_changes conflicting-protection-file 'verify protection files:'
 assert_file "$unit_dir/$unit.d/$drop_in" $'[Service]\nNice=10'
 rm "$unit_dir/$unit.d/$drop_in"
 printf '[Service]\nNice=11\n' > /proof/admin-override.conf
 ln -s /proof/admin-override.conf "$unit_dir/$unit.d/$drop_in"
+as_user systemctl --user daemon-reload
 reject_without_changes linked-protection-file 'verify protection files:'
 assert_file /proof/admin-override.conf $'[Service]\nNice=11'
 rm "$unit_dir/$unit.d/$drop_in"

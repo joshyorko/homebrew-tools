@@ -1,0 +1,9 @@
+Removes:
+  /etc/systemd/system/user.slice.d/90-t3code-protect.conf (kept while another user is protected)
+  /etc/systemd/system/user-1000.slice.d/90-t3code-protect.conf
+  /etc/systemd/system/user@1000.service.d/90-t3code-protect.conf
+  /home/linuxbrew/.config/systemd/user/app.slice.d/90-t3code-protect.conf
+  /home/linuxbrew/.config/systemd/user/init.scope.d/90-t3code-protect.conf
+  /home/linuxbrew/.config/systemd/user/sh.brew.t3code-cli-main.service.d/90-t3code-protect.conf
+  /home/linuxbrew/.config/systemd/user.conf.d/90-t3code-protect.conf
+Removed T3 Code service protection. Running servers keep their current OOM score until their owner restarts them when agents are idle.

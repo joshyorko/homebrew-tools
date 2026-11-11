@@ -1,10 +1,14 @@
 {
   "upstreamSourceSha": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a",
-  "artifactSha256": "c673f7198da730d59741fca3b5bc9c894ffbb09e55c0f91b817b4bca6155563c",
+  "artifactSha256": "c45c6c3a4a92ae2cf6b9edaee89bd586dfb3ef55b72ce920b47d1de096d27738",
   "boundary": "Homebrew-installed CLI and real systemd inside a disposable Docker container",
   "scenarios": [
     {
       "scenario": "preview-without-sudo",
+      "result": "PASS"
+    },
+    {
+      "scenario": "stale-definition-after-confirmation",
       "result": "PASS"
     },
     {
@@ -21,6 +25,14 @@
     },
     {
       "scenario": "stopped-and-repeated-undo",
+      "result": "PASS"
+    },
+    {
+      "scenario": "stopped-effective-home-unset",
+      "result": "PASS"
+    },
+    {
+      "scenario": "homebrew-unregistered-unit-undo",
       "result": "PASS"
     },
     {

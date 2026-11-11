@@ -9,17 +9,31 @@ launcher bytes must pass those checks again. Unknown layouts fail closed.
 
 ## Current result
 
-All 61 focused upstream tests and 207 tap tests passed, with one additional
-tap test skipped. The final routing checks passed all 66 tests. Dagger built
+All 75 focused upstream tests passed, including the review regressions. The
+earlier tap suite passed 207 tests with one additional skip, and the review
+fixes passed all 66 affected tap checks. Dagger built
 the patched archive, installed it through Linuxbrew, and passed formula,
 resource-monitor, and compiled-Connect checks. The same archive passed all
-11 real-systemd scenarios, including Homebrew and native ownership, effective
+14 real-systemd scenarios, including Homebrew and native ownership, effective
 OOM scores after restart, repeated apply/undo, and refusal cases.
 
 The [receipt](t3-service-protect-acceptance/receipt.json) binds the artifact
 digest to its exact source and build head. [Runtime results](t3-service-protect-acceptance/report.json)
 list each scenario and evidence gap. Later changes to fixture diagnostics,
 download concurrency, and engine naming do not change that protection patch.
+
+The Sol 6.1 xhigh review's three findings are corrected:
+
+- Confirmation revalidation compares current fragment/drop-in bytes and
+  refuses pending loaded definitions. The real stale-confirmation test edits
+  the unit while preserving its mtime and confirms that no settings or sudo
+  action occur.
+- Effective `UnsetEnvironment` removals of the T3 home or native unit marker
+  are rejected, including stopped custom-home units.
+- Undo authorizes only exact known feature files, independent of a current
+  owner or executable. Both server drop-ins are discovered. The real test
+  runs `brew services stop`, verifies removal of the unit, then successfully
+  undoes protection and repeats undo without recreating that unit.
 
 ## Design
 
