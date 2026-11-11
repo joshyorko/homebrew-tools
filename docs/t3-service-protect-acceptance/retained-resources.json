@@ -1,0 +1,9 @@
+{
+  "engine": "dagger-engine-v0.21.11",
+  "stateAfterTask": "stopped",
+  "image": "registry.dagger.io/engine:v0.21.11",
+  "imageReportedBytes": 1051829622,
+  "cachePath": "/var/lib/docker/volumes/dagger-engine-v0.21.11/_data",
+  "cacheReportedKiB": 14128,
+  "purpose": "Retain verified default-engine resource limits; temporary task builder cache and fixtures removed"
+}

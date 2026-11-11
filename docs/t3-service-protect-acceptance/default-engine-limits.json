@@ -1,0 +1,1 @@
+{"engine":"dagger-engine-v0.21.11","memory":4294967296,"memorySwap":5368709120,"cpus":2000000000,"cpuAffinity":"0,1","pids":512,"cgroupns":"private"}

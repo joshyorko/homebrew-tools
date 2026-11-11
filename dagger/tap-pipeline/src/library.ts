@@ -617,6 +617,8 @@ function isTestOrDocumentationPath(path: string): boolean {
   return runtimeInputPackageIds(path).length === 0 && (
     path === "AGENTS.md"
     || path === "README.md"
+    || path === "Makefile"
+    || path === "scripts/dagger-limited.sh"
     || path.startsWith("docs/")
     || ["scripts/test-cask-icon-paths.mjs", "scripts/test-prune-package-releases.mjs", "scripts/package-vscode-insiders-linux.test.mjs", "scripts/codex-memoryd-update.test.mjs"].includes(path)
     || path === "scripts/plan-tap-ci.mjs"

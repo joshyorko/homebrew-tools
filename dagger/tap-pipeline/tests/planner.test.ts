@@ -165,6 +165,9 @@ test("service protection patch and systemd fixture schedule only CLI package CI"
     assert.deepEqual(changedCiPackagesFromPaths([path]), ["t3code-cli-main"])
     assert.equal(ciPlanFromPaths([path])[0]?.mode, "build")
   }
+  const localControls = ["Makefile", "scripts/dagger-limited.sh"]
+  assert.deepEqual(ciPlanFromPaths(localControls), [])
+  assert.deepEqual(ciPlanFromPaths([...localControls, "patches/t3-homebrew-service-protect.patch"]).map((entry) => entry.package_id), ["t3code-cli-main"])
 })
 
 test("T3 ASAR verifier changes schedule Desktop CI", () => {

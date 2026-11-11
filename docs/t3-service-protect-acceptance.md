@@ -7,6 +7,20 @@ The CLI-only patch is checked before application and tested before bundling.
 Upstream changes to unit properties, runtime layout, or the formula's exact
 launcher bytes must pass those checks again. Unknown layouts fail closed.
 
+## Current result
+
+All 61 focused upstream tests and 207 tap tests passed, with one additional
+tap test skipped. The final routing checks passed all 66 tests. Dagger built
+the patched archive, installed it through Linuxbrew, and passed formula,
+resource-monitor, and compiled-Connect checks. The same archive passed all
+11 real-systemd scenarios, including Homebrew and native ownership, effective
+OOM scores after restart, repeated apply/undo, and refusal cases.
+
+The [receipt](t3-service-protect-acceptance/receipt.json) binds the artifact
+digest to its exact source and build head. [Runtime results](t3-service-protect-acceptance/report.json)
+list each scenario and evidence gap. Later changes to fixture diagnostics,
+download concurrency, and engine naming do not change that protection patch.
+
 ## Design
 
 Protection resolves one verified native or Homebrew unit before confirmation
@@ -35,8 +49,9 @@ Before the workstation reboot, these checks ran against the patch:
 - The web build and `pnpm --filter t3 run build:bundle` completed.
 - The tap suite passed 207 tests with one skip. After reboot, the targeted
   `ci-regressions.test.ts` and `planner.test.ts` run passed all 59 tests.
-- Independent Codex inspection accepted the final protection patch and found
-  no additional proven production defect or actionable comment suppression.
+- Independent Codex inspection accepted the initial protection design and
+  found no actionable comment suppression. Real execution subsequently
+  exposed the systemd boundary cases described below.
 
 The reboot erased the original `/tmp` logs and candidate archives. These are
 historical source results, not installed package or live-host acceptance.
@@ -50,8 +65,9 @@ empty `EnvironmentFiles` array even with `--all`. A direct D-Bus probe confirmed
 an empty array, while a nonempty list appeared in both outputs. The CLI now
 models that optional empty list correctly and still rejects nonempty file
 lists or missing required ownership fields. The regression fixture reproduces
-the omission. Qualification of that correction is in progress. The earlier
-candidate receipts remain tied to their exact builds.
+the omission. The corrected archive passed real execution. A deleted unit
+can also retain a failed state; it is ignored only with zero MainPID and no
+remaining cgroup. Loaded units still require full ownership verification.
 
 The property-format probes use a controlled `sleep` unit, not a T3 server.
 They establish formatting only. Actual T3 ownership must pass the packaged
@@ -59,8 +75,11 @@ CLI and real-service scenarios separately. The source-only patch applies
 after dependency installation so unchanged dependencies can remain cached;
 a regression rejects manifest changes in that patch.
 
-Native installed-runtime acceptance and two competing verified services remain
-open. Live Dakota acceptance is not authorized and has not run. No formula
+Native runtime protection passed using the verified upstream native artifact.
+Two competing active services were covered by source tests, not started
+together in real systemd. The Docker fixture lacks descendant `memory.low`
+files, so configured defaults were verified but kernel ancestor protection
+was not. Live Dakota acceptance is not authorized and has not run. No formula
 publication, merge, or release occurred.
 
 The first bounded run exited 134 during workspace-wide test discovery.
@@ -73,13 +92,25 @@ Package-scoped tests then failed to spawn Node with `EAGAIN`. The quota still
 exposed CPUs `0-19` through affinity. The launcher now also pins two CPUs;
 the kernel reports `0-1`, and a real Dagger child reports two available CPUs.
 The dedicated engine was restarted under that affinity, retaining all memory
-and process limits. No running T3 service was restarted by this task.
+and process limits. No live host T3 service was restarted by this task.
 
 Run local Dagger commands through `bash scripts/dagger-limited.sh`. It creates
 a private engine with 2 CPUs, 4 GiB RAM, 5 GiB RAM plus swap, and 512 processes,
 then checks the configured and effective cgroup limits before any build.
 Run heavy jobs sequentially. A failed run never increases its own limits. Any budget change must remain
 explicit and leave room for the workstation and other processes.
+The guarded launcher uses Dagger's normal versioned engine name, preserving
+the same limits when the installed CLI reuses that engine directly. Use the
+launcher for future versions so newly created engines are capped as well.
+Homebrew downloads are serialized and make jobs are capped at two. Local
+launcher/Makefile changes run pipeline tests without scheduling unrelated
+package builds.
+
+The older hosted head `50c50a1` passed CLI package CI. Its
+[paired Desktop job](https://github.com/joshyorko/homebrew-tools/actions/runs/43045203386/job/130608163203)
+failed during APT setup because Ubuntu/PPA DNS resolution failed, leaving
+`nodejs` unavailable. That is not Desktop runtime acceptance; the final pushed
+head's hosted checks remain a separate gate.
 
 After exporting a candidate bundle, run:
 
@@ -98,6 +129,8 @@ That fixture uses a fresh T3 home and the release's protocol-3 runtime layout;
 it does not invoke the native installer or updater. The Homebrew-packaged CLI
 then previews, applies, reads effective status, and undoes native protection.
 The runner requires an actual HTTP server response for both owners.
+Native lifecycle commands for a custom home require the same `--base-dir`
+option. The fixture restarts only its own container services.
 
 The runner installs through Linuxbrew in a disposable, resource-limited
 systemd container. Its report separates fixture proof from live acceptance.

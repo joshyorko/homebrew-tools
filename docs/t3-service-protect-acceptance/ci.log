@@ -109,7 +109,7 @@ node@24          24.22.2_2
 ==> Pouring node@24--24.22.2_2.x86_64_linux.bottle.tar.gz
 🍺  /home/linuxbrew/.linuxbrew/Cellar/node@24/24.22.2_2: 2,103 files, 104.7MB
 ==> Installing test/tap/t3code-cli-main
-🍺  /home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9: 4,758 files, 457.8MB, built in 7 seconds
+🍺  /home/linuxbrew/.linuxbrew/Cellar/t3code-cli-main/main.20261111.d2c25950b4d9: 4,758 files, 457.8MB, built in 5 seconds
 ==> Caveats
 ==> t3code-cli-main
 Warning: t3code-cli-main provides a service which can only be used on macOS or systemd!

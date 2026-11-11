@@ -229,6 +229,8 @@ test("T3 acceptance proves compiled Connect in the CLI and the shipped Desktop a
   const desktopCi = section(pipeline, 'case "t3-code-linux": {', 'case "headroom-self-hosted": {')
 
   assert.match(cliCi, /t3CliConnectGateChecks\(\)/)
+  assert.match(cliCi, /withEnvVariable\("HOMEBREW_DOWNLOAD_CONCURRENCY", "1"\)/)
+  assert.match(cliCi, /withEnvVariable\("HOMEBREW_MAKE_JOBS", "2"\)/)
   assert.match(desktopCi, /t3PublicConnectAsarChecks\(\)/)
 })
 

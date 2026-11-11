@@ -6,16 +6,16 @@
     "version": "main.20261111.d2c25950b4d9",
     "commit": "d2c25950b4d9183ea342d5d5fc14c326b9e0172a"
   },
-  "tapBuildHead": "fc723df76ffc8504e589db51cc83a0cb4c04cecb",
-  "protectionPatchSha256": "ed09741fae3cc1db3101fb5f7a0ec3d94e51d921de4d5e8bd855a59b26323f70",
+  "tapBuildHead": "5a99315af80e6abb64a55b9e040ff6cffef82ea7",
+  "protectionPatchSha256": "c9e5233f7663d2b3fab8a4e183591af370f96ae7aca10df8280bfc1ee7d25d0e",
   "artifact": {
     "name": "t3code-cli-main-main.20261111.d2c25950b4d9.tar.gz",
     "version": "main.20261111.d2c25950b4d9",
-    "sha256": "cf04df1efa4a4ca8a9340c87f7cf5892d1187a472bac93019ca80c20199f3d39"
+    "sha256": "c673f7198da730d59741fca3b5bc9c894ffbb09e55c0f91b817b4bca6155563c"
   },
   "sourceTests": {
     "files": 3,
-    "passed": 56,
+    "passed": 61,
     "log": "source-tests.log"
   },
   "packageQualification": {
@@ -33,9 +33,27 @@
     "pids": 512
   },
   "systemdQualification": {
-    "result": "PENDING"
+    "result": "PASS",
+    "scenarios": 11,
+    "report": "report.json",
+    "gaps": [
+      "Two competing verified active services remain untested in real systemd.",
+      "Live Dakota acceptance was not authorized or run.",
+      "The Docker fixture does not expose descendant memory.low files; configured defaults were verified, kernel ancestor protection was not."
+    ]
   },
-  "hostedCi": "not verified",
+  "hostedCi": "Latest push not qualified; older head 50c50a1 CLI package job passed while paired Desktop setup failed",
   "liveDakota": "not authorized or run",
-  "published": false
+  "published": false,
+  "tapTests": {
+    "fullBeforeFinalRouting": {
+      "passed": 207,
+      "skipped": 1,
+      "log": "tap-tests.log"
+    },
+    "afterRoutingChange": {
+      "passed": 66,
+      "log": "routing-tests.log"
+    }
+  }
 }

@@ -1,0 +1,31 @@
+{
+  "ancestors": [
+    {
+      "unit": "user.slice",
+      "memory.low": null,
+      "memory.min": null
+    },
+    {
+      "unit": "user-1000.slice",
+      "memory.low": null,
+      "memory.min": null
+    },
+    {
+      "unit": "user@1000.service",
+      "memory.low": null,
+      "memory.min": null
+    },
+    {
+      "unit": "app.slice",
+      "memory.low": null,
+      "memory.min": null
+    },
+    {
+      "unit": "sh.brew.t3code-cli-main.service",
+      "memory.low": null,
+      "memory.min": null
+    }
+  ],
+  "configuredAppSliceLow": 1610612736,
+  "kernelMemoryControllerAvailable": false
+}

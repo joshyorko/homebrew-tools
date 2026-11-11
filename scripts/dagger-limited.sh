@@ -3,7 +3,7 @@ set -euo pipefail
 
 version="$(dagger version | awk '{print $2}')"
 [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Cannot determine the installed Dagger version" >&2; exit 1; }
-engine="dagger-engine-limited-$version"
+engine="dagger-engine-$version"
 cpu_set="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:2])))')"
 if ! docker container inspect "$engine" >/dev/null 2>&1; then
   docker create --name "$engine" --privileged --cgroupns=private \

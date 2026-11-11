@@ -3245,6 +3245,8 @@ end
           .container()
           .from(BREW_IMAGE)
           .withUser("linuxbrew")
+          .withEnvVariable("HOMEBREW_DOWNLOAD_CONCURRENCY", "1")
+          .withEnvVariable("HOMEBREW_MAKE_JOBS", "2")
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
