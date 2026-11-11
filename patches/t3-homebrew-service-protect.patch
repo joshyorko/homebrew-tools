@@ -618,7 +618,7 @@ index 780aee8..063e94f 100644
  });
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.test.ts b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 new file mode 100644
-index 0000000..c64bf8f
+index 0000000..6175cae
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 @@ -0,0 +1,371 @@
@@ -740,7 +740,7 @@ index 0000000..c64bf8f
 +          if (values === undefined) throw new Error("Probe outside the service allowlist");
 +          stdout =
 +            [...values]
-+              .filter(([, value]) => args.includes("--all") || value !== "")
++              .filter(([, value]) => value !== "")
 +              .map(([key, value]) => `${key}=${value}`)
 +              .join("\n") + "\n";
 +          if (values.get("LoadState") === "not-found") code = 1;
@@ -837,7 +837,7 @@ index 0000000..c64bf8f
 +  },
 +);
 +
-+it.effect("selects Homebrew when no native unit is installed", () => {
++it.effect("selects Homebrew with an omitted empty environment-file list and no native unit", () => {
 +  const f = fixture({ homebrew: "stopped" });
 +  return f.provide(
 +    Effect.gen(function* () {
@@ -862,7 +862,7 @@ index 0000000..c64bf8f
 +
 +it.effect("refuses incomplete property responses even when systemctl succeeds", () => {
 +  const f = fixture({ native: "stopped" });
-+  f.units.get(NATIVE)!.delete("EnvironmentFiles");
++  f.units.get(NATIVE)!.delete("Environment");
 +  return f.provide(
 +    Effect.gen(function* () {
 +      expect((yield* resolveProtectionTarget(f.input).pipe(Effect.exit))._tag).toBe("Failure");
@@ -995,10 +995,10 @@ index 0000000..c64bf8f
 +});
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.ts b/apps/server/src/cloud/serviceProtectionTarget.ts
 new file mode 100644
-index 0000000..63cc4e2
+index 0000000..3002f63
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.ts
-@@ -0,0 +1,284 @@
+@@ -0,0 +1,278 @@
 +import * as Effect from "effect/Effect";
 +import * as FileSystem from "effect/FileSystem";
 +import * as Option from "effect/Option";
@@ -1095,13 +1095,7 @@ index 0000000..63cc4e2
 +    const userUnitDir = path.resolve(input.userUnitDir);
 +    const candidates: ProtectionTarget[] = [];
 +    for (const unit of [BOOT_SERVICE_UNIT_FILE, HOMEBREW_SERVICE_UNIT] satisfies ProtectionUnit[]) {
-+      const shown = yield* query("systemctl", [
-+        "--user",
-+        "show",
-+        unit,
-+        "--all",
-+        `--property=${properties}`,
-+      ]);
++      const shown = yield* query("systemctl", ["--user", "show", unit, `--property=${properties}`]);
 +      const values = showValues(shown);
 +      const load = values.get("LoadState");
 +      const active = values.get("ActiveState");
@@ -1125,7 +1119,7 @@ index 0000000..63cc4e2
 +      const realFragment = yield* fs.realPath(fragment);
 +      const environment = environmentWords(values.get("Environment") ?? "");
 +      const homes = environment?.filter((entry) => entry.startsWith("T3CODE_HOME="));
-+      if (homes?.length !== 1 || values.get("EnvironmentFiles") !== "")
++      if (homes?.length !== 1 || (values.get("EnvironmentFiles") ?? "") !== "")
 +        return yield* refuse(`ambiguous environment for ${unit}`);
 +      const configuredHome = homes[0]?.slice("T3CODE_HOME=".length) ?? "";
 +      if (!path.isAbsolute(configuredHome) || (yield* fs.realPath(configuredHome)) !== baseDir)

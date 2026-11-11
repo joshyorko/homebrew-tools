@@ -45,12 +45,19 @@ historical source results, not installed package or live-host acceptance.
 
 The first complete bounded Dagger build/install run passed, including formula
 tests, the resource monitor handshake, and the compiled Connect command.
-Its real systemd run then exposed an ownership-query defect: empty
-`EnvironmentFiles` is omitted unless `systemctl show --all` is requested.
-The CLI now requests the complete properties rather than treating a missing
-property as safe. The test fixture models systemd's default omission behavior
-and still rejects incomplete responses. Qualification of that correction is
-in progress. The earlier candidate receipts are tied to their exact build.
+Its real systemd run then exposed an ownership-query defect: systemd omits an
+empty `EnvironmentFiles` array even with `--all`. A direct D-Bus probe confirmed
+an empty array, while a nonempty list appeared in both outputs. The CLI now
+models that optional empty list correctly and still rejects nonempty file
+lists or missing required ownership fields. The regression fixture reproduces
+the omission. Qualification of that correction is in progress. The earlier
+candidate receipts remain tied to their exact builds.
+
+The property-format probes use a controlled `sleep` unit, not a T3 server.
+They establish formatting only. Actual T3 ownership must pass the packaged
+CLI and real-service scenarios separately. The source-only patch applies
+after dependency installation so unchanged dependencies can remain cached;
+a regression rejects manifest changes in that patch.
 
 Native installed-runtime acceptance and two competing verified services remain
 open. Live Dakota acceptance is not authorized and has not run. No formula

@@ -21,6 +21,11 @@ image="codex-t3-protect:test-$$"
 owned_image=true
 cleanup() {
   docker stop --timeout 5 "$container" >/dev/null 2>&1 || true
+  if [[ "${T3_PROTECT_KEEP_FAILED:-0}" == 1 && "${status:-1}" != 0 ]]; then
+    echo "Retained stopped fixture $container and image $image for diagnosis." >&2
+    rm -f -- "$output/runner-image.tar"
+    return
+  fi
   docker rm -f "$container" >/dev/null 2>&1 || true
   if [[ "$owned_image" == true ]]; then docker image rm "$image" >/dev/null 2>&1 || true; fi
   rm -f -- "$output/runner-image.tar"
@@ -42,6 +47,7 @@ fi
 docker image inspect --format '{{.Id}}' "$image" > "$output/image.id"
 cpu_set="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:2])))')"
 docker create --name "$container" --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock --pids-limit=512 --memory=3g --memory-swap=4g --cpus=2 --cpuset-cpus="$cpu_set" "$image" > "$output/container.id"
+docker inspect "$container" --format '{"memory":{{.HostConfig.Memory}},"memorySwap":{{.HostConfig.MemorySwap}},"cpus":{{.HostConfig.NanoCpus}},"cpuAffinity":"{{.HostConfig.CpusetCpus}}","pids":{{.HostConfig.PidsLimit}},"cgroupns":"{{.HostConfig.CgroupnsMode}}"}' > "$output/runtime-limits.json"
 docker cp "$runner_dir/." "$container:/work/runner/"
 docker cp "$artifact" "$container:/work/input/candidate.tar.gz"
 docker cp "$formula" "$container:/work/input/t3code-cli-main.rb"

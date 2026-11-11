@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$(cat /proc/1/comm)" == systemd && "$(id -u)" == 0 ]]
+trap 'echo "Fixture failure at line $LINENO: $BASH_COMMAND" >&2' ERR
+[[ "$(id -u)" == 0 ]]
 user=linuxbrew
 uid="$(id -u "$user")"
 home="$(getent passwd "$user" | cut -d: -f6)"
@@ -48,13 +49,14 @@ reject_without_changes() {
   snapshot > /proof/after.sha256
   cmp /proof/before.sha256 /proof/after.sha256
   grep -F "$diagnostic" "/proof/$scenario.log"
-  ! grep -q 'Protected T3 Code' "/proof/$scenario.log"
+  ! grep -Eq 'Protection drop-ins installed|Protected T3 Code' "/proof/$scenario.log"
   record "$scenario"
 }
 for _ in {1..30}; do
   if systemctl show-environment >/dev/null 2>&1; then break; fi
   sleep 1
 done
+[[ "$(cat /proc/1/comm)" == systemd ]]
 loginctl enable-linger "$user"
 systemctl start "user@$uid.service"
 python3 - "$prefix" <<'PY'

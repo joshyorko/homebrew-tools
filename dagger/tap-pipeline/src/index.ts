@@ -1347,7 +1347,6 @@ end
     const artifactPath = `/tmp/${assetName}`
 
     const container = this.withT3PublicConnectConfig(this.t3BaseContainer())
-      .withDirectory("/tap", tap)
       .withMountedCache(
         "/upstream/native/resource-monitor/target",
         dag.cacheVolume("tap-pipeline-t3-resource-monitor-target-cache"),
@@ -1363,14 +1362,17 @@ end
           `git -C /upstream remote add origin ${JSON.stringify(entry.upstream.repo)}`,
           `git -C /upstream fetch --depth=1 --no-tags origin ${JSON.stringify(commit)}`,
           "git -C /upstream checkout --detach FETCH_HEAD",
-          "git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch",
-          "git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch",
           "rm -rf /upstream/.git",
         ].join("\n"),
       ])
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withDirectory("/tap", tap)
+      .withExec([
+        "bash", "-lc",
+        "git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch && git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch",
+      ])
       .withExec([
         "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
         "--maxWorkers=1",
