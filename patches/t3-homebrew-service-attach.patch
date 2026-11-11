@@ -5,9 +5,9 @@ index 2b2dd841..bd354ac9 100644
 @@ -1,4 +1,5 @@
  import { assert, describe, it } from "@effect/vitest";
 +import * as NodePath from "@effect/platform-node/NodePath";
+ import * as Deferred from "effect/Deferred";
+ import * as Duration from "effect/Duration";
  import * as Effect from "effect/Effect";
- import * as FileSystem from "effect/FileSystem";
- import * as Layer from "effect/Layer";
 @@ -10,6 +11,8 @@ import { ChildProcessSpawner } from "effect/process";
  
  import * as DesktopObservability from "../app/DesktopObservability.ts";
@@ -835,9 +835,9 @@ index 5d9a87ac..b5506477 100644
 +      "types": "./src/homebrewServerOwner.ts",
 +      "import": "./src/homebrewServerOwner.ts"
 +    },
-     "./changedFileKind": {
-       "types": "./src/changedFileKind.ts",
-       "import": "./src/changedFileKind.ts"
+     "./pullRequestAnchor": {
+       "types": "./src/pullRequestAnchor.ts",
+       "import": "./src/pullRequestAnchor.ts"
 diff --git a/packages/shared/src/homebrewServerOwner.test.ts b/packages/shared/src/homebrewServerOwner.test.ts
 new file mode 100644
 index 00000000..722c5b0c
