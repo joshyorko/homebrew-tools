@@ -84,6 +84,7 @@ as_user t3 --version > /proof/cli-version.txt
 as_user systemctl --user mask t3code.service
 as_user brew services start test/protect/t3code-cli-main
 wait_active
+as_user python3 /work/runner/wait-http.py > /proof/homebrew-http.log
 as_user systemctl --user show "$unit" > /proof/homebrew-before.properties
 pid="$(as_user systemctl --user show "$unit" --property=MainPID --value)"
 [[ "$pid" =~ ^[1-9][0-9]*$ ]]
@@ -161,6 +162,52 @@ as_user brew services stop test/protect/t3code-cli-main
 rm -f "$unit_dir/$unit"
 as_user systemctl --user daemon-reload
 reject_without_changes missing-unit
+if [[ -f /work/input/native.tar.gz ]]; then
+  unit=t3code.service
+  native_home="$home/native-t3-home"
+  native_dir="$native_home/runtime/versions/0.1.9"
+  as_user systemctl --user unmask "$unit"
+  mkdir -p "$native_dir"
+  tar -xzf /work/input/native.tar.gz --strip-components=1 -C "$native_dir"
+  printf '0.1.9\n' > "$native_dir/.install-complete"
+  printf '{"protocol":3,"activeVersion":"0.1.9"}\n' > "$native_home/runtime/service-state.json"
+  cat > "$unit_dir/$unit" <<EOF
+[Unit]
+Description=Isolated native T3 launcher fixture
+[Service]
+ExecStart=$native_dir/t3 __service-launcher
+Environment=T3CODE_HOME=$native_home
+Environment=T3_BOOT_SERVICE_UNIT=$unit
+Environment=T3CODE_TELEMETRY_ENABLED=false
+Environment=LD_LIBRARY_PATH=$native_dir/lib
+WorkingDirectory=$home
+StandardOutput=append:$home/native-server.log
+StandardError=append:$home/native-server.log
+EOF
+  chown -R "$user:$user" "$native_home" "$unit_dir"
+  as_user systemctl --user daemon-reload
+  as_user systemctl --user start "$unit"
+  wait_active
+  as_user python3 /work/runner/wait-http.py > /proof/native-http.log
+  as_user python3 /work/runner/preview.py t3 service protect --base-dir "$native_home" > /proof/native-preview.log 2>&1
+  grep -F 't3code.service.d/90-t3code-protect.conf' /proof/native-preview.log
+  as_user t3 service protect --yes --base-dir "$native_home" > /proof/native-apply.log 2>&1
+  grep -F 'When agents are idle, run `t3 service restart`' /proof/native-apply.log
+  assert_file "$unit_dir/$unit.d/$drop_in" $'[Service]\nOOMScoreAdjust=-900'
+  as_user systemctl --user restart "$unit"
+  wait_active
+  pid="$(as_user systemctl --user show "$unit" --property=MainPID --value)"
+  [[ "$(cat "/proc/$pid/oom_score_adj")" == -900 ]]
+  as_user t3 service status --base-dir "$native_home" > /proof/native-status.log 2>&1
+  grep -F -- '-900' /proof/native-status.log
+  as_user t3 service protect --undo --yes --base-dir "$native_home" > /proof/native-undo.log 2>&1
+  [[ ! -e "$unit_dir/$unit.d/$drop_in" ]]
+  as_user systemctl --user stop "$unit"
+  as_user t3 service protect --undo --yes --base-dir "$native_home" > /proof/native-stopped-undo.log 2>&1
+  cp "$home/native-server.log" /proof/native-server.log
+  sha256sum /work/input/native.tar.gz > /proof/native-artifact.sha256
+  record native-preview-apply-effective-status-and-undo
+fi
 python3 - <<'PY'
 import hashlib
 import json
@@ -174,7 +221,7 @@ report = {
     "artifactSha256": hashlib.sha256(Path("/work/input/candidate.tar.gz").read_bytes()).hexdigest(),
     "boundary": "Homebrew-installed CLI and real systemd inside a disposable Docker container",
     "scenarios": scenarios,
-    "gaps": ["Native pinned runtime was not supplied; native runtime and two competing verified services remain untested.", "Live Dakota acceptance was not authorized or run."],
+    "gaps": (["Native pinned runtime was not supplied; native runtime remains untested."] if not (root / "native-artifact.sha256").exists() else []) + ["Two competing verified active services remain untested in real systemd.", "Live Dakota acceptance was not authorized or run."],
 }
 (root / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 PY

@@ -1372,11 +1372,11 @@ end
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
       .withExec([
-        "pnpm", "exec", "vp", "test", "run",
+        "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
         "--maxWorkers=1",
-        "apps/server/src/cloud/serviceProtection.test.ts",
-        "apps/server/src/cloud/serviceProtectionTarget.test.ts",
-        "apps/server/src/cli/service.test.ts",
+        "src/cloud/serviceProtection.test.ts",
+        "src/cloud/serviceProtectionTarget.test.ts",
+        "src/cli/service.test.ts",
       ])
       .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
       .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])

@@ -48,6 +48,12 @@ systemd runner has not yet completed. Native installed-runtime acceptance and
 two competing verified services remain open. Live Dakota acceptance is not
 authorized and has not run. No formula publication, merge, or release occurred.
 
+The first bounded run exited 134 during workspace-wide test discovery.
+The engine's process-limit counter increased while its OOM-kill counter stayed
+at zero. The focused test command now runs from `apps/server` instead of
+loading the other workspace test configurations. The resource budget stays
+unchanged.
+
 Run local Dagger commands through `bash scripts/dagger-limited.sh`. It creates
 a private engine with 2 CPUs, 3 GiB RAM, 4 GiB RAM plus swap, and 512 processes,
 then checks the configured and effective cgroup limits before any build.
@@ -64,8 +70,17 @@ bash scripts/t3-service-protect-smoke/run.sh \
   d2c25950b4d9183ea342d5d5fc14c326b9e0172a
 ```
 
+An optional fifth argument supplies the upstream `v0.1.9` Linux x64 native
+archive, verified against release asset SHA256
+`0141025335da334759cecd8db3483e09772f3600ca03674698524e7d94291362`.
+That fixture uses a fresh T3 home and the release's protocol-3 runtime layout;
+it does not invoke the native installer or updater. The Homebrew-packaged CLI
+then previews, applies, reads effective status, and undoes native protection.
+The runner requires an actual HTTP server response for both owners.
+
 The runner installs through Linuxbrew in a disposable, resource-limited
 systemd container. Its report separates fixture proof from live acceptance.
 It does not mount the host home, systemd directories, or cgroup filesystem.
+Its image is built through the same bounded Dagger launcher.
 Protection and undo never restart a server; the fixture's explicit restart
 applies only to its own container service.
