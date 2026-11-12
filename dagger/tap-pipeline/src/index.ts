@@ -3072,6 +3072,40 @@ end
     return build.container.file(build.artifactPath)
   }
 
+  /** Export all GUI receipts, including failures; acceptance.json must say passed=true. */
+  @func()
+  async t3ServiceAttachmentEvidence(
+    bundle: Directory,
+    t3SourceRef: string,
+    candidateTapHead: string,
+  ): Promise<Directory> {
+    if (!/^[0-9a-f]{40}$/.test(t3SourceRef) || !/^[0-9a-f]{40}$/.test(candidateTapHead)) {
+      throw new Error("Attachment evidence requires exact upstream and candidate tap SHAs")
+    }
+    const release: unknown = JSON.parse(await bundle.file("release.json").contents())
+    if (typeof release !== "object" || release === null
+      || !("package" in release) || release.package !== "t3-code-linux"
+      || !("asset_name" in release) || typeof release.asset_name !== "string"
+      || !/^T3-Code-[a-zA-Z0-9._+-]+-x86_64\.AppImage$/.test(release.asset_name)
+      || !("artifact_sha256" in release) || typeof release.artifact_sha256 !== "string"
+      || !/^[0-9a-f]{64}$/.test(release.artifact_sha256)
+      || !("upstream" in release) || typeof release.upstream !== "object" || release.upstream === null
+      || !("commit" in release.upstream) || release.upstream.commit !== t3SourceRef) {
+      throw new Error("Attachment candidate metadata does not match the requested immutable source")
+    }
+    const executionTapHead = (await this.gitDir.file("HEAD").contents()).trim()
+    if (!/^[0-9a-f]{40}$/.test(executionTapHead)) throw new Error("Run attachment evidence from an immutable detached snapshot")
+    return this.source.directory(".devcontainer/dagger").dockerBuild()
+      .withUnixSocket("/var/run/docker.sock", dag.host().unixSocket("/var/run/docker.sock"))
+      .withDirectory("/runner", this.source.directory("scripts/t3-homebrew-desktop-e2e"))
+      .withFile("/candidate/candidate.AppImage", bundle.file(`artifacts/${release.asset_name}`))
+      .withNewFile("/evidence/source.json", json({ candidateTapHead, executionTapHead, upstream: t3SourceRef, artifactSha256: release.artifact_sha256 }))
+      .withEnvVariable("CANDIDATE_SHA256", release.artifact_sha256)
+      .withExec(["bash", "-lc", "printf '%s  /candidate/candidate.AppImage\\n' \"$CANDIDATE_SHA256\" | sha256sum -c -"])
+      .withExec(["bash", "/runner/run-all.sh", "/candidate/candidate.AppImage", "/evidence", t3SourceRef])
+      .directory("/evidence")
+  }
+
   @func()
   async ciCheck(
     packageId: string,

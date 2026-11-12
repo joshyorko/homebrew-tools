@@ -53,6 +53,7 @@ jobs:
         node scripts/test-t3-dagger-cli.mjs
         node --test scripts/check-t3-source-types.test.mjs
         node --test scripts/t3-source-patches.test.mjs
+        node --test scripts/t3-homebrew-desktop-e2e/run-all.test.mjs
         npm test --prefix dagger/tap-pipeline
         node --test scripts/render-review-formula.test.mjs scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
 
