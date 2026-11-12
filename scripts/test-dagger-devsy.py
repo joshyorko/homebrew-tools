@@ -65,6 +65,14 @@ elif name == "ssh":
         pass
     else:
         sys.exit(98)
+elif name == "docker":
+    if "--format" in sys.argv:
+        cpus = ",".join(map(str, sorted(os.sched_getaffinity(0))[:12]))
+        print("12000000000 25769803776 30064771072 4096 private " + cpus)
+    elif "exec" in sys.argv:
+        print("25769803776\n4294967296\n1200000 100000\n4096")
+elif name == "dagger":
+    print("dagger v0.21.11" if "version" in sys.argv else "remote driver completed")
 else:
     sys.exit(99)
 '''
@@ -251,6 +259,34 @@ class RemoteBuilderTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         with self.upload() as uploaded:
             self.assertIn(b"--mod=./dagger/tap-pipeline\0", uploaded.extractfile("arguments").read())
+
+    def test_remote_driver_restores_remote_refs_and_dirty_source(self):
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        expected = self.git("rev-parse", "origin/main")
+        (self.repo / "tracked").write_text("dirty remote input\n")
+        (self.repo / "deleted").unlink()
+        result, _ = self.run_builder("functions")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        remote_root = self.base / "remote"
+        run = remote_root / "run.TEST0001"
+        run.mkdir(parents=True)
+        with self.upload() as uploaded:
+            uploaded.extractall(run, filter="data")
+        driver = run / "driver.sh"
+        # Redirect only the remote filesystem boundary. Execute the production
+        # --remote path with real Git/tar and stub only Docker/Dagger execution.
+        driver.write_text(driver.read_text().replace("/builds/homebrew-tools", str(remote_root)))
+        remote = subprocess.run(
+            ["bash", str(driver), "--remote", str(run)], env=self.env,
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(remote.returncode, 0, remote.stderr)
+        actual = subprocess.check_output(
+            ["git", "-C", str(run / "source"), "rev-parse", "--verify", "origin/main"], text=True,
+        ).strip()
+        self.assertEqual(actual, expected)
+        self.assertEqual((run / "source/tracked").read_text(), "dirty remote input\n")
+        self.assertFalse((run / "source/deleted").exists())
 
 
 if __name__ == "__main__":

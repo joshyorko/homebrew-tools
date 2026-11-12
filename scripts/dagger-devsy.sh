@@ -17,7 +17,7 @@ if [[ "${1:-}" == --remote ]]; then
   exec 9>/builds/homebrew-tools/engine.lock
   echo "Waiting for the remote Dagger engine..." >&2
   flock 9
-  git clone --bare --quiet repository.bundle source/.git
+  git clone --mirror --quiet repository.bundle source/.git
   git -C source config core.bare false
   git -C source remote set-url origin https://github.com/joshyorko/homebrew-tools.git
   git -C source update-ref --no-deref HEAD "$(cat head)"
