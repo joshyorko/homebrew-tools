@@ -6,6 +6,7 @@ import { promisify } from "node:util"
 import { execFile, spawn } from "node:child_process"
 import assert from "node:assert/strict"
 import { DatabaseSync } from "node:sqlite"
+import { waitForApplicationRenderer } from "./renderer-readiness.mjs"
 
 const exec = promisify(execFile)
 const root = "/tmp/t3-ui-test"
@@ -400,14 +401,8 @@ const connectAndVerify = async () => {
   console.log("DESKTOP_LAUNCHED")
   await clickNativeDialog("Homebrew T3 service is already running")
   console.log("SERVICE_RECOVERY_CONFIRMED")
-  const page = await app.firstWindow({ timeout: 90_000 })
-  await page.waitForLoadState("domcontentloaded")
-  await writeFile(root + "/window-state.json", JSON.stringify(app.windows().map((window) => {
-    const value = URL.parse(window.url())
-    if (value === null) return { protocol: "", host: "", pathname: "<unloaded>" }
-    return { protocol: value.protocol, host: value.host, pathname: value.protocol === "data:" ? "<data>" : value.pathname }
-  }), null, 2))
-  await captureRendererState(page)
+  const { page, observations } = await waitForApplicationRenderer(app)
+  await writeFile(root + "/renderer-readiness.json", JSON.stringify({ observations, applicationRendererReady: true, pairingConfirmationObserved: false }, null, 2))
   const confirmation = page.getByText(new RegExp(new URL(serverOrigin).origin.replaceAll(".", "\\."))).waitFor({ timeout: 30_000 }).then(() => "confirmation")
   const rejected = exec("xdotool", ["search", "--sync", "--onlyvisible", "--name", "^(Could not create a pairing link|Error)$"], { timeout: 30_000, maxBuffer: 4096 }).then(() => "rejected", () => "not-found")
   const outcome = await Promise.race([confirmation, rejected])
@@ -419,6 +414,9 @@ const connectAndVerify = async () => {
     throw new Error("Automatic pairing failed before renderer delivery")
   }
   assert.equal(outcome, "confirmation")
+  await writeFile(root + "/renderer-readiness.json", JSON.stringify({ observations, applicationRendererReady: true, pairingConfirmationObserved: true }, null, 2))
+  await writeFile(root + "/window-state.json", JSON.stringify(observations, null, 2))
+  await captureRendererState(page)
   await page.screenshot({ path: root + "/pairing-confirmation.png" })
   const pendingLinks = JSON.parse(await runPackagedCli(["auth", "pairing", "list", "--json"]))
   console.log("PAIRING_LINK_STATE", JSON.stringify({ count: pendingLinks.length, unexpired: pendingLinks.every((link) => Date.parse(link.expiresAt) > Date.now()) }))
@@ -464,8 +462,7 @@ const connectAndVerify = async () => {
   await checkPreserved()
 
   app = await launchDesktop()
-  const repeatPage = await app.firstWindow({ timeout: 90_000 })
-  await repeatPage.waitForLoadState("domcontentloaded")
+  const { page: repeatPage } = await waitForApplicationRenderer(app)
   await repeatPage.getByText("Existing preserved thread", { exact: true }).first().waitFor({ timeout: 30_000 })
   await repeatPage.getByRole("button", { name: /Existing preserved thread/ }).first().click()
   await repeatPage.getByText("Historical fixture reply preserved across service attachment.", { exact: true }).waitFor({ timeout: 30_000 })
