@@ -252,7 +252,7 @@ diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updat
 index 14688e5..4f77bda 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
-@@ -31,14 +31,23 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
+@@ -31,15 +31,24 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
@@ -261,6 +261,7 @@ index 14688e5..4f77bda 100644
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as IpcChannels from "../ipc/channels.ts";
  import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+ import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
  import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
 +import {
 +  createHomebrewDesktopUpdateProvider,
@@ -591,11 +592,11 @@ index 14688e5..4f77bda 100644
 +            yield* writeUpdateRestartMarker;
 +            if (downloadedVersion !== null) yield* writeInstallRecord(downloadedVersion);
 +          }
-           // Stop pooled backends before quitAndInstall can outrun their scope finalizers.
+           // Stop pooled backends and SSH tunnels before quitAndInstall can outrun their scope finalizers.
            const instances = yield* pool.list;
            // stop clears desiredRunning, so retain the recovery set beforehand.
 @@ -824,6 +1008,22 @@ export const make = Effect.gen(function* () {
-               instance.stop({ timeout: DesktopBackendManager.BACKEND_QUIT_STOP_TIMEOUT }),
+             ],
              { concurrency: "unbounded" },
            );
 +          if (homebrewManaged) {
@@ -1206,9 +1207,9 @@ index 226f00f..6681812 100644
 +    }),
 +  });
 +
-   let backendDesiredRunning = options.backendDesiredRunning ?? true;
-   const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
-     id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
+   const layerSshEnvironment = Layer.mock(DesktopSshEnvironment.DesktopSshEnvironment, {
+     closeAllTunnels: Effect.sync(() => {
+       installSteps.push("closeSshTunnels");
 @@ -174,13 +184,13 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
 
    const layerEnvironment = DesktopEnvironment.layer({
@@ -1236,12 +1237,13 @@ index 226f00f..6681812 100644
        const installRecord = isInstallRecord(path)
          ? (installRecords.get(path) ?? previousInstallRecord)
          : undefined;
-@@ -277,6 +290,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
+@@ -277,7 +290,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
      Layer.provide(DesktopUpdatePolicy.layerTest(options.policy)),
      Layer.provideMerge(layerUpdater),
      Layer.provideMerge(layerWindow),
 +    Layer.provideMerge(layerElectronApp),
      Layer.provideMerge(layerBackend),
+     Layer.provideMerge(layerSshEnvironment),
      Layer.provideMerge(DesktopState.layer),
      Layer.provideMerge(layerSettings),
 diff --git a/apps/web/src/components/desktopUpdate.logic.ts b/apps/web/src/components/desktopUpdate.logic.ts
