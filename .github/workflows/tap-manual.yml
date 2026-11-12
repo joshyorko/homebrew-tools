@@ -112,11 +112,15 @@ jobs:
 
         gh release upload "$release_tag" "${artifacts[@]}" --clobber
         node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE"
-        node scripts/prune-package-releases.mjs \
-          --repo "$GITHUB_REPOSITORY" \
-          --package-id "$PACKAGE_ID" \
-          --current-tag "$release_tag" \
-          --keep "$RELEASE_RETENTION_PER_PACKAGE"
+        if [ "$PACKAGE_ID" = action-server ]; then
+          echo "Preserving existing action-server mirror releases; no pruning for this update."
+        else
+          node scripts/prune-package-releases.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --package-id "$PACKAGE_ID" \
+            --current-tag "$release_tag" \
+            --keep "$RELEASE_RETENTION_PER_PACKAGE"
+        fi
 
         if git diff --quiet; then
           exit 0
