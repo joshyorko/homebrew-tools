@@ -18,8 +18,9 @@ the existing bootstrap Effect is the only test seam added to the baseline.
 These lightweight runs use Vite+ 1.4.0, Effect 4.1.2, Node 26, one test worker,
 and two CPU affinity slots. Dependencies were installed with scripts disabled.
 The candidate build explicitly selects `DesktopApp.homebrew.test.ts` before
-packaging. A standalone TypeScript pass reports no errors in the changed files,
-but reports other upstream diagnostics and is not the candidate type-check gate.
+packaging. A standalone TypeScript check reports no errors in the changed files,
+but reports diagnostics elsewhere with the temporary test setup. It is not the
+candidate type-check gate and does not establish a project type-check pass.
 
 Candidate type checks, Homebrew packaging/install acceptance, and all four packaged
 attachment scenarios remain required. The interrupted local Dagger run is not a
