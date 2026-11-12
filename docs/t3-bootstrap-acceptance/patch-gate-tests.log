@@ -1,0 +1,14 @@
+✔ real Git applies both variants to independent pristine trees in production order (82.925368ms)
+✔ incompatible context names the selected SHA, patch, file and failing hunk (68.69098ms)
+✔ failure stops the resolve sequence before either package build is admitted (88.979521ms)
+✔ the same application routine works after packaging removes Git metadata (45.604129ms)
+✔ moving source refs are rejected before Git or package work (27.636481ms)
+✔ manual acceptance rejects moving refs before the Dagger action and preserves PR defaults (6.39637ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 365.040672

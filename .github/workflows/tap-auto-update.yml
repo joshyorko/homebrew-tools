@@ -178,6 +178,15 @@ jobs:
           echo "t3_source_version=$t3_source_version"
         } >> "$GITHUB_OUTPUT"
 
+    - name: Check selected T3 patches before package builds
+      if: >-
+        contains(fromJSON(steps.packages.outputs.package_ids_json), 't3code-cli-main') ||
+        contains(fromJSON(steps.packages.outputs.package_ids_json), 't3-code-linux')
+      env:
+        T3_SOURCE_COMMIT: ${{ steps.packages.outputs.t3_source_commit }}
+        T3_PACKAGE_IDS: ${{ steps.packages.outputs.package_ids_json }}
+      run: node scripts/check-t3-patches.mjs --source-ref "$T3_SOURCE_COMMIT" --package-ids "$T3_PACKAGE_IDS"
+
   codex-memoryd:
     name: Refresh Codex MemoryD from master
     if: >-

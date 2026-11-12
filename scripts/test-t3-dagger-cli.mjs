@@ -21,9 +21,9 @@ function checkCall(args, expectedUsage, expectedArguments) {
 }
 
 checkCall(
-  ["resolve-t-3-source", "--github-token=env://GH_TOKEN"],
+  ["resolve-t-3-source", "--github-token=env://GH_TOKEN", `--ref=${sourceRef}`],
   "dagger call resolve-t-3-source",
-  ["--github-token Secret"],
+  ["--github-token Secret", "--ref string"],
 )
 
 for (const packageId of ["t3code-cli-main", "t3-code-linux"]) {

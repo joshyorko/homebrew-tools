@@ -583,14 +583,17 @@ export class TapPipeline {
   }
 
   @func()
-  async resolveT3Source(githubToken?: Secret): Promise<string> {
+  async resolveT3Source(githubToken?: Secret, ref = ""): Promise<string> {
     this.setGithubToken(githubToken)
     const entry = this.packageEntry("t3code-cli-main")
     if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
       throw new Error("Expected t3code-cli-main to use a git-head auto-update strategy")
     }
 
-    return json(await this.resolveGitHeadVersion(entry.upstream.repo, entry.autoUpdate.ref, entry.autoUpdate))
+    if (ref && !/^[0-9a-f]{40}$/.test(ref)) {
+      throw new Error("T3 acceptance replay requires an immutable 40-character source SHA")
+    }
+    return json(await this.resolveGitHeadVersion(entry.upstream.repo, ref || entry.autoUpdate.ref, entry.autoUpdate))
   }
 
   private setGithubToken(githubToken?: Secret): void {
@@ -1370,8 +1373,8 @@ end
       .withExec(["pnpm", "install", "--frozen-lockfile"])
       .withDirectory("/tap", tap)
       .withExec([
-        "bash", "-lc",
-        "git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch && git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch",
+        "node", "/tap/scripts/t3-source-patches.mjs",
+        "--source", "/upstream", "--source-ref", commit, "--variant", "cli",
       ])
       .withExec([
         "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
@@ -2573,11 +2576,11 @@ end
           "set -euo pipefail",
           "mkdir -p /upstream/apps/desktop/resources",
           "install -m 0755 /tap/scripts/t3-homebrew-update.sh /upstream/apps/desktop/resources/t3-homebrew-update.sh",
-          "git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch",
-          "git -C /upstream apply /tap/patches/t3-homebrew-desktop-update.patch",
-          "git -C /upstream apply --check /tap/patches/t3-homebrew-service-attach.patch",
-          "git -C /upstream apply /tap/patches/t3-homebrew-service-attach.patch",
         ].join("\n"),
+      ])
+      .withExec([
+        "node", "/tap/scripts/t3-source-patches.mjs",
+        "--source", "/upstream", "--source-ref", commit, "--variant", "desktop",
       ])
       .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-build.json", JSON.stringify({ packageVersion: resolvedVersion, sourceCommit: commit }))
       .withWorkdir("/upstream")

@@ -2,6 +2,12 @@ name: Tap CI
 
 on:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      t3_source_ref:
+        description: "Immutable upstream SHA for T3 acceptance replay only"
+        required: true
+        type: string
   push:
     branches:
     - main
@@ -45,6 +51,7 @@ jobs:
         python3 scripts/test-rcc-maintenance-pin.py
         node scripts/test-t3-dagger-cli.mjs
         node --test scripts/check-t3-source-types.test.mjs
+        node --test scripts/t3-source-patches.test.mjs
         npm test --prefix dagger/tap-pipeline
         node --test scripts/render-review-formula.test.mjs scripts/test-cask-icon-paths.mjs scripts/test-prune-package-releases.mjs scripts/package-vscode-insiders-linux.test.mjs scripts/codex-memoryd-update.test.mjs
 
@@ -77,7 +84,11 @@ jobs:
         EVENT_NAME: ${{ github.event_name }}
       run: |
         set -euo pipefail
-        plan_json="$(node scripts/plan-tap-ci.mjs)"
+        if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+          plan_json='[]'
+        else
+          plan_json="$(node scripts/plan-tap-ci.mjs)"
+        fi
         matrix="$(jq -c '{include: .}' <<<"$plan_json")"
         count="$(jq '.include | length' <<<"$matrix")"
         package_ids="$(jq -r 'if length == 0 then "none" else map("\(.package_id)[\(.mode)]") | join(", ") end' <<<"$plan_json")"
@@ -101,12 +112,21 @@ jobs:
     - tap-pipeline-tests
     - plan
     if: >-
-      needs.plan.outputs.has_packages == 'true' &&
-      (contains(needs.plan.outputs.matrix, 't3code-cli-main') || contains(needs.plan.outputs.matrix, 't3-code-linux'))
+      github.event_name == 'workflow_dispatch' ||
+      (needs.plan.outputs.has_packages == 'true' &&
+      (contains(needs.plan.outputs.matrix, 't3code-cli-main') || contains(needs.plan.outputs.matrix, 't3-code-linux')))
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Validate acceptance replay source
+      env:
+        T3_SOURCE_REF: ${{ inputs.t3_source_ref }}
+      run: |
+        if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && ! "$T3_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+          echo 'T3 acceptance replay requires an immutable 40-character source SHA.' >&2
+          exit 1
+        fi
     - name: Resolve shared T3 source
       id: t3_source
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
@@ -114,7 +134,18 @@ jobs:
         version: ${{ env.DAGGER_VERSION }}
         module: ./dagger/tap-pipeline
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        call: resolve-t-3-source --github-token=env://GH_TOKEN
+        call: resolve-t-3-source --github-token=env://GH_TOKEN --ref="${{ inputs.t3_source_ref }}"
+    - name: Record tap and immutable upstream acceptance sources
+      env:
+        TAP_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        T3_SOURCE_COMMIT: ${{ fromJSON(steps.t3_source.outputs.output).commit }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/t3-service-attach-evidence"
+        printf 'tap_head=%s\ncheckout=%s\nupstream=%s\n' "$TAP_HEAD" "$(git rev-parse HEAD)" "$T3_SOURCE_COMMIT" | tee "$RUNNER_TEMP/t3-service-attach-evidence/source.txt"
+    - name: Check selected T3 patches before paired acceptance
+      env:
+        T3_SOURCE_COMMIT: ${{ fromJSON(steps.t3_source.outputs.output).commit }}
+      run: node scripts/check-t3-patches.mjs --source-ref "$T3_SOURCE_COMMIT" --package-ids '["t3code-cli-main","t3-code-linux"]'
     - name: Run T3 CLI acceptance at the resolved source
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
