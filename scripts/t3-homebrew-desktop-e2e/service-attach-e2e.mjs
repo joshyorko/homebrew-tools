@@ -403,7 +403,8 @@ const connectAndVerify = async () => {
   const page = await app.firstWindow({ timeout: 90_000 })
   await page.waitForLoadState("domcontentloaded")
   await writeFile(root + "/window-state.json", JSON.stringify(app.windows().map((window) => {
-    const value = new URL(window.url())
+    const value = URL.parse(window.url())
+    if (value === null) return { protocol: "", host: "", pathname: "<unloaded>" }
     return { protocol: value.protocol, host: value.host, pathname: value.protocol === "data:" ? "<data>" : value.pathname }
   }), null, 2))
   await captureRendererState(page)
