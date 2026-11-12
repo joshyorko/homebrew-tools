@@ -1,0 +1,12 @@
+note: You are running `vp test` as a Vite+ built-in command. If you meant to run the test npm script, use `vpr test` instead.
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (../bootstrap.vite.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /tmp/codex-t3-bootstrap-20261112-nixCrR/upstream
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  07:18:09
+   Duration  941ms (import 66%, transform 28%, tests 5%)

@@ -2590,6 +2590,7 @@ end
         "test",
         "run",
         "--passWithNoTests",
+        "apps/desktop/src/app/DesktopApp.homebrew.test.ts",
         "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
         "apps/desktop/src/updates/DesktopUpdates.test.ts",
         "apps/desktop/src/backend/HomebrewServiceOwnership.test.ts",

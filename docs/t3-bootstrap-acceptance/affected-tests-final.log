@@ -1,0 +1,12 @@
+note: You are running `vp test` as a Vite+ built-in command. If you meant to run the test npm script, use `vpr test` instead.
+
+ RUN  v5.0.5 /tmp/codex-t3-bootstrap-20261112-nixCrR/upstream
+
+
+ Test Files  8 passed (8)
+      Tests  78 passed (78)
+   Start at  07:16:22
+   Duration  8.74s (import 76%, tests 16%, transform 8%)
+
+    Isolate  8 workers spawned · ~129ms startup each (spawn + environment, per file)
+             at least ~906ms faster with isolate: false — reuses workers across files instead of one per file

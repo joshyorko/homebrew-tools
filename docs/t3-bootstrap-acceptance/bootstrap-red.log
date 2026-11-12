@@ -1,0 +1,99 @@
+note: You are running `vp test` as a Vite+ built-in command. If you meant to run the test npm script, use `vpr test` instead.
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (../bootstrap.vite.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /tmp/codex-t3-bootstrap-20261112-nixCrR/upstream
+
+stdout | apps/desktop/src/app/DesktopApp.homebrew.test.ts > Homebrew service recovery during actual Desktop bootstrap > waits for the ownership grace, then connects without starting a local backend
+[07:18:09.516] ERROR (#1): Error [AssertionError]: expected [ 'error-dialog', 'quit' ] to deeply equal [ 'recovery-dialog', 'backup', …(1) ]
+    at /tmp/codex-t3-bootstrap-20261112-nixCrR/upstream/apps/desktop/src/app/DesktopApp.homebrew.test.ts:279:16 {
+  actual: [ 'error-dialog', 'quit' ],
+  expected: [ 'recovery-dialog', 'backup', 'window' ],
+  showDiff: true,
+  operator: 'deepStrictEqual',
+  [cause]: undefined
+}
+
+stdout | apps/desktop/src/app/DesktopApp.homebrew.test.ts > Homebrew service recovery during actual Desktop bootstrap > refuses cancelled recovery without changing settings or starting a backend
+[07:18:09.535] ERROR (#64): Error [AssertionError]: expected [ 'error-dialog', 'quit' ] to deeply equal [ 'recovery-dialog', 'quit' ]
+    at /tmp/codex-t3-bootstrap-20261112-nixCrR/upstream/apps/desktop/src/app/DesktopApp.homebrew.test.ts:296:18 {
+  actual: [ 'error-dialog', 'quit' ],
+  expected: [ 'recovery-dialog', 'quit' ],
+  showDiff: true,
+  operator: 'deepStrictEqual',
+  [cause]: undefined
+}
+
+ ❯ apps/desktop/src/app/DesktopApp.homebrew.test.ts (5 tests | 2 failed) 57ms
+   ❯ Homebrew service recovery during actual Desktop bootstrap (5)
+     × waits for the ownership grace, then connects without starting a local backend 28ms
+     × refuses cancelled recovery without changing settings or starting a backend 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/desktop/src/app/DesktopApp.homebrew.test.ts > Homebrew service recovery during actual Desktop bootstrap > waits for the ownership grace, then connects without starting a local backend
+AssertionError: expected [ 'error-dialog', 'quit' ] to deeply equal [ 'recovery-dialog', 'backup', …(1) ]
+
+- Expected
++ Received
+
+  [
+-   "recovery-dialog",
+-   "backup",
+-   "window",
++   "error-dialog",
++   "quit",
+  ]
+
+ ❯ apps/desktop/src/app/DesktopApp.homebrew.test.ts:279:16
+    277|         yield* TestClock.adjust("6 seconds");
+    278|         yield* Fiber.join(boot);
+    279|         assert.deepEqual(f.events, ["recovery-dialog", "backup", "wind…
+       |                ^
+    280|         assert.isFalse((yield* f.settings.get).localEnvironmentEnabled…
+    281|         assert.deepEqual(desktop.links, ["t3code://pair?fixture"]);
+ ❯ ~effect/Effect/successCont ../runtime/node_modules/effect/src/internal/effect.ts:1482:28
+ ❯ ~effect/Effect/evaluate ../runtime/node_modules/effect/src/internal/core.ts:587:30
+ ❯ FiberImpl.runLoop ../runtime/node_modules/effect/src/internal/effect.ts:700:41
+ ❯ FiberImpl.evaluate ../runtime/node_modules/effect/src/internal/effect.ts:635:23
+ ❯ FiberImpl.evaluate ../runtime/node_modules/effect/src/internal/effect.ts:624:29
+ ❯ Array.<anonymous> ../runtime/node_modules/effect/src/internal/effect.ts:1210:17
+ ❯ FiberImpl.evaluate ../runtime/node_modules/effect/src/internal/effect.ts:658:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  apps/desktop/src/app/DesktopApp.homebrew.test.ts > Homebrew service recovery during actual Desktop bootstrap > refuses cancelled recovery without changing settings or starting a backend
+AssertionError: expected [ 'error-dialog', 'quit' ] to deeply equal [ 'recovery-dialog', 'quit' ]
+
+- Expected
++ Received
+
+  [
+-   "recovery-dialog",
++   "error-dialog",
+    "quit",
+  ]
+
+ ❯ apps/desktop/src/app/DesktopApp.homebrew.test.ts:296:18
+    294|           yield* TestClock.adjust("11 seconds");
+    295|           yield* Fiber.join(boot);
+    296|           assert.deepEqual(f.events, expected);
+       |                  ^
+    297|           assert.isTrue((yield* f.settings.get).localEnvironmentEnable…
+    298|           assert.deepEqual(desktop.links, []);
+ ❯ ~effect/Effect/successCont ../runtime/node_modules/effect/src/internal/effect.ts:1482:28
+ ❯ ~effect/Effect/evaluate ../runtime/node_modules/effect/src/internal/core.ts:587:30
+ ❯ FiberImpl.runLoop ../runtime/node_modules/effect/src/internal/effect.ts:700:41
+ ❯ FiberImpl.evaluate ../runtime/node_modules/effect/src/internal/effect.ts:635:23
+ ❯ FiberImpl.evaluate ../runtime/node_modules/effect/src/internal/effect.ts:624:29
+ ❯ Array.<anonymous> ../runtime/node_modules/effect/src/internal/effect.ts:1210:17
+ ❯ FiberImpl.evaluate ../runtime/node_modules/effect/src/internal/effect.ts:658:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  07:18:08
+   Duration  1.02s (import 65%, transform 28%, tests 6%)
