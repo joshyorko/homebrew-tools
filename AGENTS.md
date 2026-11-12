@@ -16,20 +16,27 @@ brew test ./Formula/t3code-cli-main.rb
 
 Use the Dagger smoke tests for real packaging verification:
 
-On the workstation, replace `dagger` with `bash scripts/dagger-limited.sh` in
-local commands. The launcher verifies a private engine cgroup with 2 CPUs,
-including CPU affinity so build tools cannot size pools for every host core,
-4 GiB RAM, 5 GiB total RAM plus swap, and 512 processes before starting it.
-Run heavy builds sequentially. Do not bypass these limits to retry a failure.
-The Makefile recovery targets already use this launcher. CI keeps its own
-runner configuration.
+On the workstation, run every Dagger command through `bash scripts/dagger-devsy.sh`.
+It provisions or resumes the `homebrew-tools-dagger` Devsy workspace using the
+configured Harvester provider. The builder VM has 12 vCPUs, 32 GiB RAM, and a
+200 GiB disk. Its private engine cgroup has 12 CPUs with matching affinity,
+24 GiB RAM, 28 GiB total RAM plus swap, and 4096 processes.
+The launcher uploads the current checkout, including uncommitted changes and
+Git history, serializes builds, and copies one `-o` export back on success.
+Use repository-relative input paths. Do not run raw Dagger, Docker builds, or
+resource-heavy packaging scripts on the workstation, including after remote
+failure. Devsy 1.27.0 MCP `workspace_exec` does not find this remote container.
+Use `devsy workspace ssh homebrew-tools-dagger --command '<command>'` for diagnostics.
+The old `scripts/dagger-limited.sh` entrypoint and Makefile recovery targets route
+through this remote launcher. CI keeps its own runner configuration.
 
 ```bash
-dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
-dagger -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
 ```
 
-Use the Node packaging scripts only when iterating on artifacts directly:
+Use the relevant Dagger module to run Node packaging scripts remotely.
+Direct artifact iteration requires a Node-equipped remote container:
 
 ```bash
 node scripts/package-vscode-insiders-linux.mjs --source-archive /tmp/source.tar.gz --source-sha256 <verified-sha256> --output /tmp/pkg.tar.gz

@@ -15,6 +15,54 @@ Review's source release workflow builds native appliances and tests SIF startup 
 
 ## Dagger Platform
 
+Run workstation builds on the Harvester Devsy builder:
+
+```bash
+bash scripts/dagger-devsy.sh --setup
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call list-packages
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o ./dist/release-bundle release-bundle --package-id=vscode-insiders-linux
+```
+
+The launcher provisions or resumes `homebrew-tools-dagger` using your configured
+Harvester provider. It leaves the VM and Dagger cache available for reuse.
+The VM has 12 vCPUs, 32 GiB RAM, and 200 GiB disk. The Dagger engine uses at most
+12 CPUs, 24 GiB RAM, 28 GiB total RAM plus swap, and 4096 processes.
+CPU affinity also limits build tools that size pools from the visible CPU count.
+Builds share an engine lock and use separate source snapshots.
+
+Install Devsy and configure its Harvester provider before the first run.
+The client also needs Bash, Git, OpenSSH, GNU tar, Python 3, realpath, and flock.
+The checked-in builder profile uses a Docker CLI image and a checksum-verified
+Dagger 0.21.11 binary for Linux amd64, matching CI. It mounts the remote VM's Docker socket.
+Only client-side Git, file transfer, and Devsy orchestration run on your workstation.
+Remote failure stops the command without starting a local engine.
+
+Run commands from any directory through the script's path. Dagger executes from
+the repository root, so use repository-relative inputs. The snapshot includes
+tracked files, non-ignored untracked files, and Git history.
+Ignored dependency and build output are not uploaded. One `-o` or `--output` export is copied to
+the requested local destination after success. Directory exports merge into an
+existing destination without removing old files. Other host-absolute input paths
+and automatic environment or secret forwarding are not supported.
+The `--bundle` directory input is uploaded explicitly, including ignored bundle
+output. Absolute module paths inside this checkout and its Git directory are
+rewritten for the remote snapshot. The ChatGPT, dictation, and Codex Desktop
+installer scripts use this launcher for their builds.
+
+Use `--status` to inspect the workspace. Devsy 1.27.0 MCP `workspace_exec` does not
+find this remote container. Use `devsy workspace ssh homebrew-tools-dagger --command '<command>'`
+for remote diagnostics. The launcher uses Devsy's stdio SSH connection so it
+does not depend on a persistent localhost tunnel. Your configured Devsy SSH
+forwarding settings still apply. The launcher prints each retained remote run
+path under `/builds/homebrew-tools/`.
+Source snapshots and exports remain there for inspection and consume remote disk.
+Use `devsy workspace stop homebrew-tools-dagger` when the builder is no longer needed.
+Set `DAGGER_DEVSY_WORKSPACE` to provision a separately named builder workspace.
+The configured provider may share its VM across workspaces.
+After changing the builder profile, finish active builds and run
+`devsy workspace up homebrew-tools-dagger --recreate --ide none` to recreate its container.
+The remote `/builds` volume and engine cache persist across container recreation.
+
 When GitHub releases are unavailable, build a local recovery export without installing any packages first:
 
 ```bash
@@ -42,12 +90,12 @@ GitHub Actions is intentionally thin and generic:
 Local platform commands:
 
 ```bash
-dagger -m ./dagger/tap-pipeline call list-packages
-dagger -m ./dagger/tap-pipeline call list-auto-update-slots
-dagger -m ./dagger/tap-pipeline call packages-for-auto-update-slot --slot-id=desktop-6h
-dagger -m ./dagger/tap-pipeline call detect-changed-packages --base-ref=origin/main --head-ref=HEAD
-dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
-dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=vscode-insiders-linux
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call list-packages
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call list-auto-update-slots
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call packages-for-auto-update-slot --slot-id=desktop-6h
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call detect-changed-packages --base-ref=origin/main --head-ref=HEAD
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=vscode-insiders-linux
 ```
 
 GitHub Actions owns the schedule. Dagger resolves package ids for a named auto-update slot and then handles
@@ -205,8 +253,8 @@ t3-code-linux
 Build and smoke-test the desktop cask path:
 
 ```bash
-dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3-code-linux
-dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3-code-linux
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=t3-code-linux
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3-code-linux
 ```
 
 Both Homebrew launchers (`t3` and `t3-code-linux`, including the desktop menu entry)
@@ -260,7 +308,7 @@ t3 --help
 The tap also includes a reusable Dagger smoke test for this packaging path:
 
 ```bash
-dagger -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
 ```
 
 That smoke test is the real end-to-end path:
@@ -333,8 +381,8 @@ version, tag commit, asset name, and SHA-256, mirrored through an immutable tap 
 and updated independently.
 
 ```bash
-dagger -m ./dagger/tap-pipeline call ci-check --package-id=devsy
-dagger -m ./dagger/tap-pipeline call ci-check --package-id=devsy-desktop
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=devsy
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=devsy-desktop
 ```
 
 
@@ -516,7 +564,7 @@ Follow-up for `joshyorko/agent-skills`:
 The tap also includes a reusable Dagger smoke test for this packaging path:
 
 ```bash
-dagger -m ./dagger/fizzy-cli-master-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/fizzy-cli-master-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
@@ -554,7 +602,7 @@ Update flow:
 The tap also includes a reusable Dagger smoke test for this packaging path:
 
 ```bash
-dagger -m ./dagger/fizzy-popper-self-hosted-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/fizzy-popper-self-hosted-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
@@ -588,7 +636,7 @@ voxtype setup systemd
 The tap also includes a reusable Dagger smoke test for this packaging path:
 
 ```bash
-dagger -m ./dagger/voxtype-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/voxtype-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
@@ -653,7 +701,7 @@ code-insiders --version
 The tap also includes a reusable Dagger smoke test for this packaging path:
 
 ```bash
-dagger -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
+bash scripts/dagger-devsy.sh -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
 ```
 
 That smoke test exercises the real delivery path:
@@ -720,8 +768,8 @@ published-artifact checks, and the supported cache inspection workflow.
 
 ```bash
 npm test --prefix dagger/tap-pipeline
-dagger -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
-dagger -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3code-cli-main
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
+bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3code-cli-main
 node scripts/apply-release-bundle.mjs --bundle /tmp/release-bundle --repo .
 ```
 

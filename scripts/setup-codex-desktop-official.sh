@@ -50,7 +50,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-command -v dagger >/dev/null 2>&1 || { echo "dagger is required for Codex Desktop setup." >&2; exit 69; }
+command -v devsy >/dev/null 2>&1 || { echo "devsy is required for remote Codex Desktop builds." >&2; exit 69; }
 command -v git >/dev/null 2>&1 || { echo "git is required for Codex Desktop setup." >&2; exit 69; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required for Codex Desktop setup." >&2; exit 69; }
 
@@ -127,7 +127,7 @@ esac
 
 mkdir -p "$bundle_dir"
 echo "Building Codex Desktop from $package_source signed Linux package through Dagger..."
-dagger -m "$repo_dir/dagger/tap-pipeline" call \
+bash "$repo_dir/scripts/dagger-devsy.sh" -m "$repo_dir/dagger/tap-pipeline" call \
     --git-dir="$git_dir" \
     -o "$bundle_dir" \
     release-bundle \
@@ -182,7 +182,7 @@ echo "Retained artifact: $artifact_path"
 echo "Artifact SHA256: $artifact_sha256"
 sha256sum "$artifact_path"
 echo "Running offline Homebrew install smoke from the retained bundle..."
-dagger -m "$repo_dir/dagger/tap-pipeline" call \
+bash "$repo_dir/scripts/dagger-devsy.sh" -m "$repo_dir/dagger/tap-pipeline" call \
     codex-desktop-offline-smoke \
     --bundle="$bundle_dir"
 echo "Codex Desktop official-package setup passed for version $version"

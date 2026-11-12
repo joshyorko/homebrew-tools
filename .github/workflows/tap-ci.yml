@@ -42,6 +42,7 @@ jobs:
     - name: Run pipeline and regression suites
       run: |
         set -euo pipefail
+        python3 scripts/test-dagger-devsy.py
         python3 scripts/test-rcc-maintenance-pin.py
         node scripts/test-t3-dagger-cli.mjs
         node --test scripts/check-t3-source-types.test.mjs

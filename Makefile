@@ -9,7 +9,7 @@ CODEX_DESKTOP_OFFICIAL_BUNDLE_DIR ?= dist/codex-desktop-official
 RECOVERY_OUTPUT ?= dist/homebrew-tools-recovery
 RECOVERY_FILE_SERVER_URL ?= http://127.0.0.1:8000/homebrew-tools-recovery
 DAGGER_GIT_DIR ?= $(shell git rev-parse --git-common-dir)
-DAGGER := bash scripts/dagger-limited.sh
+DAGGER := bash scripts/dagger-devsy.sh
 .PHONY: recovery-t3code-cli-main recovery-all dictation-install chatgpt uninstall-chatgpt migrate-chatgpt-linux-cask codex-desktop-setup codex-desktop-install codex-install install-codex-desktop test-codex-desktop-feature-wizard
 
 recovery-t3code-cli-main:
