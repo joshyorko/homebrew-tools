@@ -1,0 +1,273 @@
+T3 source 476fc9be6691ab0d81e936f4cc674983cf3913be: desktop t3-homebrew-desktop-update.patch
+file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/check-t3-patches.mjs:38
+    throw new Error(`T3 patch compatibility failed at selected source ${sourceRef}\n${cause.stderr ?? cause.message}`, { cause })
+          ^
+
+Error: T3 patch compatibility failed at selected source 476fc9be6691ab0d81e936f4cc674983cf3913be
+T3 source 476fc9be6691ab0d81e936f4cc674983cf3913be: desktop patch t3-homebrew-desktop-update.patch failed
+Checking patch apps/desktop/src/updates/DesktopUpdates.test.ts...
+Hunk #2 succeeded at 16 (offset 3 lines).
+Hunk #4 succeeded at 1296 (offset 166 lines).
+Checking patch apps/desktop/src/updates/DesktopUpdates.ts...
+error: while searching for:
+import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopObservability from "../app/DesktopObservability.ts";
+import * as DesktopState from "../app/DesktopState.ts";
+import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import * as IpcChannels from "../ipc/channels.ts";
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
+import {
+  normalizeDesktopUpdateReleaseNotes,
+  releaseNotesOfOfferedVersion,
+} from "./releaseNotes.ts";
+import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+import { compareSemverVersions } from "@t3tools/shared/semver";
+
+error: patch failed: apps/desktop/src/updates/DesktopUpdates.ts:31
+error: apps/desktop/src/updates/DesktopUpdates.ts: patch does not apply
+Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts...
+Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts...
+Checking patch apps/desktop/src/updates/updatesTestHarness.ts...
+Hunk #2 succeeded at 38 (offset 1 line).
+error: while searching for:
+    syncAllAppearance: () => Effect.void,
+  } satisfies ElectronWindow.ElectronWindow["Service"]);
+
+  let backendDesiredRunning = options.backendDesiredRunning ?? true;
+  const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
+    id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
+
+error: patch failed: apps/desktop/src/updates/updatesTestHarness.ts:136
+error: apps/desktop/src/updates/updatesTestHarness.ts: patch does not apply
+Checking patch apps/web/src/components/desktopUpdate.logic.ts...
+Checking patch apps/web/src/components/homebrewDesktopUpdate.logic.test.ts...
+Checking patch apps/web/src/components/sidebar/SidebarUpdatePill.tsx...
+Hunk #2 succeeded at 198 (offset 1 line).
+Hunk #3 succeeded at 251 (offset 3 lines).
+Checking patch apps/web/src/components/sidebar/useUpdateEverything.ts...
+Checking patch packages/contracts/src/ipc.ts...
+Hunk #1 succeeded at 284 (offset 3 lines).
+Hunk #2 succeeded at 342 (offset 3 lines).
+Checking patch scripts/build-desktop-artifact.ts...
+
+    at checkT3Patches (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/check-t3-patches.mjs:38:11)
+    at file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/check-t3-patches.mjs:49:3
+    ... 2 lines matching cause stack trace ...
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:105:5) {
+  [cause]: Error: T3 source 476fc9be6691ab0d81e936f4cc674983cf3913be: desktop patch t3-homebrew-desktop-update.patch failed
+  Checking patch apps/desktop/src/updates/DesktopUpdates.test.ts...
+  Hunk #2 succeeded at 16 (offset 3 lines).
+  Hunk #4 succeeded at 1296 (offset 166 lines).
+  Checking patch apps/desktop/src/updates/DesktopUpdates.ts...
+  error: while searching for:
+  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+  import * as DesktopObservability from "../app/DesktopObservability.ts";
+  import * as DesktopState from "../app/DesktopState.ts";
+  import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
+  import * as ElectronWindow from "../electron/ElectronWindow.ts";
+  import * as IpcChannels from "../ipc/channels.ts";
+  import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+  import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
+  import {
+    normalizeDesktopUpdateReleaseNotes,
+    releaseNotesOfOfferedVersion,
+  } from "./releaseNotes.ts";
+  import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+  import { compareSemverVersions } from "@t3tools/shared/semver";
+
+  error: patch failed: apps/desktop/src/updates/DesktopUpdates.ts:31
+  error: apps/desktop/src/updates/DesktopUpdates.ts: patch does not apply
+  Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts...
+  Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts...
+  Checking patch apps/desktop/src/updates/updatesTestHarness.ts...
+  Hunk #2 succeeded at 38 (offset 1 line).
+  error: while searching for:
+      syncAllAppearance: () => Effect.void,
+    } satisfies ElectronWindow.ElectronWindow["Service"]);
+
+    let backendDesiredRunning = options.backendDesiredRunning ?? true;
+    const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
+      id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
+
+  error: patch failed: apps/desktop/src/updates/updatesTestHarness.ts:136
+  error: apps/desktop/src/updates/updatesTestHarness.ts: patch does not apply
+  Checking patch apps/web/src/components/desktopUpdate.logic.ts...
+  Checking patch apps/web/src/components/homebrewDesktopUpdate.logic.test.ts...
+  Checking patch apps/web/src/components/sidebar/SidebarUpdatePill.tsx...
+  Hunk #2 succeeded at 198 (offset 1 line).
+  Hunk #3 succeeded at 251 (offset 3 lines).
+  Checking patch apps/web/src/components/sidebar/useUpdateEverything.ts...
+  Checking patch packages/contracts/src/ipc.ts...
+  Hunk #1 succeeded at 284 (offset 3 lines).
+  Hunk #2 succeeded at 342 (offset 3 lines).
+  Checking patch scripts/build-desktop-artifact.ts...
+
+      at applySourcePatches (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/t3-source-patches.mjs:30:15)
+      at checkT3Patches (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/check-t3-patches.mjs:34:7)
+      ... 3 lines matching cause stack trace ...
+      at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:105:5) {
+    [cause]: Error: Command failed: git -C /tmp/t3-patch-compatibility-W8N76S/desktop apply --check --verbose /tmp/codex-t3-resume-20261112-sqyJ1H/base-patches/t3-homebrew-desktop-update.patch
+    Checking patch apps/desktop/src/updates/DesktopUpdates.test.ts...
+    Hunk #2 succeeded at 16 (offset 3 lines).
+    Hunk #4 succeeded at 1296 (offset 166 lines).
+    Checking patch apps/desktop/src/updates/DesktopUpdates.ts...
+    error: while searching for:
+    import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+    import * as DesktopObservability from "../app/DesktopObservability.ts";
+    import * as DesktopState from "../app/DesktopState.ts";
+    import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
+    import * as ElectronWindow from "../electron/ElectronWindow.ts";
+    import * as IpcChannels from "../ipc/channels.ts";
+    import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+    import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
+    import {
+      normalizeDesktopUpdateReleaseNotes,
+      releaseNotesOfOfferedVersion,
+    } from "./releaseNotes.ts";
+    import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+    import { compareSemverVersions } from "@t3tools/shared/semver";
+
+    error: patch failed: apps/desktop/src/updates/DesktopUpdates.ts:31
+    error: apps/desktop/src/updates/DesktopUpdates.ts: patch does not apply
+    Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts...
+    Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts...
+    Checking patch apps/desktop/src/updates/updatesTestHarness.ts...
+    Hunk #2 succeeded at 38 (offset 1 line).
+    error: while searching for:
+        syncAllAppearance: () => Effect.void,
+      } satisfies ElectronWindow.ElectronWindow["Service"]);
+
+      let backendDesiredRunning = options.backendDesiredRunning ?? true;
+      const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
+        id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
+
+    error: patch failed: apps/desktop/src/updates/updatesTestHarness.ts:136
+    error: apps/desktop/src/updates/updatesTestHarness.ts: patch does not apply
+    Checking patch apps/web/src/components/desktopUpdate.logic.ts...
+    Checking patch apps/web/src/components/homebrewDesktopUpdate.logic.test.ts...
+    Checking patch apps/web/src/components/sidebar/SidebarUpdatePill.tsx...
+    Hunk #2 succeeded at 198 (offset 1 line).
+    Hunk #3 succeeded at 251 (offset 3 lines).
+    Checking patch apps/web/src/components/sidebar/useUpdateEverything.ts...
+    Checking patch packages/contracts/src/ipc.ts...
+    Hunk #1 succeeded at 284 (offset 3 lines).
+    Hunk #2 succeeded at 342 (offset 3 lines).
+    Checking patch scripts/build-desktop-artifact.ts...
+
+        at genericNodeError (node:internal/errors:999:15)
+        at wrappedFn (node:internal/errors:544:14)
+        at checkExecSyncError (node:child_process:990:11)
+        at execFileSync (node:child_process:1026:15)
+        at applySourcePatches (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/t3-source-patches.mjs:28:9)
+        at checkT3Patches (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/check-t3-patches.mjs:34:7)
+        at file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/check-t3-patches.mjs:49:3
+        at ModuleJob.run (node:internal/modules/esm/module_job:569:25)
+        at async node:internal/modules/esm/loader:650:26
+        at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:105:5) {
+      status: 1,
+      signal: null,
+      output: [
+        null,
+        '',
+        'Checking patch apps/desktop/src/updates/DesktopUpdates.test.ts...\n' +
+          'Hunk #2 succeeded at 16 (offset 3 lines).\n' +
+          'Hunk #4 succeeded at 1296 (offset 166 lines).\n' +
+          'Checking patch apps/desktop/src/updates/DesktopUpdates.ts...\n' +
+          'error: while searching for:\n' +
+          'import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";\n' +
+          'import * as DesktopObservability from "../app/DesktopObservability.ts";\n' +
+          'import * as DesktopState from "../app/DesktopState.ts";\n' +
+          'import * as ElectronUpdater from "../electron/ElectronUpdater.ts";\n' +
+          'import * as ElectronWindow from "../electron/ElectronWindow.ts";\n' +
+          'import * as IpcChannels from "../ipc/channels.ts";\n' +
+          'import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";\n' +
+          'import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";\n' +
+          'import {\n' +
+          '  normalizeDesktopUpdateReleaseNotes,\n' +
+          '  releaseNotesOfOfferedVersion,\n' +
+          '} from "./releaseNotes.ts";\n' +
+          'import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";\n' +
+          'import { compareSemverVersions } from "@t3tools/shared/semver";\n' +
+          '\n' +
+          'error: patch failed: apps/desktop/src/updates/DesktopUpdates.ts:31\n' +
+          'error: apps/desktop/src/updates/DesktopUpdates.ts: patch does not apply\n' +
+          'Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts...\n' +
+          'Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts...\n' +
+          'Checking patch apps/desktop/src/updates/updatesTestHarness.ts...\n' +
+          'Hunk #2 succeeded at 38 (offset 1 line).\n' +
+          'error: while searching for:\n' +
+          '    syncAllAppearance: () => Effect.void,\n' +
+          '  } satisfies ElectronWindow.ElectronWindow["Service"]);\n' +
+          '\n' +
+          '  let backendDesiredRunning = options.backendDesiredRunning ?? true;\n' +
+          '  const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {\n' +
+          '    id: DesktopBackendPool.PRIMARY_INSTANCE_ID,\n' +
+          '\n' +
+          'error: patch failed: apps/desktop/src/updates/updatesTestHarness.ts:136\n' +
+          'error: apps/desktop/src/updates/updatesTestHarness.ts: patch does not apply\n' +
+          'Checking patch apps/web/src/components/desktopUpdate.logic.ts...\n' +
+          'Checking patch apps/web/src/components/homebrewDesktopUpdate.logic.test.ts...\n' +
+          'Checking patch apps/web/src/components/sidebar/SidebarUpdatePill.tsx...\n' +
+          'Hunk #2 succeeded at 198 (offset 1 line).\n' +
+          'Hunk #3 succeeded at 251 (offset 3 lines).\n' +
+          'Checking patch apps/web/src/components/sidebar/useUpdateEverything.ts...\n' +
+          'Checking patch packages/contracts/src/ipc.ts...\n' +
+          'Hunk #1 succeeded at 284 (offset 3 lines).\n' +
+          'Hunk #2 succeeded at 342 (offset 3 lines).\n' +
+          'Checking patch scripts/build-desktop-artifact.ts...\n'
+      ],
+      pid: 131000,
+      stdout: '',
+      stderr: 'Checking patch apps/desktop/src/updates/DesktopUpdates.test.ts...\n' +
+        'Hunk #2 succeeded at 16 (offset 3 lines).\n' +
+        'Hunk #4 succeeded at 1296 (offset 166 lines).\n' +
+        'Checking patch apps/desktop/src/updates/DesktopUpdates.ts...\n' +
+        'error: while searching for:\n' +
+        'import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";\n' +
+        'import * as DesktopObservability from "../app/DesktopObservability.ts";\n' +
+        'import * as DesktopState from "../app/DesktopState.ts";\n' +
+        'import * as ElectronUpdater from "../electron/ElectronUpdater.ts";\n' +
+        'import * as ElectronWindow from "../electron/ElectronWindow.ts";\n' +
+        'import * as IpcChannels from "../ipc/channels.ts";\n' +
+        'import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";\n' +
+        'import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";\n' +
+        'import {\n' +
+        '  normalizeDesktopUpdateReleaseNotes,\n' +
+        '  releaseNotesOfOfferedVersion,\n' +
+        '} from "./releaseNotes.ts";\n' +
+        'import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";\n' +
+        'import { compareSemverVersions } from "@t3tools/shared/semver";\n' +
+        '\n' +
+        'error: patch failed: apps/desktop/src/updates/DesktopUpdates.ts:31\n' +
+        'error: apps/desktop/src/updates/DesktopUpdates.ts: patch does not apply\n' +
+        'Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts...\n' +
+        'Checking patch apps/desktop/src/updates/HomebrewDesktopUpdateProvider.ts...\n' +
+        'Checking patch apps/desktop/src/updates/updatesTestHarness.ts...\n' +
+        'Hunk #2 succeeded at 38 (offset 1 line).\n' +
+        'error: while searching for:\n' +
+        '    syncAllAppearance: () => Effect.void,\n' +
+        '  } satisfies ElectronWindow.ElectronWindow["Service"]);\n' +
+        '\n' +
+        '  let backendDesiredRunning = options.backendDesiredRunning ?? true;\n' +
+        '  const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {\n' +
+        '    id: DesktopBackendPool.PRIMARY_INSTANCE_ID,\n' +
+        '\n' +
+        'error: patch failed: apps/desktop/src/updates/updatesTestHarness.ts:136\n' +
+        'error: apps/desktop/src/updates/updatesTestHarness.ts: patch does not apply\n' +
+        'Checking patch apps/web/src/components/desktopUpdate.logic.ts...\n' +
+        'Checking patch apps/web/src/components/homebrewDesktopUpdate.logic.test.ts...\n' +
+        'Checking patch apps/web/src/components/sidebar/SidebarUpdatePill.tsx...\n' +
+        'Hunk #2 succeeded at 198 (offset 1 line).\n' +
+        'Hunk #3 succeeded at 251 (offset 3 lines).\n' +
+        'Checking patch apps/web/src/components/sidebar/useUpdateEverything.ts...\n' +
+        'Checking patch packages/contracts/src/ipc.ts...\n' +
+        'Hunk #1 succeeded at 284 (offset 3 lines).\n' +
+        'Hunk #2 succeeded at 342 (offset 3 lines).\n' +
+        'Checking patch scripts/build-desktop-artifact.ts...\n'
+    }
+  }
+}
+
+Node.js v26.13.1

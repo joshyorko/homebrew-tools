@@ -1,154 +1,550 @@
-diff --git a/apps/desktop/src/backend/DesktopBackendPool.test.ts b/apps/desktop/src/backend/DesktopBackendPool.test.ts
-index 2b2dd841..bd354ac9 100644
---- a/apps/desktop/src/backend/DesktopBackendPool.test.ts
-+++ b/apps/desktop/src/backend/DesktopBackendPool.test.ts
-@@ -1,4 +1,5 @@
- import { assert, describe, it } from "@effect/vitest";
-+import * as NodePath from "@effect/platform-node/NodePath";
- import * as Deferred from "effect/Deferred";
- import * as Duration from "effect/Duration";
- import * as Effect from "effect/Effect";
-@@ -10,6 +11,8 @@ import { ChildProcessSpawner } from "effect/process";
- 
- import * as DesktopObservability from "../app/DesktopObservability.ts";
- import * as DesktopState from "../app/DesktopState.ts";
-+import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-+import * as DesktopConfig from "../app/DesktopConfig.ts";
- import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
- import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
- import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
-@@ -64,6 +67,14 @@ function layerPool(labelRef: Ref.Ref<string>): Layer.Layer<DesktopBackendPool.De
-         } satisfies DesktopBackendConfiguration.DesktopBackendConfiguration["Service"]),
-         DesktopAppSettings.layerTest(),
-         DesktopState.layer,
-+        DesktopEnvironment.layer({
-+          dirname: "/fixture/desktop", homeDirectory: "/fixture/home", platform: "linux",
-+          processArch: "x64", appVersion: "1.2.3", appPath: "/fixture/app",
-+          isPackaged: true, resourcesPath: "/fixture/resources", runningUnderArm64Translation: false,
-+        }).pipe(
-+          Layer.provide(Layer.mergeAll(NodePath.layerPosix, DesktopConfig.layerTest({}))),
-+          Layer.orDie,
+diff --git a/apps/desktop/src/app/DesktopApp.homebrew.test.ts b/apps/desktop/src/app/DesktopApp.homebrew.test.ts
+new file mode 100644
+index 0000000..df3a191
+--- /dev/null
++++ b/apps/desktop/src/app/DesktopApp.homebrew.test.ts
+@@ -0,0 +1,330 @@
++import * as NodeSqlite from "node:sqlite";
++import * as NodeServices from "@effect/platform-node/NodeServices";
++import { assert, describe, it } from "@effect/vitest";
++import * as Effect from "effect/Effect";
++import * as Fiber from "effect/Fiber";
++import * as FileSystem from "effect/FileSystem";
++import * as HttpClient from "effect/http/HttpClient";
++import * as NetService from "@t3tools/shared/Net";
++import { ChildProcessSpawner } from "effect/process";
++import * as Layer from "effect/Layer";
++import * as Option from "effect/Option";
++import type * as Scope from "effect/Scope";
++import * as TestClock from "effect/testing/TestClock";
++import { afterEach, vi } from "vite-plus/test";
++
++const desktop = vi.hoisted(() => ({ urls: Array<string>(), links: Array<string>() }));
++vi.mock("electron", () => ({
++  app: {
++    emit: (_event: string, _input: unknown, link: string) => {
++      desktop.links.push(link);
++      return true;
++    },
++  },
++  BrowserWindow: class {
++    async loadURL(url: string) {
++      desktop.urls.push(url);
++    }
++  },
++}));
++vi.mock("@clerk/electron", () => ({ createClerkBridge: vi.fn() }));
++vi.mock("@clerk/electron/storage", () => ({ storage: vi.fn() }));
++vi.mock("../ipc/DesktopIpcHandlers.ts", () => ({ installDesktopIpcHandlers: () => Effect.void }));
++vi.mock("../updates/DesktopRemoteUpdates.ts", () => ({ listen: Effect.void }));
++vi.mock("./DesktopStartupRecovery.ts", () => ({ listen: Effect.void }));
++
++import * as Electron from "electron";
++import * as DesktopApp from "./DesktopApp.ts";
++import * as DesktopAppActivation from "./DesktopAppActivation.ts";
++import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
++import * as DesktopConfig from "./DesktopConfig.ts";
++import * as DesktopEnvironment from "./DesktopEnvironment.ts";
++import * as DesktopLegacyLocalStorage from "./DesktopLegacyLocalStorage.ts";
++import * as DesktopState from "./DesktopState.ts";
++import * as DesktopShutdown from "./DesktopShutdown.ts";
++import * as DesktopLifecycle from "./DesktopLifecycle.ts";
++import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
++import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
++import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
++import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
++import * as HomebrewServiceOwnerProbe from "../backend/HomebrewServiceOwnerProbe.ts";
++import type { HomebrewServiceInspection } from "../backend/HomebrewServiceRecovery.ts";
++import * as ElectronApp from "../electron/ElectronApp.ts";
++import * as ElectronDialog from "../electron/ElectronDialog.ts";
++import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
++import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
++import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
++import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
++import * as DesktopWindow from "../window/DesktopWindow.ts";
++
++import * as BrowserImport from "../preview/BrowserImport/BrowserImport.ts";
++import * as DesktopBackendConfiguration from "../backend/DesktopBackendConfiguration.ts";
++import * as DesktopCliCommand from "./DesktopCliCommand.ts";
++import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
++import * as DesktopConnectionCatalogStore from "./DesktopConnectionCatalogStore.ts";
++import * as DesktopIpc from "../ipc/DesktopIpc.ts";
++import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
++import * as DesktopManagedPolicy from "./DesktopManagedPolicy.ts";
++import * as DesktopPrimaryPaste from "./DesktopPrimaryPaste.ts";
++import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
++import * as DesktopSshPasswordPrompts from "../ssh/DesktopSshPasswordPrompts.ts";
++import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
++import * as DesktopWebLinks from "./DesktopWebLinks.ts";
++import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
++import * as ElectronMenu from "../electron/ElectronMenu.ts";
++import * as ElectronShell from "../electron/ElectronShell.ts";
++import * as ElectronTheme from "../electron/ElectronTheme.ts";
++import * as ElectronWindow from "../electron/ElectronWindow.ts";
++import * as MacPermissions from "../permissions/MacPermissions.ts";
++import * as PreviewManager from "../preview/Manager.ts";
++
++afterEach(() => {
++  vi.restoreAllMocks();
++  desktop.urls.length = 0;
++  desktop.links.length = 0;
++});
++
++const owner = {
++  _tag: "verified",
++  unit: "homebrew.t3code-cli-main.service",
++  environmentId: "homebrew-fixture",
++  origin: "http://127.0.0.1:3773",
++  fingerprint: "verified-owner",
++  pairingCompatible: true,
++} satisfies HomebrewServiceInspection;
++
++const withStartup = <A, E>(
++  input: {
++    choice?: number;
++    inspection?: HomebrewServiceInspection;
++    localEnvironmentEnabled?: boolean;
++  },
++  check: (fixture: {
++    run: Effect.Effect<void, Effect.Error<typeof DesktopApp.bootstrap>, Scope.Scope>;
++    lock: NodeSqlite.DatabaseSync;
++    events: string[];
++    settings: DesktopAppSettings.DesktopAppSettings["Service"];
++  }) => Effect.Effect<A, E, Scope.Scope>,
++) =>
++  Effect.gen(function* () {
++    const fs = yield* FileSystem.FileSystem;
++    const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-homebrew-bootstrap-" });
++    yield* fs.makeDirectory(`${home}/userdata`);
++    const lock = yield* Effect.acquireRelease(
++      Effect.sync(() => {
++        const db = new NodeSqlite.DatabaseSync(`${home}/userdata/server-owner.sqlite`);
++        db.exec("BEGIN EXCLUSIVE");
++        return db;
++      }),
++      (db) =>
++        Effect.sync(() => {
++          if (db.isOpen) db.close();
++        }),
++    );
++    const events: string[] = [];
++    const record = (event: string) =>
++      Effect.sync(() => {
++        events.push(event);
++      });
++    vi.spyOn(HomebrewServiceOwnerProbe, "inspectHomebrewServiceOwner").mockImplementation(() =>
++      Effect.succeed(input.inspection ?? owner),
++    );
++    vi.spyOn(HomebrewServiceOwnerProbe, "createHomebrewServicePairingAppLink").mockImplementation(
++      () => Effect.succeed("t3code://pair?fixture"),
++    );
++    vi.spyOn(HomebrewServiceOwnerProbe, "backupHomebrewDesktopSettings").mockImplementation(() =>
++      record("backup").pipe(Effect.as(null)),
++    );
++    const settings = yield* DesktopAppSettings.DesktopAppSettings;
++    const primary = {
++      id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
++      label: Effect.succeed("Local"),
++      start: record("backend-start"),
++      stop: () => record("backend-stop"),
++      currentConfig: Effect.succeedNone,
++      snapshot: Effect.succeed({
++        desiredRunning: false,
++        ready: false,
++        activePid: Option.none(),
++        restartAttempt: 0,
++        restartScheduled: false,
++      }),
++      waitForReady: () => Effect.succeed(true),
++    } satisfies DesktopBackendPool.DesktopBackendInstance;
++    const layer = Layer.mergeAll(
++      Layer.mock(NetService.NetService, {}),
++      Layer.succeed(
++        HttpClient.HttpClient,
++        HttpClient.make(() => Effect.die("unexpected HTTP request")),
++      ),
++      Layer.mock(DesktopShutdown.DesktopShutdown, {}),
++      Layer.mock(DesktopLifecycle.DesktopLifecycle, {}),
++      Layer.mock(DesktopUpdates.DesktopUpdates, {}),
++      DesktopState.layer,
++      Layer.mock(BrowserImport.BrowserImport, {}),
++      Layer.mock(ChildProcessSpawner.ChildProcessSpawner, {}),
++      Layer.mock(DesktopBackendConfiguration.DesktopBackendConfiguration, {}),
++      Layer.mock(DesktopClientSettings.DesktopClientSettings, {}),
++      Layer.mock(DesktopConnectionCatalogStore.DesktopConnectionCatalogStore, {}),
++      Layer.mock(DesktopIpc.DesktopIpc, {}),
++      Layer.mock(DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth, {}),
++      Layer.mock(DesktopManagedPolicy.DesktopManagedPolicy, {}),
++      Layer.succeed(DesktopPrimaryPaste.DesktopPrimaryPaste, { enabled: true }),
++      Layer.mock(DesktopSshEnvironment.DesktopSshEnvironment, {}),
++      Layer.mock(DesktopSshPasswordPrompts.DesktopSshPasswordPrompts, {}),
++      Layer.mock(DesktopTelemetryPublisher.DesktopTelemetryPublisher, {}),
++      Layer.mock(DesktopWebLinks.DesktopWebLinks, {}),
++      Layer.mock(DesktopWslEnvironment.DesktopWslEnvironment, {}),
++      Layer.mock(ElectronMenu.ElectronMenu, {}),
++      Layer.mock(ElectronShell.ElectronShell, {}),
++      Layer.mock(ElectronTheme.ElectronTheme, {}),
++      Layer.mock(ElectronWindow.ElectronWindow, {}),
++      Layer.mock(MacPermissions.MacPermissions, {}),
++      Layer.mock(PreviewManager.PreviewManager, {
++        isBrowserPartition: () => {
++          throw new Error("unexpected browser partition lookup");
++        },
++      }),
++      DesktopBackendPool.layerTest([primary]),
++      Layer.mock(DesktopAppActivation.DesktopAppActivation, { start: Effect.void }),
++      Layer.mock(DesktopAppIdentity.DesktopAppIdentity, {
++        resolveUserDataPath: Effect.succeed(`${home}/userdata`),
++      }),
++      Layer.mock(DesktopCliCommand.DesktopCliCommand, { installOnFirstLaunch: Effect.void }),
++      Layer.mock(DesktopLegacyLocalStorage.DesktopLegacyLocalStorage, { load: () => Effect.void }),
++      Layer.mock(DesktopSnapShot.DesktopSnapShot, { initialize: Effect.void }),
++      Layer.mock(DesktopShellEnvironment.DesktopShellEnvironment, {
++        awaitUserShellDiscovery: Effect.succeed(false),
++      }),
++      Layer.mock(DesktopWindow.DesktopWindow, {
++        createMainIfBackendReady: record("window"),
++        ensureMain: Effect.sync(() => new Electron.BrowserWindow()),
++      }),
++      Layer.mock(ElectronApp.ElectronApp, { quit: record("quit") }),
++      Layer.mock(ElectronDialog.ElectronDialog, {
++        showMessageBox: () =>
++          record("recovery-dialog").pipe(
++            Effect.as({ response: input.choice ?? 0, checkboxChecked: false }),
++          ),
++        showErrorBox: () => record("error-dialog"),
++      }),
++      Layer.mock(ElectronProtocol.ElectronProtocol, { registerDesktopProtocol: () => Effect.void }),
++      Layer.mock(DesktopServerExposure.DesktopServerExposure, {
++        configureFromSettings: () =>
++          Effect.succeed({
++            mode: "local-only",
++            endpointUrl: null,
++            advertisedHost: null,
++            tailscaleServeEnabled: false,
++            tailscaleServePort: 443,
++          }),
++        backendConfig: Effect.succeed({
++          httpBaseUrl: new URL("http://127.0.0.1:3773"),
++          port: 3773,
++          bindHost: "127.0.0.1",
++          tailscaleServeEnabled: false,
++          tailscaleServePort: 443,
++        }),
++      }),
++      Layer.mock(DesktopWslBackend.DesktopWslBackend, { reconcile: Effect.void }),
++      DesktopEnvironment.layer({
++        dirname: "/repo/apps/desktop/src",
++        homeDirectory: home,
++        platform: "linux",
++        processArch: "x64",
++        appVersion: "1.2.3",
++        appPath: "/repo",
++        isPackaged: true,
++        resourcesPath: "/missing/resources",
++        runningUnderArm64Translation: false,
++      }).pipe(
++        Layer.provide(
++          Layer.mergeAll(
++            NodeServices.layer,
++            DesktopConfig.layerTest({ T3CODE_HOME: home, T3CODE_PORT: "3773" }),
++          ),
 +        ),
-         DesktopWslEnvironment.layerTest(),
-         ElectronDialog.layer,
-         ElectronApp.layer,
++        Layer.orDie,
++      ),
++    );
++    yield* check({
++      run: DesktopApp.bootstrap.pipe(
++        Effect.provide(layer),
++        Effect.provideService(DesktopAppSettings.DesktopAppSettings, settings),
++        Effect.provide(NodeServices.layer),
++      ),
++      lock,
++      events,
++      settings,
++    });
++  }).pipe(
++    Effect.provide(
++      DesktopAppSettings.layerTest({
++        ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
++        localEnvironmentEnabled: input.localEnvironmentEnabled ?? true,
++      }),
++    ),
++    Effect.provide(NodeServices.layer),
++  );
++
++describe("Homebrew service recovery during actual Desktop bootstrap", () => {
++  it.effect("waits for the ownership grace, then connects without starting a local backend", () =>
++    withStartup({}, (f) =>
++      Effect.gen(function* () {
++        const boot = yield* Effect.forkChild(f.run);
++        yield* TestClock.adjust("5 seconds");
++        assert.deepEqual(f.events, []);
++        yield* TestClock.adjust("6 seconds");
++        yield* Fiber.join(boot);
++        assert.deepEqual(f.events, ["recovery-dialog", "backup", "window"]);
++        assert.isFalse((yield* f.settings.get).localEnvironmentEnabled);
++        assert.deepEqual(desktop.links, ["t3code://pair?fixture"]);
++      }),
++    ),
++  );
++
++  for (const [name, input, expected] of [
++    ["cancelled", { choice: 2 }, ["recovery-dialog", "quit"]],
++    ["unverified", { inspection: { _tag: "unverified" } }, ["error-dialog", "quit"]],
++  ] satisfies [string, { choice?: number; inspection?: HomebrewServiceInspection }, string[]][]) {
++    it.effect(`refuses ${name} recovery without changing settings or starting a backend`, () =>
++      withStartup(input, (f) =>
++        Effect.gen(function* () {
++          const boot = yield* Effect.forkChild(f.run);
++          yield* TestClock.adjust("11 seconds");
++          yield* Fiber.join(boot);
++          assert.deepEqual(f.events, expected);
++          assert.isTrue((yield* f.settings.get).localEnvironmentEnabled);
++          assert.deepEqual(desktop.links, []);
++          assert.deepEqual(desktop.urls, []);
++        }),
++      ),
++    );
++  }
++
++  it.effect("starts normally when a transient ownership lock clears during the grace", () =>
++    withStartup({}, (f) =>
++      Effect.gen(function* () {
++        const boot = yield* Effect.forkChild(f.run);
++        yield* TestClock.adjust("5 seconds");
++        assert.deepEqual(f.events, []);
++        f.lock.close();
++        yield* TestClock.adjust("1 second");
++        yield* Fiber.join(boot);
++        assert.deepEqual(f.events, ["backend-start"]);
++        assert.isTrue((yield* f.settings.get).localEnvironmentEnabled);
++        assert.deepEqual(desktop.links, []);
++      }),
++    ),
++  );
++
++  it.effect("keeps local-environment-disabled startup independent of the ownership lock", () =>
++    withStartup({ localEnvironmentEnabled: false }, (f) =>
++      Effect.gen(function* () {
++        yield* f.run;
++        assert.deepEqual(f.events, ["window"]);
++        assert.isFalse((yield* f.settings.get).localEnvironmentEnabled);
++      }),
++    ),
++  );
++});
+diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
+index 7ebeaa7..ea5b141 100644
+--- a/apps/desktop/src/app/DesktopApp.ts
++++ b/apps/desktop/src/app/DesktopApp.ts
+@@ -22,6 +22,7 @@ import * as PreviewPasskeys from "../preview/Passkeys.ts";
+ import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
+ import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
+ import * as DesktopHomeOwner from "../backend/DesktopHomeOwner.ts";
++import * as HomebrewServiceAttachment from "../backend/HomebrewServiceAttachment.ts";
+ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+ import * as DesktopLegacyLocalStorage from "./DesktopLegacyLocalStorage.ts";
+ import * as DesktopLifecycle from "./DesktopLifecycle.ts";
+@@ -168,7 +169,7 @@ const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
+   },
+ );
+
+-const bootstrap = Effect.gen(function* () {
++export const bootstrap = Effect.gen(function* () {
+   const state = yield* DesktopState.DesktopState;
+   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
+@@ -229,15 +230,7 @@ const bootstrap = Effect.gen(function* () {
+     !(settings.wslOnly && settings.wslBackendEnabled) &&
+     !(yield* DesktopHomeOwner.awaitHomeOwnershipRelease())
+   ) {
+-    const owner = yield* DesktopHomeOwner.readLiveHomeOwner();
+-    yield* logBootstrapWarning("bootstrap found another server owning the T3 home", {
+-      owner: Option.getOrNull(owner),
+-    });
+-    yield* (yield* ElectronDialog.ElectronDialog).showErrorBox(
+-      "This T3 home is unavailable",
+-      DesktopHomeOwner.homeOwnedMessage(owner),
+-    );
+-    return yield* (yield* ElectronApp.ElectronApp).quit;
++    return yield* HomebrewServiceAttachment.recover;
+   }
+
+   const backendPortSelection = yield* resolveDesktopBackendPort(environment.configuredBackendPort);
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 77a4aa99..a132ca44 100644
+index 82d542b..f4ff24f 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
-@@ -1,4 +1,7 @@
- import * as Context from "effect/Context";
-+import * as Cause from "effect/Cause";
-+import * as Electron from "electron";
-+import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
- import * as Deferred from "effect/Deferred";
- import * as Effect from "effect/Effect";
- import * as Exit from "effect/Exit";
-@@ -22,8 +25,11 @@ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublish
- import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
+@@ -16,8 +16,7 @@ import { ChildProcessSpawner } from "effect/process";
+
+ import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
+ import * as DesktopBackendManager from "./DesktopBackendManager.ts";
+-import * as DesktopHomeOwner from "./DesktopHomeOwner.ts";
+-import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
++import * as HomebrewServiceAttachment from "./HomebrewServiceAttachment.ts";
+ import * as DesktopObservability from "../app/DesktopObservability.ts";
+ import * as DesktopState from "../app/DesktopState.ts";
+ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+@@ -26,7 +25,6 @@ import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
-+import * as HomebrewServiceOwnerProbe from "./HomebrewServiceOwnerProbe.ts";
-+import { prepareHomebrewServiceRecovery, deliverHomebrewServicePairing } from "./HomebrewServiceRecovery.ts";
  import * as ElectronDialog from "../electron/ElectronDialog.ts";
- import * as ElectronApp from "../electron/ElectronApp.ts";
-+import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
- 
+-import * as ElectronApp from "../electron/ElectronApp.ts";
+
  const { logWarning: logBackendPoolWarning } =
    DesktopObservability.makeComponentLogger("desktop-backend-pool");
-@@ -112,6 +118,9 @@ export const layer = Layer.effect(
+@@ -109,14 +107,13 @@ export const layer = Layer.effect(
+     const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+     const desktopWindow = yield* DesktopWindow.DesktopWindow;
+     const electronDialog = yield* ElectronDialog.ElectronDialog;
+-    const electronApp = yield* ElectronApp.ElectronApp;
+     const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
+     const { primaryBackendStartup } = yield* DesktopState.DesktopState;
      // Parent instance scopes to the pool so shutdown runs stop finalizers before the OS kills backends.
      const layerScope = yield* Scope.Scope;
      const factoryContext = yield* Effect.context<BackendInstanceFactoryRequirements>();
+-    const homeOwnerContext = yield* Effect.context<
+-      FileSystem.FileSystem | Path.Path | DesktopEnvironment.DesktopEnvironment
 +    const recoveryContext = yield* Effect.context<
-+      BackendInstanceFactoryRequirements | DesktopEnvironment.DesktopEnvironment
-+    >();
- 
++      Effect.Services<typeof HomebrewServiceAttachment.recover>
+     >();
+
      // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
-     const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
-@@ -173,13 +182,72 @@ export const layer = Layer.effect(
+@@ -179,17 +176,7 @@ export const layer = Layer.effect(
          SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
        onShutdown: () => desktopWindow.handleBackendNotReady,
        onPreflightFailed: handlePrimaryPreflightFailure,
 -      onStateDirOwned: () =>
--        electronDialog
--          .showErrorBox(
--            "This T3 home is unavailable",
--            "Another T3 Code server, such as the background service, is using this data directory, or an older background service is set up for it. Stop that server or try `t3 update`. If the older launcher cannot update, run `t3 service uninstall` and optionally reinstall with `t3 service install` from a current CLI. Use `npx t3@latest` if `t3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command. Then reopen T3 Code. You can also set a separate T3CODE_HOME and pair with the running server.",
--          )
--          .pipe(Effect.andThen(electronApp.quit)),
-+      onStateDirOwned: Effect.fn("DesktopBackendPool.onStateDirOwned")(
-+        function* () {
-+          const recovery = yield* prepareHomebrewServiceRecovery({
-+            inspect: () => HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner().pipe(Effect.provide(recoveryContext)),
-+            pair: (expected) => HomebrewServiceOwnerProbe.createHomebrewServicePairingAppLink(expected).pipe(Effect.provide(recoveryContext)),
-+            choose: (owner) => electronDialog.showMessageBox({
-+              type: "warning",
-+              title: "Homebrew T3 service is already running",
-+              message: `Connect this Desktop to ${owner.unit}?`,
-+              detail: `The running service was verified for T3 environment ${owner.environmentId}. Connecting turns off Desktop's local environment and asks you to confirm pairing with ${owner.origin}. The service keeps running when Desktop closes.`,
-+              buttons: ["Connect to running service", "Open pairing settings", "Quit"],
-+              defaultId: 0,
-+              cancelId: 2,
-+            }).pipe(Effect.map((choice) => choice.response)),
-+          });
-+          if (recovery._tag === "quit") return yield* electronApp.quit;
-+          if (recovery._tag === "open") {
-+            yield* HomebrewServiceOwnerProbe.backupHomebrewDesktopSettings();
-+            yield* appSettings.setLocalEnvironmentEnabled(false);
-+            yield* desktopWindow.createMainIfBackendReady;
-+            const environment = yield* DesktopEnvironment.DesktopEnvironment;
-+            const window = yield* desktopWindow.ensureMain;
-+            // The renderer reads localEnvironmentEnabled only when it boots.
-+            const desktopUrl = getDesktopUrl(environment.isDevelopment);
-+            const connectionsUrl = new URL("/settings/connections", desktopUrl).href;
-+            yield* Effect.promise(() => window.loadURL(recovery.pairingLink === null ? connectionsUrl : desktopUrl));
-+            let delivered = false;
-+            if (recovery.pairingLink !== null && recovery.expectedOwner !== null) {
-+              delivered = yield* deliverHomebrewServicePairing({
-+                expectedOwner: recovery.expectedOwner, pairingLink: recovery.pairingLink,
-+                inspect: () => HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner().pipe(Effect.provide(recoveryContext)),
-+                deliver: (link) => Effect.sync(() => { Electron.app.emit("open-url", { preventDefault() {} }, link); }),
-+              });
-+            }
-+            if (!delivered && recovery.pairingRequested) {
-+              yield* Effect.promise(() => window.loadURL(connectionsUrl));
-+              yield* electronDialog.showErrorBox(
-+                "Could not create a pairing link",
-+                "Desktop is open with its local environment off. The server changed or could not be paired; add it from Settings > Connections after verifying it.",
-+              );
-+            }
-+            return;
-+          }
-+
-+          const detail =
-+            recovery._tag === "inactive"
-+              ? `The Homebrew unit ${recovery.unit} is inactive while another process still owns this T3 home. Check it with systemctl --user status ${recovery.unit}. No service was stopped and no data was changed.`
-+              : "Another process owns this T3 home, but T3 could not verify it as the same-user Homebrew service or confirm its environment identity. Inspect the owner before reconnecting. No service was stopped and no data was changed.";
-+          yield* electronDialog.showErrorBox("T3 home owner could not be verified", detail);
-+          yield* electronApp.quit;
-+        },
-+          Effect.provide(recoveryContext),
-+          Effect.catchCause((cause) =>
-+            logBackendPoolWarning("failed to recover from T3 home ownership conflict", {
-+              cause: Cause.pretty(cause),
-+            }).pipe(
-+              Effect.andThen(
-+                electronDialog.showErrorBox(
-+                  "T3 home owner could not be verified",
-+                  "Recovery could not complete. The existing service was not stopped. Review the Desktop logs before retrying.",
-+                ),
-+              ),
-+              Effect.andThen(electronApp.quit),
-+            ),
-+          ),
-+        ),
+-        DesktopHomeOwner.readLiveHomeOwner().pipe(
+-          Effect.flatMap((owner) =>
+-            electronDialog.showErrorBox(
+-              "This T3 home is unavailable",
+-              DesktopHomeOwner.homeOwnedMessage(owner),
+-            ),
+-          ),
+-          Effect.provideContext(homeOwnerContext),
+-          Effect.andThen(electronApp.quit),
+-        ),
++      onStateDirOwned: () => HomebrewServiceAttachment.recover.pipe(Effect.provide(recoveryContext)),
      });
- 
+
      const instancesRef = yield* SynchronizedRef.make<
+diff --git a/apps/desktop/src/backend/HomebrewServiceAttachment.ts b/apps/desktop/src/backend/HomebrewServiceAttachment.ts
+new file mode 100644
+index 0000000..9891f30
+--- /dev/null
++++ b/apps/desktop/src/backend/HomebrewServiceAttachment.ts
+@@ -0,0 +1,106 @@
++import * as Cause from "effect/Cause";
++import * as Effect from "effect/Effect";
++import * as Electron from "electron";
++import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
++import * as DesktopObservability from "../app/DesktopObservability.ts";
++import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
++import * as DesktopWindow from "../window/DesktopWindow.ts";
++import * as ElectronApp from "../electron/ElectronApp.ts";
++import * as ElectronDialog from "../electron/ElectronDialog.ts";
++import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
++import * as HomebrewServiceOwnerProbe from "./HomebrewServiceOwnerProbe.ts";
++import {
++  prepareHomebrewServiceRecovery,
++  deliverHomebrewServicePairing,
++} from "./HomebrewServiceRecovery.ts";
++
++const { logWarning } = DesktopObservability.makeComponentLogger("desktop-homebrew-service");
++
++export const recover = Effect.gen(function* () {
++  const electronDialog = yield* ElectronDialog.ElectronDialog;
++  const electronApp = yield* ElectronApp.ElectronApp;
++  const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
++  const desktopWindow = yield* DesktopWindow.DesktopWindow;
++  const probeContext = yield* Effect.context<
++    | Effect.Services<ReturnType<typeof HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner>>
++    | Effect.Services<
++        ReturnType<typeof HomebrewServiceOwnerProbe.createHomebrewServicePairingAppLink>
++      >
++  >();
++  const inspect = () =>
++    HomebrewServiceOwnerProbe.inspectHomebrewServiceOwner().pipe(Effect.provide(probeContext));
++  const recovery = yield* prepareHomebrewServiceRecovery({
++    inspect,
++    pair: (expected) =>
++      HomebrewServiceOwnerProbe.createHomebrewServicePairingAppLink(expected).pipe(
++        Effect.provide(probeContext),
++      ),
++    choose: (owner) =>
++      electronDialog
++        .showMessageBox({
++          type: "warning",
++          title: "Homebrew T3 service is already running",
++          message: `Connect this Desktop to ${owner.unit}?`,
++          detail: `The running service was verified for T3 environment ${owner.environmentId}. Connecting turns off Desktop's local environment and asks you to confirm pairing with ${owner.origin}. The service keeps running when Desktop closes.`,
++          buttons: ["Connect to running service", "Open pairing settings", "Quit"],
++          defaultId: 0,
++          cancelId: 2,
++        })
++        .pipe(Effect.map((choice) => choice.response)),
++  });
++  if (recovery._tag === "quit") return yield* electronApp.quit;
++  if (recovery._tag === "open") {
++    yield* HomebrewServiceOwnerProbe.backupHomebrewDesktopSettings();
++    yield* appSettings.setLocalEnvironmentEnabled(false);
++    yield* desktopWindow.createMainIfBackendReady;
++    const environment = yield* DesktopEnvironment.DesktopEnvironment;
++    const window = yield* desktopWindow.ensureMain;
++    // The renderer reads localEnvironmentEnabled only when it boots.
++    const desktopUrl = getDesktopUrl(environment.isDevelopment);
++    const connectionsUrl = new URL("/settings/connections", desktopUrl).href;
++    yield* Effect.promise(() =>
++      window.loadURL(recovery.pairingLink === null ? connectionsUrl : desktopUrl),
++    );
++    let delivered = false;
++    if (recovery.pairingLink !== null && recovery.expectedOwner !== null) {
++      delivered = yield* deliverHomebrewServicePairing({
++        expectedOwner: recovery.expectedOwner,
++        pairingLink: recovery.pairingLink,
++        inspect,
++        deliver: (link) =>
++          Effect.sync(() => {
++            Electron.app.emit("open-url", { preventDefault() {} }, link);
++          }),
++      });
++    }
++    if (!delivered && recovery.pairingRequested) {
++      yield* Effect.promise(() => window.loadURL(connectionsUrl));
++      yield* electronDialog.showErrorBox(
++        "Could not create a pairing link",
++        "Desktop is open with its local environment off. The server changed or could not be paired; add it from Settings > Connections after verifying it.",
++      );
++    }
++    return;
++  }
++
++  const detail =
++    recovery._tag === "inactive"
++      ? `The Homebrew unit ${recovery.unit} is inactive while another process still owns this T3 home. Check it with systemctl --user status ${recovery.unit}. No service was stopped and no data was changed.`
++      : "Another process owns this T3 home, but T3 could not verify it as the same-user Homebrew service or confirm its environment identity. Inspect the owner before reconnecting. No service was stopped and no data was changed.";
++  yield* electronDialog.showErrorBox("T3 home owner could not be verified", detail);
++  yield* electronApp.quit;
++}).pipe(
++  Effect.catchCause((cause) =>
++    Effect.gen(function* () {
++      yield* logWarning("failed to recover from T3 home ownership conflict", {
++        cause: Cause.pretty(cause),
++      });
++      yield* (yield* ElectronDialog.ElectronDialog).showErrorBox(
++        "T3 home owner could not be verified",
++        "Recovery could not complete. The existing service was not stopped. Review the Desktop logs before retrying.",
++      );
++      yield* (yield* ElectronApp.ElectronApp).quit;
++    }),
++  ),
++  Effect.withSpan("desktop.homebrewServiceAttachment"),
++);
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 new file mode 100644
-index 00000000..18844a34
+index 0000000..18844a3
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 @@ -0,0 +1,247 @@
@@ -401,7 +797,7 @@ index 00000000..18844a34
 +);
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
 new file mode 100644
-index 00000000..ad9f57e8
+index 0000000..ad9f57e
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
 @@ -0,0 +1,54 @@
@@ -461,7 +857,7 @@ index 00000000..ad9f57e8
 +});
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.ts
 new file mode 100644
-index 00000000..93c84a1d
+index 0000000..93c84a1
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnership.ts
 @@ -0,0 +1,69 @@
@@ -536,7 +932,7 @@ index 00000000..93c84a1d
 +}
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 new file mode 100644
-index 00000000..6022314d
+index 0000000..6022314
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 @@ -0,0 +1,96 @@
@@ -638,7 +1034,7 @@ index 00000000..6022314d
 +}));
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 new file mode 100644
-index 00000000..0196f757
+index 0000000..0196f75
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 @@ -0,0 +1,46 @@
@@ -689,12 +1085,12 @@ index 00000000..0196f757
 +  },
 +);
 diff --git a/apps/server/src/cli/pair.test.ts b/apps/server/src/cli/pair.test.ts
-index e6264619..5f431a5a 100644
+index e626461..5f431a5 100644
 --- a/apps/server/src/cli/pair.test.ts
 +++ b/apps/server/src/cli/pair.test.ts
 @@ -126,6 +126,24 @@ const withDescriptorServer = <A, E, R>(
    );
- 
+
  describe("t3 pair", () => {
 +  it.effect("rejects an unbound Homebrew owner before opening the authentication database", () =>
 +    withDescriptorServer((origin) => Effect.gen(function* () {
@@ -718,7 +1114,7 @@ index e6264619..5f431a5a 100644
      withDescriptorServer(
        (origin) =>
 diff --git a/apps/server/src/cli/pair.ts b/apps/server/src/cli/pair.ts
-index 904182ad..1194d54d 100644
+index e1af3be..e61c687 100644
 --- a/apps/server/src/cli/pair.ts
 +++ b/apps/server/src/cli/pair.ts
 @@ -1,3 +1,7 @@
@@ -729,10 +1125,10 @@ index 904182ad..1194d54d 100644
  import {
    type AuthEnvironmentScope,
    AuthStandardClientScopes,
-@@ -433,20 +437,45 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
+@@ -432,20 +436,45 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
    },
  );
- 
+
 +const verifyHomebrewOwner = Effect.fn("pair.verifyHomebrewOwner")(function* (
 +  stateDir: string,
 +  expected: string | undefined,
@@ -776,8 +1172,8 @@ index 904182ad..1194d54d 100644
    }).pipe(
      Effect.provide(
        EnvironmentAuth.layerRuntime.pipe(
-@@ -485,6 +514,10 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
- 
+@@ -484,6 +513,10 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
+
  export const pairCommand = Command.make("pair", {
    baseDir: baseDirFlag,
 +  expectedHomebrewOwner: Flag.String("expected-homebrew-owner").pipe(
@@ -787,9 +1183,9 @@ index 904182ad..1194d54d 100644
    scopes: authScopesFlag(AuthStandardClientScopes),
    ttl: ttlFlag,
    label: labelFlag,
-@@ -500,6 +533,16 @@ export const pairCommand = Command.make("pair", {
+@@ -499,6 +532,16 @@ export const pairCommand = Command.make("pair", {
        const logLevel = Option.getOrElse(cliLogLevel, () => "Warn" as const);
- 
+
        const target = yield* discoverPairTarget(Option.getOrUndefined(flags.baseDir));
 +      const expectedHomebrewOwner = Option.getOrUndefined(flags.expectedHomebrewOwner);
 +      const verifiedOwner = yield* verifyHomebrewOwner(join(target.baseDir, target.variant), expectedHomebrewOwner);
@@ -804,7 +1200,7 @@ index 904182ad..1194d54d 100644
        // Each protocol keeps auth in its own database, so a token minted here
        // for another protocol's server would never be accepted by it. Refuse
        // before any local layer opens (and migrates) that database.
-@@ -529,7 +572,7 @@ export const pairCommand = Command.make("pair", {
+@@ -528,7 +571,7 @@ export const pairCommand = Command.make("pair", {
          pairingBaseUrl = resolved.baseUrl;
          notes.push(...resolved.notes);
        } else {
@@ -813,7 +1209,7 @@ index 904182ad..1194d54d 100644
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
            notes.push(
              "This URL is only reachable from this machine. To reach it from your other devices, run `t3 up`, or re-run with --tailscale.",
-@@ -552,7 +595,9 @@ export const pairCommand = Command.make("pair", {
+@@ -551,7 +594,9 @@ export const pairCommand = Command.make("pair", {
          scopes: flags.scopes,
          ttl: flags.ttl,
          label: flags.label,
@@ -821,10 +1217,10 @@ index 904182ad..1194d54d 100644
        });
 +      yield* verifyHomebrewOwner(config.stateDir, expectedHomebrewOwner);
        const pairingUrl = buildPairingUrl(pairingBaseUrl, issued.credential);
- 
+
        yield* Console.log(
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index 5d9a87ac..b5506477 100644
+index f5f7692..1e0fd63 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
 @@ -3,6 +3,10 @@
@@ -840,7 +1236,7 @@ index 5d9a87ac..b5506477 100644
        "import": "./src/pullRequestAnchor.ts"
 diff --git a/packages/shared/src/homebrewServerOwner.test.ts b/packages/shared/src/homebrewServerOwner.test.ts
 new file mode 100644
-index 00000000..722c5b0c
+index 0000000..722c5b0
 --- /dev/null
 +++ b/packages/shared/src/homebrewServerOwner.test.ts
 @@ -0,0 +1,69 @@
@@ -915,7 +1311,7 @@ index 00000000..722c5b0c
 +});
 diff --git a/packages/shared/src/homebrewServerOwner.ts b/packages/shared/src/homebrewServerOwner.ts
 new file mode 100644
-index 00000000..f92d7f06
+index 0000000..f92d7f0
 --- /dev/null
 +++ b/packages/shared/src/homebrewServerOwner.ts
 @@ -0,0 +1,113 @@

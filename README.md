@@ -29,6 +29,10 @@ The VM has 12 vCPUs, 32 GiB RAM, and 200 GiB disk. The Dagger engine uses at mos
 12 CPUs, 24 GiB RAM, 28 GiB total RAM plus swap, and 4096 processes.
 CPU affinity also limits build tools that size pools from the visible CPU count.
 Builds share an engine lock and use separate source snapshots.
+Before a heavy workload, check available space on the builder's `/builds`
+filesystem and require at least 20 GiB (21,474,836,480 bytes) free. The 200 GiB
+disk size is capacity, not a free-space threshold. Stop below that headroom;
+do not prune another run or shared caches to make room.
 
 Install Devsy and configure its Harvester provider before the first run.
 The client also needs Bash, Git, OpenSSH, GNU tar, Python 3, realpath, and flock.

@@ -1,0 +1,20 @@
+✔ domcontentloaded on an unloaded window is not application readiness (3.561928ms)
+✔ selects a later application window instead of assuming the first window is the renderer (0.677626ms)
+✔ exports a passing verdict only after all four reports match the immutable source (48.684623ms)
+✔ retains a failure verdict while continuing the remaining scenarios (44.966386ms)
+✔ refuses a mismatched artifact source despite zero scenario exit statuses (43.493945ms)
+✔ exports setup failure evidence without admitting any GUI scenario (31.724964ms)
+✔ real Git applies both variants to independent pristine trees in production order (92.804028ms)
+✔ incompatible context names the selected SHA, patch, file and failing hunk (69.716475ms)
+✔ failure stops the resolve sequence before either package build is admitted (90.940379ms)
+✔ the same application routine works after packaging removes Git metadata (45.079191ms)
+✔ moving source refs are rejected before Git or package work (24.179586ms)
+✔ manual acceptance rejects moving refs before the Dagger action and preserves PR defaults (6.714027ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 381.05647

@@ -1,0 +1,164 @@
+[
+  {
+    "package": "desktop",
+    "baselineErrors": 35,
+    "currentErrors": 35,
+    "regressions": [],
+    "inherited": [
+      {
+        "file": "src/updates/DesktopUpdates.test.ts",
+        "signature": "src/updates/DesktopUpdates.test.ts TS377057: This module reference uses the `fs` module, the corresponding Effect API is `FileSystem` from `effect`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.test.ts",
+        "signature": "src/updates/DesktopUpdates.test.ts TS377057: This module reference uses the `path` module, the corresponding Effect API is `Path` from `effect`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.test.ts",
+        "signature": "src/updates/DesktopUpdates.test.ts TS377037: `Schema.decodeUnknownSync` is used inside an Effect generator. `Schema.decodeUnknownEffect` preserves the typed Effect error channel for this operation without throwing. effect(schemaSyncInEffect)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.test.ts",
+        "signature": "src/updates/DesktopUpdates.test.ts TS377112: This input is already assignable to the schema's Encoded type. Use `decodeSync` to preserve compile-time type checking instead of discarding the input type through `decodeUnknownSync`. effect(preferTypedSchemaDecoder)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.test.ts",
+        "signature": "src/updates/DesktopUpdates.test.ts TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377022: The `catch` callback in `Effect.try` returns the global `Error` type. Untagged errors merge together in the Effect error channel and lose type-level distinction; a tagged error preserves that distinction and can wrap the original error in a `cause` property. effect(globalErrorInEffectCatch)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377077: This Effect code reads from `process.env`, environment configuration in Effect code is represented through `Config` from Effect. effect(processEnvInEffect)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377022: The `catch` callback in `Effect.tryPromise` returns the global `Error` type. Untagged errors merge together in the Effect error channel and lose type-level distinction; a tagged error preserves that distinction and can wrap the original error in a `cause` property. effect(globalErrorInEffectCatch)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377022: The `catch` callback in `Effect.tryPromise` returns the global `Error` type. Untagged errors merge together in the Effect error channel and lose type-level distinction; a tagged error preserves that distinction and can wrap the original error in a `cause` property. effect(globalErrorInEffectCatch)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377022: The `catch` callback in `Effect.tryPromise` returns the global `Error` type. Untagged errors merge together in the Effect error channel and lose type-level distinction; a tagged error preserves that distinction and can wrap the original error in a `cause` property. effect(globalErrorInEffectCatch)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377022: The `catch` callback in `Effect.tryPromise` returns the global `Error` type. Untagged errors merge together in the Effect error channel and lose type-level distinction; a tagged error preserves that distinction and can wrap the original error in a `cause` property. effect(globalErrorInEffectCatch)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377023: Global 'Error' loses type safety as untagged errors merge together in the Effect failure channel. Consider using a tagged error and optionally wrapping the original in a 'cause' property. effect(globalErrorInEffectFailure)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS2375: Type 'Effect<{ accepted: boolean; completed: boolean; state: DesktopUpdateState; }, Error, never>' is not assignable to type 'Effect<DesktopUpdateActionResult, never, never>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties."
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377003: Missing errors Error in the expected Effect type. effect(missingEffectError)"
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS2322: Type '(expectedVersion: string) => Effect<{ accepted: boolean; completed: boolean; failed: boolean; state: DesktopUpdateState; }, Error, never>' is not assignable to type '(expectedVersion: string) => Effect<DesktopPreparedUpdateInstallResult, never, never>'."
+      },
+      {
+        "file": "src/updates/DesktopUpdates.ts",
+        "signature": "src/updates/DesktopUpdates.ts TS377003: Missing errors Error in the expected Effect type. effect(missingEffectError)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.test.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.test.ts TS377057: This module reference uses the `fs` module, the corresponding Effect API is `FileSystem` from `effect`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.test.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.test.ts TS377057: This module reference uses the `path` module, the corresponding Effect API is `Path` from `effect`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.test.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.test.ts TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.ts TS377057: This module reference uses the `child_process` module, the corresponding Effect API is `ChildProcess` from `effect/process`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.ts TS377057: This module reference uses the `fs` module, the corresponding Effect API is `FileSystem` from `effect`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.ts TS377057: This module reference uses the `path` module, the corresponding Effect API is `Path` from `effect`. effect(nodeBuiltinImport)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.ts TS377066: This code uses `Date.now()`, time access is represented through `Clock` from Effect. effect(globalDate)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.ts TS377066: This code uses `Date.now()`, time access is represented through `Clock` from Effect. effect(globalDate)"
+      },
+      {
+        "file": "src/updates/HomebrewDesktopUpdateProvider.ts",
+        "signature": "src/updates/HomebrewDesktopUpdateProvider.ts TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)"
+      }
+    ]
+  },
+  {
+    "package": "server",
+    "baselineErrors": 0,
+    "currentErrors": 0,
+    "regressions": [],
+    "inherited": []
+  },
+  {
+    "package": "shared",
+    "baselineErrors": 0,
+    "currentErrors": 0,
+    "regressions": [],
+    "inherited": []
+  }
+]

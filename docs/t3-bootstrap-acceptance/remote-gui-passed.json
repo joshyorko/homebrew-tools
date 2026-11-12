@@ -1,0 +1,138 @@
+{
+  "acceptance": {
+    "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+    "setupExitCode": 0,
+    "scenarios": [
+      {
+        "scenario": "service-attach",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      },
+      {
+        "scenario": "unknown-owner",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      },
+      {
+        "scenario": "package-mismatch",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      },
+      {
+        "scenario": "manual-settings",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "source": {
+    "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+    "executionTapHead": "287d3143dde4e8274ab8af4ac2be4c3c15bcd6df",
+    "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+    "artifactSha256": "68f1f5df58bbd6cb4e86cf1072978eac1eded432189db933153ac2f7fce7c213"
+  },
+  "perCaseReports": {
+    "manual-settings": {
+      "scenario": "manual-settings",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "e22d5f85-f758-4223-b504-97f16c8f2793",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": true,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "attached": false,
+        "manualSettingsOpened": true
+      }
+    },
+    "package-mismatch": {
+      "scenario": "package-mismatch",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "d672caf8-482e-40ec-81c1-68eb2fb8a15d",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": true,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "attached": false,
+        "differentPackageRefused": true
+      }
+    },
+    "service-attach": {
+      "scenario": "service-attach",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "fd36d88a-c5b3-467b-b716-c5337a6f332d",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": true,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "environmentId": "fd36d88a-c5b3-467b-b716-c5337a6f332d",
+        "serverOrigin": "http://127.0.0.1:3773",
+        "websocketUrl": "ws://127.0.0.1:3773/ws",
+        "repeatWebsocketUrl": "ws://127.0.0.1:3773/ws"
+      }
+    },
+    "unknown-owner": {
+      "scenario": "unknown-owner",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "5588b310-4054-4118-bab8-1dedf2dddb84",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": false,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "owner": "unverified",
+        "attached": false,
+        "settingsChanged": false
+      }
+    }
+  },
+  "rendererReadiness": {
+    "observations": [
+      {
+        "event": "candidate",
+        "protocol": "",
+        "host": "",
+        "pathname": "<unloaded>"
+      },
+      {
+        "event": "renderer-ready",
+        "protocol": "t3code:",
+        "host": "app",
+        "pathname": "/"
+      }
+    ],
+    "applicationRendererReady": true,
+    "pairingConfirmationObserved": true
+  }
+}

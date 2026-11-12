@@ -1,4 +1,4 @@
-import { dag, CacheSharingMode, Container, Directory, File, Secret, argument, object, func } from "@dagger.io/dagger"
+import { dag, CacheSharingMode, Container, Directory, File, Secret, Socket, argument, object, func } from "@dagger.io/dagger"
 import { existsSync, readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import {
@@ -583,14 +583,17 @@ export class TapPipeline {
   }
 
   @func()
-  async resolveT3Source(githubToken?: Secret): Promise<string> {
+  async resolveT3Source(githubToken?: Secret, ref = ""): Promise<string> {
     this.setGithubToken(githubToken)
     const entry = this.packageEntry("t3code-cli-main")
     if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
       throw new Error("Expected t3code-cli-main to use a git-head auto-update strategy")
     }
 
-    return json(await this.resolveGitHeadVersion(entry.upstream.repo, entry.autoUpdate.ref, entry.autoUpdate))
+    if (ref && !/^[0-9a-f]{40}$/.test(ref)) {
+      throw new Error("T3 acceptance replay requires an immutable 40-character source SHA")
+    }
+    return json(await this.resolveGitHeadVersion(entry.upstream.repo, ref || entry.autoUpdate.ref, entry.autoUpdate))
   }
 
   private setGithubToken(githubToken?: Secret): void {
@@ -1370,8 +1373,8 @@ end
       .withExec(["pnpm", "install", "--frozen-lockfile"])
       .withDirectory("/tap", tap)
       .withExec([
-        "bash", "-lc",
-        "git -C /upstream apply --check /tap/patches/t3-homebrew-service-protect.patch && git -C /upstream apply /tap/patches/t3-homebrew-service-protect.patch",
+        "node", "/tap/scripts/t3-source-patches.mjs",
+        "--source", "/upstream", "--source-ref", commit, "--variant", "cli",
       ])
       .withExec([
         "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
@@ -2573,11 +2576,11 @@ end
           "set -euo pipefail",
           "mkdir -p /upstream/apps/desktop/resources",
           "install -m 0755 /tap/scripts/t3-homebrew-update.sh /upstream/apps/desktop/resources/t3-homebrew-update.sh",
-          "git -C /upstream apply --check /tap/patches/t3-homebrew-desktop-update.patch",
-          "git -C /upstream apply /tap/patches/t3-homebrew-desktop-update.patch",
-          "git -C /upstream apply --check /tap/patches/t3-homebrew-service-attach.patch",
-          "git -C /upstream apply /tap/patches/t3-homebrew-service-attach.patch",
         ].join("\n"),
+      ])
+      .withExec([
+        "node", "/tap/scripts/t3-source-patches.mjs",
+        "--source", "/upstream", "--source-ref", commit, "--variant", "desktop",
       ])
       .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-build.json", JSON.stringify({ packageVersion: resolvedVersion, sourceCommit: commit }))
       .withWorkdir("/upstream")
@@ -2590,6 +2593,7 @@ end
         "test",
         "run",
         "--passWithNoTests",
+        "apps/desktop/src/app/DesktopApp.homebrew.test.ts",
         "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
         "apps/desktop/src/updates/DesktopUpdates.test.ts",
         "apps/desktop/src/backend/HomebrewServiceOwnership.test.ts",
@@ -3066,6 +3070,41 @@ end
       t3SourceVersion,
     )
     return build.container.file(build.artifactPath)
+  }
+
+  /** Export all GUI receipts, including failures; acceptance.json must say passed=true. */
+  @func()
+  async t3ServiceAttachmentEvidence(
+    bundle: Directory,
+    t3SourceRef: string,
+    candidateTapHead: string,
+    dockerSocket: Socket,
+  ): Promise<Directory> {
+    if (!/^[0-9a-f]{40}$/.test(t3SourceRef) || !/^[0-9a-f]{40}$/.test(candidateTapHead)) {
+      throw new Error("Attachment evidence requires exact upstream and candidate tap SHAs")
+    }
+    const release: unknown = JSON.parse(await bundle.file("release.json").contents())
+    if (typeof release !== "object" || release === null
+      || !("package" in release) || release.package !== "t3-code-linux"
+      || !("asset_name" in release) || typeof release.asset_name !== "string"
+      || !/^T3-Code-[a-zA-Z0-9._+-]+-x86_64\.AppImage$/.test(release.asset_name)
+      || !("artifact_sha256" in release) || typeof release.artifact_sha256 !== "string"
+      || !/^[0-9a-f]{64}$/.test(release.artifact_sha256)
+      || !("upstream" in release) || typeof release.upstream !== "object" || release.upstream === null
+      || !("commit" in release.upstream) || release.upstream.commit !== t3SourceRef) {
+      throw new Error("Attachment candidate metadata does not match the requested immutable source")
+    }
+    const executionTapHead = (await this.gitDir.file("HEAD").contents()).trim()
+    if (!/^[0-9a-f]{40}$/.test(executionTapHead)) throw new Error("Run attachment evidence from an immutable detached snapshot")
+    return this.source.directory(".devcontainer/dagger").dockerBuild()
+      .withUnixSocket("/var/run/docker.sock", dockerSocket)
+      .withDirectory("/runner", this.source.directory("scripts/t3-homebrew-desktop-e2e"))
+      .withFile("/candidate/candidate.AppImage", bundle.file(`artifacts/${release.asset_name}`))
+      .withNewFile("/evidence/source.json", json({ candidateTapHead, executionTapHead, upstream: t3SourceRef, artifactSha256: release.artifact_sha256 }))
+      .withEnvVariable("CANDIDATE_SHA256", release.artifact_sha256)
+      .withExec(["bash", "-lc", "printf '%s  /candidate/candidate.AppImage\\n' \"$CANDIDATE_SHA256\" | sha256sum -c -"])
+      .withExec(["bash", "/runner/run-all.sh", "/candidate/candidate.AppImage", "/evidence", t3SourceRef])
+      .directory("/evidence")
   }
 
   @func()

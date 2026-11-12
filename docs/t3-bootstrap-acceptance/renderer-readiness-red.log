@@ -1,0 +1,57 @@
+✖ domcontentloaded on an unloaded window is not application readiness (5.908422ms)
+✖ selects a later application window instead of assuming the first window is the renderer (0.982728ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.713799
+
+✖ failing tests:
+
+test at scripts/t3-homebrew-desktop-e2e/renderer-readiness.test.mjs:35:1
+✖ domcontentloaded on an unloaded window is not application readiness (5.908422ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/t3-homebrew-desktop-e2e/renderer-readiness.test.mjs:41:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/t3-homebrew-desktop-e2e/renderer-readiness.test.mjs:49:1
+✖ selects a later application window instead of assuming the first window is the renderer (0.982728ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be reference-equal to "expected":
+  + actual - expected
+
+    Window {
+      Symbol(kCapture): false,
+      Symbol(shapeMode): false,
+      _events: [Object: null prototype] {},
+      _eventsCount: 0,
+      _maxListeners: undefined,
+  +   address: '',
+  +   mounted: false
+  -   address: 't3code://app/',
+  -   mounted: true
+    }
+
+      at TestContext.<anonymous> (file:///home/kdlocpanda/.t3/worktrees/homebrew-tools/t3-9cc77f90-4152a869943eface/scripts/t3-homebrew-desktop-e2e/renderer-readiness.test.mjs:57:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { _events: {}, _eventsCount: 0, _maxListeners: undefined, address: '', mounted: false },
+    expected: { _events: {}, _eventsCount: 0, _maxListeners: undefined, address: 't3code://app/', mounted: true },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

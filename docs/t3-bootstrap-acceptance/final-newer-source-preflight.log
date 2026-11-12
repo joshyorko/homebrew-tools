@@ -1,0 +1,4 @@
+T3 source 476fc9be6691ab0d81e936f4cc674983cf3913be: desktop t3-homebrew-desktop-update.patch
+T3 source 476fc9be6691ab0d81e936f4cc674983cf3913be: desktop t3-homebrew-service-attach.patch
+T3 source 476fc9be6691ab0d81e936f4cc674983cf3913be: cli t3-homebrew-service-protect.patch
+T3 patch compatibility passed at 476fc9be6691ab0d81e936f4cc674983cf3913be: desktop, cli

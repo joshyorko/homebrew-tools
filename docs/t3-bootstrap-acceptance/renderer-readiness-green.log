@@ -1,0 +1,14 @@
+✔ domcontentloaded on an unloaded window is not application readiness (3.2247ms)
+✔ selects a later application window instead of assuming the first window is the renderer (0.673961ms)
+✔ exports a passing verdict only after all four reports match the immutable source (49.151606ms)
+✔ retains a failure verdict while continuing the remaining scenarios (47.093955ms)
+✔ refuses a mismatched artifact source despite zero scenario exit statuses (41.739429ms)
+✔ exports setup failure evidence without admitting any GUI scenario (32.118801ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 213.808143
