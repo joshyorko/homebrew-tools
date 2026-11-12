@@ -379,7 +379,7 @@ test("ChatGPT Desktop cask extracts the pinned official Linux RPM locally", () =
   const migrator = readFileSync(new URL("../../../scripts/migrate-chatgpt-linux-cask.sh", import.meta.url), "utf8")
   const uninstaller = readFileSync(new URL("../../../scripts/uninstall-chatgpt.sh", import.meta.url), "utf8")
   assert.match(makefile, /^chatgpt:\n\tscripts\/install-chatgpt-local\.sh$/m)
-  assert.match(installer, /dagger -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
+  assert.match(installer, /bash "\$repo_dir\/scripts\/dagger-devsy\.sh" -m \.\/dagger\/tap-pipeline call[\s\S]*ci-check --package-id=chatgpt/)
   assert.match(installer, /brew tap-new --no-git/)
   assert.match(installer, /brew install --cask/)
   assert.doesNotMatch(installer, /Formula\/chatgpt\.rb|--build-from-source/)

@@ -1,0 +1,10 @@
+{
+  "name": "Harvester Dagger builder",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "root",
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+    "source=homebrew-tools-dagger-builds,target=/builds,type=volume"
+  ],
+  "containerEnv": { "DOCKER_HOST": "unix:///var/run/docker.sock" }
+}
