@@ -72,7 +72,7 @@ jobs:
         call: >-
           -o "$RUNNER_TEMP/bundle"
           release-bundle
-          ci-check --package-id="${{ inputs.package_id }}" --github-token=env://GH_TOKEN
+          --package-id="${{ inputs.package_id }}" --github-token=env://GH_TOKEN
 
     - name: Publish manual release output
       if: inputs.action == 'release' || inputs.action == 'force-release'
