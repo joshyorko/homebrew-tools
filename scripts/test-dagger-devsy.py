@@ -271,7 +271,8 @@ class RemoteBuilderTests(unittest.TestCase):
         run = remote_root / "run.TEST0001"
         run.mkdir(parents=True)
         with self.upload() as uploaded:
-            uploaded.extractall(run, filter="data")
+            for name in ("repository.bundle", "head", "source.tar", "driver.sh", "arguments"):
+                (run / name).write_bytes(uploaded.extractfile(name).read())
         driver = run / "driver.sh"
         # Redirect only the remote filesystem boundary. Execute the production
         # --remote path with real Git/tar and stub only Docker/Dagger execution.
