@@ -1,0 +1,197 @@
+{
+  "upstreamCommit": "26e769d6c4fd955429595828ac572efeca006168",
+  "packageVersion": "main.20261112110304.26e769d6c4fd",
+  "controlClient": {
+    "environment": "5a22922e-dde9-4ca0-93da-51eb44b7f3db",
+    "host": "dakota",
+    "logRoot": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d",
+    "persistentEvidenceRoot": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d",
+    "historicalScratchPathsAreProvenanceOnly": true,
+    "persistentEvidenceApparentBytes": 420661295
+  },
+  "builder": {
+    "workspace": "homebrew-tools-dagger",
+    "workspaceUid": "default-ho-7d325",
+    "machine": "devsy-shared-harvester-c577d",
+    "hostname": "f937e753193d",
+    "engineId": "1da11f3bc1a34fa213858b554d9e5dc2fd3018491ee4ab7a4c62c3567a2fbb0e",
+    "engineVersion": "v0.21.11",
+    "vmBudget": {
+      "cpus": 12,
+      "memoryGiB": 32,
+      "diskGiB": 200
+    },
+    "engineBudget": {
+      "cpuAffinity": "0-11",
+      "memoryGiB": 24,
+      "memoryAndSwapGiB": 28,
+      "processLimit": 4096,
+      "validatedByLauncher": true
+    },
+    "vmUid": "185d53ec-6a2f-4449-828c-d6d8b73230e8",
+    "pvcUid": "3ccfca5c-14b8-44ea-aedf-097aa9daf215",
+    "finalState": "Stopped"
+  },
+  "observationSource": "control-client reviewer receipts relayed into this thread",
+  "attempts": [
+    {
+      "tapHead": "42cbf5edc5a1d17fe2b28ccd576973131fdaef19",
+      "remoteRun": "/builds/homebrew-tools/run.lPaDHPIZ",
+      "log": "desktop-release-bundle.log",
+      "exitCode": 1,
+      "candidateTestsPassed": 111,
+      "typeGate": "failed: seven TS377030 unknown error-channel diagnostics in DesktopApp.homebrew.test.ts",
+      "exportProduced": false
+    },
+    {
+      "tapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+      "remoteRun": "/builds/homebrew-tools/run.K08Tpt4E",
+      "log": "desktop-release-bundle.retry1.log",
+      "typeGate": "passed",
+      "packaging": "passed",
+      "exitCode": 0,
+      "candidateTestsPassed": 111,
+      "homebrewAudit": "passed",
+      "homebrewInstall": "passed",
+      "exportProduced": true,
+      "exportControlPath": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d/source-f5fa0cc/dist/t3-pr193-exact/desktop-bundle",
+      "artifactVerificationControlPath": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d/desktop-artifact-verification.json",
+      "typecheckControlPath": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d/typecheck-report.retry1.json"
+    },
+    {
+      "tapHead": "99dfff567dae0e771e666d5716a3f2c619c3a861",
+      "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+      "remoteRun": "/builds/homebrew-tools/run.ERWGxiXE",
+      "log": "attachment-evidence.log",
+      "exitCode": 1,
+      "phase": "CLI invocation",
+      "failure": "Generated command spelling is t-3-service-attachment-evidence",
+      "guiScenariosStarted": false
+    },
+    {
+      "tapHead": "99dfff567dae0e771e666d5716a3f2c619c3a861",
+      "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+      "log": "attachment-evidence.retry1.log",
+      "exitCode": 1,
+      "phase": "harness socket binding",
+      "failure": "dag.host is not a function in the generated module SDK",
+      "guiScenariosStarted": false
+    },
+    {
+      "tapHead": "22953e67f2d622f1437afb3564cb64ff2ca272bf",
+      "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+      "remoteRun": "/builds/homebrew-tools/run.qoEl2JEE",
+      "log": "attachment-evidence.retry2.log",
+      "phase": "GUI evidence collection",
+      "socketBinding": "passed",
+      "candidateArtifactHashCheck": "passed",
+      "status": "completed",
+      "exitCode": 0,
+      "acceptancePassed": false,
+      "guiCasesPassed": 3,
+      "failure": "service-attach window URL diagnostic threw before report.json; native verified recovery prompt was observed and clicked",
+      "artifactSha256": "68f1f5df58bbd6cb4e86cf1072978eac1eded432189db933153ac2f7fce7c213",
+      "evidenceControlPath": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d/attachment-evidence-22953e6"
+    },
+    {
+      "tapHead": "4b1b43c017bd62e68dc9efca1f2b31380481056e",
+      "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+      "remoteRun": "/builds/homebrew-tools/run.1gSPKCOX",
+      "log": "attachment-evidence.retry3.log",
+      "exitCode": 0,
+      "acceptancePassed": false,
+      "guiCasesPassed": 3,
+      "failure": "firstWindow+domcontentloaded returned an unloaded application; diagnostic evaluate lost context during navigation",
+      "evidenceControlPath": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d/attachment-evidence-4b1b43c"
+    },
+    {
+      "tapHead": "287d3143dde4e8274ab8af4ac2be4c3c15bcd6df",
+      "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+      "remoteRun": "/builds/homebrew-tools/run.O4rDPCDi",
+      "log": "attachment-evidence.retry4.log",
+      "exitCode": 0,
+      "acceptancePassed": true,
+      "guiCasesPassed": 4,
+      "evidenceControlPath": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d/attachment-evidence-287d314"
+    }
+  ],
+  "cliAdmission": {
+    "availableBytes": 165518815232,
+    "minimumBytes": 21474836480,
+    "filesystem": "ext2/ext3",
+    "passed": true,
+    "receiptControlPath": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d/pre-cli-space.json"
+  },
+  "cliCandidate": {
+    "tapHead": "287d3143dde4e8274ab8af4ac2be4c3c15bcd6df",
+    "log": "cli-release-bundle.log",
+    "status": "completed",
+    "exitCode": 0,
+    "packagingPassed": true,
+    "homebrewInstallPassed": true,
+    "brewTestPassed": true,
+    "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+    "version": "main.20261112110304.26e769d6c4fd",
+    "artifactName": "t3code-cli-main-main.20261112110304.26e769d6c4fd.tar.gz",
+    "sha256": "9ae58a25c719e59986a0719b305bba3d61bcbd45833c9d68faf17edb11a66973",
+    "artifactBytes": 168666880,
+    "artifactVerified": true,
+    "desktopSourceVersionMatches": true,
+    "remoteRun": "/builds/homebrew-tools/run.iWChXKQf"
+  },
+  "publication": false,
+  "prMerged": false,
+  "cleanup": {
+    "command": "bash scripts/dagger-devsy.sh --cleanup",
+    "status": "completed",
+    "result": {
+      "cleanupExitCode": 0,
+      "workspace": "homebrew-tools-dagger",
+      "workspaceUid": "default-ho-7d325",
+      "workspaceState": "Stopped",
+      "machine": "devsy-shared-harvester-c577d",
+      "machineState": "Stopped",
+      "machineRegistryPreserved": true,
+      "vmUid": "185d53ec-6a2f-4449-828c-d6d8b73230e8",
+      "vmRunStrategy": "Halted",
+      "vmState": "Stopped",
+      "pvcUid": "3ccfca5c-14b8-44ea-aedf-097aa9daf215",
+      "pvcSize": "200Gi",
+      "pvcPhase": "Bound",
+      "diskAndCachePreserved": true,
+      "sharedWorkspaceRefusal": null,
+      "retainedOwnedFailedRuns": [
+        {
+          "path": "/builds/homebrew-tools/run.lPaDHPIZ",
+          "apparentBytes": 44457780
+        },
+        {
+          "path": "/builds/homebrew-tools/run.ERWGxiXE",
+          "apparentBytes": 542015522
+        },
+        {
+          "path": "/builds/homebrew-tools/run.9cHvjSvv",
+          "apparentBytes": 542015523
+        }
+      ],
+      "persistentEvidenceDirectory": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d",
+      "transientScratchRemoved": true,
+      "removedScratch": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d",
+      "ownedPointerRemoved": true,
+      "persistentEvidenceApparentBytes": 420661295,
+      "persistentEvidenceAllocatedBytes": 421330944
+    },
+    "logControlPath": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d/final-cleanup.log",
+    "exitControlPath": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d/final-cleanup.exit",
+    "verificationControlPath": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d/final-cleanup-verification.json"
+  },
+  "compatibility": {
+    "sourceRefs": [
+      "26e769d6c4fd955429595828ac572efeca006168",
+      "476fc9be6691ab0d81e936f4cc674983cf3913be"
+    ],
+    "desktopAndCliPassed": true,
+    "mergedMainBaseRejectedAtNewerSource": true,
+    "dependencyInstallationRequired": false
+  }
+}

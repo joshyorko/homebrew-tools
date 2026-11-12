@@ -1,0 +1,37 @@
+{
+  "cleanupExitCode": 0,
+  "workspace": "homebrew-tools-dagger",
+  "workspaceUid": "default-ho-7d325",
+  "workspaceState": "Stopped",
+  "machine": "devsy-shared-harvester-c577d",
+  "machineState": "Stopped",
+  "machineRegistryPreserved": true,
+  "vmUid": "185d53ec-6a2f-4449-828c-d6d8b73230e8",
+  "vmRunStrategy": "Halted",
+  "vmState": "Stopped",
+  "pvcUid": "3ccfca5c-14b8-44ea-aedf-097aa9daf215",
+  "pvcSize": "200Gi",
+  "pvcPhase": "Bound",
+  "diskAndCachePreserved": true,
+  "sharedWorkspaceRefusal": null,
+  "retainedOwnedFailedRuns": [
+    {
+      "path": "/builds/homebrew-tools/run.lPaDHPIZ",
+      "apparentBytes": 44457780
+    },
+    {
+      "path": "/builds/homebrew-tools/run.ERWGxiXE",
+      "apparentBytes": 542015522
+    },
+    {
+      "path": "/builds/homebrew-tools/run.9cHvjSvv",
+      "apparentBytes": 542015523
+    }
+  ],
+  "persistentEvidenceDirectory": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d",
+  "transientScratchRemoved": true,
+  "removedScratch": "/tmp/homebrew-tools-pr193-relay.q0R3Wk9d",
+  "ownedPointerRemoved": true,
+  "persistentEvidenceApparentBytes": 420661295,
+  "persistentEvidenceAllocatedBytes": 421330944
+}

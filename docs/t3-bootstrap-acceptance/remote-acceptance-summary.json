@@ -1,0 +1,33 @@
+{
+  "pr194MergedMain": "68940bb3ecf9867057a9602514699ffbc5b26402",
+  "reviewedPr194Head": "f02d6b73a36189073d9fdbba39f86d53f1bdf4be",
+  "desktopCandidateTap": "f5fa0ccbfac078b7065009449412079c3b77f945",
+  "harnessAndCliTap": "287d3143dde4e8274ab8af4ac2be4c3c15bcd6df",
+  "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+  "version": "main.20261112110304.26e769d6c4fd",
+  "desktopCandidatePassed": true,
+  "guiAllFourPassedAndSourceMatches": true,
+  "rendererReadyAndPairingConfirmed": true,
+  "cliCandidatePassed": true,
+  "cliArtifact": {
+    "tapHead": "287d3143dde4e8274ab8af4ac2be4c3c15bcd6df",
+    "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+    "version": "main.20261112110304.26e769d6c4fd",
+    "artifactName": "t3code-cli-main-main.20261112110304.26e769d6c4fd.tar.gz",
+    "sha256": "9ae58a25c719e59986a0719b305bba3d61bcbd45833c9d68faf17edb11a66973",
+    "artifactBytes": 168666880,
+    "launcherExitCode": 0,
+    "artifactVerified": true,
+    "desktopSourceVersionMatches": true,
+    "publication": false
+  },
+  "freshPreCliSpace": {
+    "availableBytes": 165518815232,
+    "minimumBytes": 21474836480,
+    "filesystem": "ext2/ext3",
+    "passed": true
+  },
+  "allEvidencePersisted": "/home/kdlocpanda/.local/state/homebrew-tools/pr193-relay-q0R3Wk9d",
+  "cleanupState": "ready; waiting coordinated final cleanup command",
+  "publication": false
+}

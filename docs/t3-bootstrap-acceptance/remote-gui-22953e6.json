@@ -1,0 +1,100 @@
+{
+  "acceptance": {
+    "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+    "setupExitCode": 0,
+    "scenarios": [
+      {
+        "scenario": "service-attach",
+        "exitCode": 1,
+        "sourceMatches": false,
+        "passed": false
+      },
+      {
+        "scenario": "unknown-owner",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      },
+      {
+        "scenario": "package-mismatch",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      },
+      {
+        "scenario": "manual-settings",
+        "exitCode": 0,
+        "sourceMatches": true,
+        "passed": true
+      }
+    ],
+    "passed": false
+  },
+  "source": {
+    "candidateTapHead": "f5fa0ccbfac078b7065009449412079c3b77f945",
+    "executionTapHead": "22953e67f2d622f1437afb3564cb64ff2ca272bf",
+    "upstream": "26e769d6c4fd955429595828ac572efeca006168",
+    "artifactSha256": "68f1f5df58bbd6cb4e86cf1072978eac1eded432189db933153ac2f7fce7c213"
+  },
+  "failure": "TypeError: Invalid URL\n    at new URL (node:internal/url:911:25)\n    at file:///work/runner/service-attach-e2e.mjs:406:19\n    at Array.map (<anonymous>)\n    at connectAndVerify (file:///work/runner/service-attach-e2e.mjs:405:77)\n    at async file:///work/runner/service-attach-e2e.mjs:541:71\n",
+  "perCaseReports": {
+    "unknown-owner": {
+      "scenario": "unknown-owner",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "5dca15f5-7146-443f-8ba4-fa4a04ac5f25",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": false,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "owner": "unverified",
+        "attached": false,
+        "settingsChanged": false
+      }
+    },
+    "package-mismatch": {
+      "scenario": "package-mismatch",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "b2b61365-ed5f-4f2e-affc-b9fec513552b",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": true,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "attached": false,
+        "differentPackageRefused": true
+      }
+    },
+    "manual-settings": {
+      "scenario": "manual-settings",
+      "packageVersion": "main.20261112110304.26e769d6c4fd",
+      "sourceCommit": "26e769d6c4fd955429595828ac572efeca006168",
+      "serviceEnvironmentId": "26ab2b59-9b91-4032-bbbc-81f081f0c1ae",
+      "serviceProcessPreserved": true,
+      "existingProjectAndIdleThreadPreserved": true,
+      "existingConversationHistoryPreserved": true,
+      "existingBearerCredentialAuthenticated": true,
+      "syntheticMarkersPreserved": true,
+      "originalDesktopSettingsBackedUp": true,
+      "isolatedHome": true,
+      "network": "internal bridge without host gateway, external routing or DNS",
+      "systemd": "fake user-unit metadata",
+      "result": {
+        "attached": false,
+        "manualSettingsOpened": true
+      }
+    }
+  }
+}
