@@ -50,3 +50,9 @@ checkCall(
   "dagger call t-3-code-linux-candidate",
   ["--t-3-source-ref string", "--t-3-source-version string"],
 )
+
+checkCall(
+  ["t-3-service-attachment-evidence", "--bundle=.", `--t-3-source-ref=${sourceRef}`, `--candidate-tap-head=${sourceRef}`, "--docker-socket=unix:///var/run/docker.sock"],
+  "dagger call t-3-service-attachment-evidence",
+  ["--bundle Directory", "--t-3-source-ref string", "--candidate-tap-head string", "--docker-socket Socket"],
+)

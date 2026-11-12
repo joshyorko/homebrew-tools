@@ -1,4 +1,4 @@
-import { dag, CacheSharingMode, Container, Directory, File, Secret, argument, object, func } from "@dagger.io/dagger"
+import { dag, CacheSharingMode, Container, Directory, File, Secret, Socket, argument, object, func } from "@dagger.io/dagger"
 import { existsSync, readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import {
@@ -3078,6 +3078,7 @@ end
     bundle: Directory,
     t3SourceRef: string,
     candidateTapHead: string,
+    dockerSocket: Socket,
   ): Promise<Directory> {
     if (!/^[0-9a-f]{40}$/.test(t3SourceRef) || !/^[0-9a-f]{40}$/.test(candidateTapHead)) {
       throw new Error("Attachment evidence requires exact upstream and candidate tap SHAs")
@@ -3096,7 +3097,7 @@ end
     const executionTapHead = (await this.gitDir.file("HEAD").contents()).trim()
     if (!/^[0-9a-f]{40}$/.test(executionTapHead)) throw new Error("Run attachment evidence from an immutable detached snapshot")
     return this.source.directory(".devcontainer/dagger").dockerBuild()
-      .withUnixSocket("/var/run/docker.sock", dag.host().unixSocket("/var/run/docker.sock"))
+      .withUnixSocket("/var/run/docker.sock", dockerSocket)
       .withDirectory("/runner", this.source.directory("scripts/t3-homebrew-desktop-e2e"))
       .withFile("/candidate/candidate.AppImage", bundle.file(`artifacts/${release.asset_name}`))
       .withNewFile("/evidence/source.json", json({ candidateTapHead, executionTapHead, upstream: t3SourceRef, artifactSha256: release.artifact_sha256 }))
