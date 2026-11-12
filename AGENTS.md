@@ -27,6 +27,17 @@ Use repository-relative input paths. Do not run raw Dagger, Docker builds, or
 resource-heavy packaging scripts on the workstation, including after remote
 failure. Devsy 1.27.0 MCP `workspace_exec` does not find this remote container.
 Use `devsy workspace ssh homebrew-tools-dagger --command '<command>'` for diagnostics.
+After the agent's final job, including failures, retrieve artifacts and needed
+evidence, then run `bash scripts/dagger-devsy.sh --cleanup` and report the VM
+state. Do not run cleanup after each call in a multi-command workflow. Cleanup
+refuses active builds/startups, pending transfers, other workspace ownership on
+the same VM, and unreadable/ambiguous usage. Registered peers conservatively
+block shutdown even when stopped. Preserve other workspaces and report their
+names when cleanup refuses. The command uses Devsy's native shared-machine stop
+protection; never substitute direct machine stop, force deletion, cache/disk
+removal, or local builds. Successful run data is removed after export retrieval;
+failed run data stays for evidence. Never clear another run's active marker or
+prune its snapshot. See README.md's Dagger Platform section for concurrency limits.
 The old `scripts/dagger-limited.sh` entrypoint and Makefile recovery targets route
 through this remote launcher. CI keeps its own runner configuration.
 

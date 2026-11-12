@@ -9,6 +9,8 @@ if [[ "${1:-}" == --remote ]]; then
   shift
   [[ "$run" == /builds/homebrew-tools/run.* ]] || fail "Invalid remote run directory"
   cd "$run"
+  exec 7>/builds/homebrew-tools/lifecycle.lock
+  flock -s 7
   mapfile -d '' -t args < arguments
   set -- "${args[@]}"
   docker info >/dev/null
@@ -54,12 +56,15 @@ if [[ "${1:-}" == --help ]]; then
 Usage: bash scripts/dagger-devsy.sh [DAGGER_ARGUMENTS...]
        bash scripts/dagger-devsy.sh --setup
        bash scripts/dagger-devsy.sh --status
+       bash scripts/dagger-devsy.sh --cleanup
 
 Provision or resume a Harvester Devsy builder and run Dagger remotely.
 Commands run from the repository root. Use repository-relative input paths.
 Tracked files and non-ignored untracked files, plus Git history, are uploaded.
 One -o/--output export is copied back to the requested local path on success.
-The VM, container, and Dagger cache remain available for subsequent builds.
+Run --cleanup after the final job and artifact/evidence retrieval, not each call.
+Cleanup refuses active builds, shared ownership, and unreadable usage.
+The reusable disk and Dagger cache survive shutdown.
 No local Docker or Dagger engine is started, including on remote failure.
 
 DAGGER_DEVSY_WORKSPACE selects a separate builder workspace.
@@ -75,6 +80,10 @@ cd "$root"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/homebrew-tools/$workspace"
 mkdir -p "$cache/.devcontainer"
 exec 8>"$cache/provision.lock"
+if [[ "${1:-}" == --cleanup ]]; then
+  flock -n 8 || fail "Builder is busy (a build or startup owns the client lock)"
+  exec python3 "$root/scripts/dagger-devsy-cleanup.py" "$workspace"
+fi
 flock 8
 cp "$root/.devcontainer/dagger/"{Dockerfile,devcontainer.json} "$cache/.devcontainer/"
 if [[ "${1:-}" == --status ]]; then
@@ -139,8 +148,7 @@ else
     --provider-option HARVESTER_CPU=12 --provider-option HARVESTER_MEMORY=32Gi \
     --provider-option HARVESTER_DISK=200Gi >&2
 fi
-flock -u 8
-exec 8>&-
+# Keep this lock through export retrieval so final cleanup cannot race a local job.
 
 ssh_args=(-T -o BatchMode=yes -o ForwardAgent=no -o ConnectTimeout=30
   -o HostName=devsy -o Port=22
@@ -157,7 +165,14 @@ if [[ "${1:-}" == --setup ]]; then
 fi
 [[ "$#" -gt 0 ]] || set -- functions
 tmp="$(mktemp -d)"
-trap 'rm -rf -- "$tmp"' EXIT
+run=""
+finish() {
+  if [[ -n "$run" ]]; then
+    remote "rm -f -- $run/active" >/dev/null || true
+  fi
+  rm -rf -- "$tmp"
+}
+trap finish EXIT
 args=()
 output=""
 bundle=""
@@ -176,6 +191,12 @@ while [[ "$#" -gt 0 ]]; do
       fi
       [[ -n "$bundle" && -d "$bundle" ]] || fail "--bundle requires a local directory"
       args+=(--bundle=../input-bundle)
+      ;;
+    --mod=*|-m=*)
+      module="${1#*=}"
+      [[ "$module" != "$root/"* ]] || module="./${module#"$root/"}"
+      args+=(--mod="$module")
+      shift
       ;;
     -m|--mod)
       [[ "$#" -ge 2 ]] || fail "$1 requires a module path"
@@ -233,7 +254,8 @@ if [[ -n "$bundle" ]]; then
   tar -C "$bundle" -cf "$tmp/bundle.tar" .
   upload_files+=(bundle.tar)
 fi
-run="$(remote 'mkdir -p /builds/homebrew-tools && mktemp -d /builds/homebrew-tools/run.XXXXXXXX')"
+# shellcheck disable=SC2016 # Expanded only by the remote shell.
+run="$(remote 'mkdir -p /builds/homebrew-tools && flock -s /builds/homebrew-tools/lifecycle.lock sh -c '\''run=$(mktemp -d /builds/homebrew-tools/run.XXXXXXXX) && touch "$run/active" && echo "$run"'\''')"
 [[ "$run" =~ ^/builds/homebrew-tools/run\.[a-zA-Z0-9]+$ ]] || fail "Unexpected remote run directory"
 printf 'Remote run retained at %s:%s\n' "$workspace" "$run" >&2
 tar -C "$tmp" -cf - "${upload_files[@]}" | remote "tar -xf - -C $run"
@@ -250,3 +272,7 @@ if [[ -n "$output" ]]; then
   fi
   printf 'Export copied to %s\n' "$output" >&2
 fi
+# Only this invocation's successful snapshot/export is disposable. Failed runs
+# remain for evidence; never prune another invocation's data or the engine cache.
+remote "rm -rf -- $run"
+run=""

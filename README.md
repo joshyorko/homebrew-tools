@@ -24,7 +24,7 @@ bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o ./dist/release-bun
 ```
 
 The launcher provisions or resumes `homebrew-tools-dagger` using your configured
-Harvester provider. It leaves the VM and Dagger cache available for reuse.
+Harvester provider. It keeps the VM running across a multi-command workflow.
 The VM has 12 vCPUs, 32 GiB RAM, and 200 GiB disk. The Dagger engine uses at most
 12 CPUs, 24 GiB RAM, 28 GiB total RAM plus swap, and 4096 processes.
 CPU affinity also limits build tools that size pools from the visible CPU count.
@@ -54,9 +54,35 @@ find this remote container. Use `devsy workspace ssh homebrew-tools-dagger --com
 for remote diagnostics. The launcher uses Devsy's stdio SSH connection so it
 does not depend on a persistent localhost tunnel. Your configured Devsy SSH
 forwarding settings still apply. The launcher prints each retained remote run
-path under `/builds/homebrew-tools/`.
-Source snapshots and exports remain there for inspection and consume remote disk.
-Use `devsy workspace stop homebrew-tools-dagger` when the builder is no longer needed.
+path under `/builds/homebrew-tools/`. Successful snapshots are removed only after
+export retrieval; failed runs remain for evidence and consume remote disk.
+
+After your final job, retrieve needed artifacts and failure evidence, then run:
+
+```bash
+bash scripts/dagger-devsy.sh --cleanup
+```
+
+Do this at the end of the agent's workload, including after failure, not after
+every Dagger call. Report the resulting VM state. Cleanup holds the client
+lifecycle lock, refuses active or queued builds and uploads/exports, checks
+Devsy machine/workspace ownership and startup tasks, and checks running containers
+on the VM. Unreadable or ambiguous usage refuses shutdown. A registered peer on
+the same VM conservatively prevents cleanup even if that peer is stopped; the
+refusal identifies its workspace. Preserve it and report the blocker.
+
+The final stop uses `devsy workspace stop` with Devsy's native workspace lock,
+startup quiescing, and shared-machine recheck. It never directly stops a machine
+or another workspace. Devsy 1.27.0 does not provide an atomic cross-client
+machine-wide startup/stop transaction: remote locks/markers protect cooperating
+launcher jobs, and the native recheck preserves newly registered peers. If usage
+changes or the VM remains running, cleanup fails and reports that state.
+The reusable VM disk, `/builds` volume, and engine cache are preserved.
+Do not force-delete the VM, prune other runs, or retry locally. A failed run's
+snapshot is retained; retrieve its needed evidence before removing that exact
+integration-owned run directory. Do not remove an `active` marker to bypass a
+cleanup refusal without first establishing that its owner has finished.
+
 Set `DAGGER_DEVSY_WORKSPACE` to provision a separately named builder workspace.
 The configured provider may share its VM across workspaces.
 After changing the builder profile, finish active builds and run

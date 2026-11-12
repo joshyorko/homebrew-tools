@@ -17,9 +17,23 @@ name = pathlib.Path(sys.argv[0]).name
 with (state / "calls").open("a") as log:
     log.write(json.dumps([name, *sys.argv[1:]]) + "\n")
 if name == "devsy":
-    if "list" in sys.argv:
+    if "list" in sys.argv and "machine" in sys.argv:
+        print(json.dumps([{"id": "shared-vm", "provider": {"name": "harvester"}}]))
+    elif "list" in sys.argv and "task" in sys.argv:
+        print(json.dumps([{"workspaceId": "starting", "status": "running"}] if os.environ.get("BUILDER_TEST_STARTUP") else []))
+    elif "status" in sys.argv:
+        print(json.dumps({"state": "Stopped" if (state / "stopped").exists() else "Running"}))
+    elif "stop" in sys.argv:
+        (state / "stopped").touch()
+        print("{}")
+    elif "list" in sys.argv:
         provider = os.environ.get("BUILDER_TEST_PROVIDER", "harvester")
-        print(json.dumps([{"id": "homebrew-tools-dagger", "provider": {"name": provider}}]) if provider else "[]")
+        workspaces = [{"id": "homebrew-tools-dagger", "uid": "builder-uid", "provider": {"name": provider}, "machine": {"machineId": "shared-vm"}}]
+        if os.environ.get("BUILDER_TEST_SHARED"):
+            workspaces.append({"id": "other", "provider": {"name": "harvester"}, "machine": {"machineId": "shared-vm"}})
+        if os.environ.get("BUILDER_TEST_WARNING"):
+            print("could not load workspace", file=sys.stderr)
+        print(json.dumps(workspaces) if provider else "[]")
     else:
         failed = os.environ.get("BUILDER_TEST_UP_FAILURE")
         print(json.dumps({"kind": "result", "outcome": "error" if failed else "success"}))
@@ -29,7 +43,12 @@ if name == "devsy":
         sys.exit(1 if failed else 0)
 elif name == "ssh":
     command = sys.argv[-1]
-    if "mktemp" in command:
+    if command.startswith("bash -c "):
+        if os.environ.get("BUILDER_TEST_BUSY"):
+            sys.exit(1)
+        print("ready", flush=True)
+        sys.stdin.read()
+    elif "mktemp" in command:
         print("/builds/homebrew-tools/run.TEST0001")
     elif command.startswith("tar -xf"):
         (state / "upload.tar").write_bytes(sys.stdin.buffer.read())
@@ -42,6 +61,8 @@ elif name == "ssh":
             item = tarfile.TarInfo("payload/result.txt" if os.environ.get("BUILDER_TEST_DIRECTORY") else "payload")
             item.size = len(data)
             archive.addfile(item, io.BytesIO(data))
+    elif command.startswith("rm -"):
+        pass
     else:
         sys.exit(98)
 else:
@@ -58,6 +79,7 @@ class RemoteBuilderTests(unittest.TestCase):
         self.repo.mkdir()
         (self.repo / "scripts").mkdir()
         shutil.copy(ROOT / "scripts/dagger-devsy.sh", self.repo / "scripts")
+        shutil.copy(ROOT / "scripts/dagger-devsy-cleanup.py", self.repo / "scripts")
         shutil.copy(ROOT / "scripts/dagger-limited.sh", self.repo / "scripts")
         shutil.copytree(ROOT / ".devcontainer/dagger", self.repo / ".devcontainer/dagger")
         (self.repo / "tracked").write_text("committed\n")
@@ -186,6 +208,49 @@ class RemoteBuilderTests(unittest.TestCase):
         result, _ = self.run_builder("call", "probe", BUILDER_TEST_LINGER="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("remote dagger result", result.stdout)
+
+    def test_cleanup_stops_only_unused_machine_without_starting_it(self):
+        result, calls = self.run_builder("--cleanup")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any("stop" in call and "workspace" in call for call in calls))
+        self.assertFalse(any("up" in call or "delete" in call for call in calls))
+        self.assertIn("Stopped", result.stdout)
+
+    def test_cleanup_refuses_shared_unknown_busy_and_starting_usage(self):
+        for variable in ("BUILDER_TEST_SHARED", "BUILDER_TEST_WARNING", "BUILDER_TEST_BUSY", "BUILDER_TEST_STARTUP"):
+            with self.subTest(variable=variable):
+                (self.state / "calls").unlink(missing_ok=True)
+                result, calls = self.run_builder("--cleanup", **{variable: "1"})
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(any("stop" in call or "up" in call for call in calls))
+
+    def test_cleanup_refuses_local_build_or_startup_lock(self):
+        import fcntl
+        cache = Path(self.env["XDG_CACHE_HOME"]) / "homebrew-tools/homebrew-tools-dagger"
+        cache.mkdir(parents=True)
+        with (cache / "provision.lock").open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            (self.state / "calls").touch()
+            result, calls = self.run_builder("--cleanup")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+
+    def test_success_removes_only_own_run_after_export_and_failure_retains_it(self):
+        result, calls = self.run_builder("call", "probe", "-o", str(self.repo / "dist/result"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = [call[-1] for call in calls if call[0] == "ssh"]
+        self.assertTrue(commands[-1].startswith("rm -rf -- /builds/homebrew-tools/run.TEST0001"))
+        self.assertTrue(any(command.startswith("tar -C") for command in commands[:-1]))
+        (self.state / "calls").unlink()
+        result, calls = self.run_builder("call", "probe", BUILDER_TEST_EXIT="42")
+        self.assertEqual(result.returncode, 42)
+        self.assertFalse(any(call[-1].startswith("rm -rf") for call in calls))
+
+    def test_equals_module_path_is_relocated(self):
+        result, _ = self.run_builder(f"--mod={self.repo}/dagger/tap-pipeline", "functions")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with self.upload() as uploaded:
+            self.assertIn(b"--mod=./dagger/tap-pipeline\0", uploaded.extractfile("arguments").read())
 
 
 if __name__ == "__main__":
