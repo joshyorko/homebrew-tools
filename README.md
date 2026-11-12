@@ -872,20 +872,24 @@ MIT
 ## Actions Runtime (`action-server`)
 
 The `action-server` cask and executable retain their names, but now track stable,
-published `actions-runtime-X.Y.Z` releases from `joshyorko/actions`. Required assets
-are `actions-runtime-X.Y.Z-linux64` and `actions-runtime-X.Y.Z-macos-arm64`.
+published `actions-runtime-X.Y.Z` releases from `joshyorko/actions`. The required asset
+is `actions-runtime-X.Y.Z-linux64`; this tap package is Linux x86-64 only.
 Legacy `action-server-v*`, draft, and prerelease entries are excluded by both the
 scheduler and artifact resolver. Downloaded bytes must match each upstream GitHub
 asset's SHA-256 digest before the existing bundle/mirror pipeline can publish them.
-The committed bootstrap cask deliberately uses version `0.0.0` with verified
-Runtime 1.0.1 upstream URLs. This sentinel makes `action-server-daily` detect a
-version difference and publish the first tap mirror. The generated release cask
-uses the real upstream version (`1.0.1`) and tap mirror URLs. Run auto-update
-before the migration commands below; the sentinel is not a Runtime version.
+The committed Linux cask uses verified immutable upstream URLs until the manual
+release bundle replaces them with the tap's own mirror. The generated mirror
+must contain only the Linux executable with the same SHA-256. Run package-specific
+`action=ci` before `action=release`; the automatic slot may correctly report no
+update when the committed version already equals upstream.
+
+For a Linux-only transition, keep publisher retention high enough to preserve
+all existing package mirrors plus the new release. Do not prune prior Mac/Linux
+releases as a side effect of removing current Mac support.
 
 ### Migrating legacy 1.2.6 installations
 
-Runtime 1.0.1 is numerically lower than legacy Action Server 1.2.6, so do not rely
+Runtime 1.1.0 is numerically lower than legacy Action Server 1.2.6, so do not rely
 on `brew upgrade` to select it. Stop any running Action Server, preserve your
 application data/configuration, then explicitly reinstall:
 
@@ -893,14 +897,15 @@ application data/configuration, then explicitly reinstall:
 brew update
 brew reinstall --cask joshyorko/tools/action-server
 hash -r
-action-server version  # must report 1.0.1 for this migration
+action-server version  # must report 1.1.0 for this migration
 ```
 
 Fresh installs use `brew install --cask joshyorko/tools/action-server`. Reinstall
 replaces the executable; it does not promise compatibility or migrate application
-data from the legacy runtime. Linux x86_64 and macOS Apple Silicon are supported;
-there is no macOS Intel asset. Binaries are unsigned and macOS is not notarized.
-No signing credentials are needed by this tap.
+data from the legacy runtime. Only Linux x86_64 is supported by this cask. macOS support is removed for now;
+no Mac availability is advertised. Binaries are unsigned.
+No signing credentials are needed by this tap. Prior action-server mirror releases
+must be retained during this transition.
 
 ### Actual dispatch contract
 

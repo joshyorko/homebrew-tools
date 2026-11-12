@@ -401,8 +401,6 @@ type ActionServerBuild = {
   upstreamTag: string
   container: Container
   linux: DownloadedAsset
-  macosArm: DownloadedAsset
-  macosIntel?: DownloadedAsset
 }
 
 type DevpodBuild = {
@@ -932,7 +930,7 @@ export class TapPipeline {
       artifactSha256: build.linux.sha256,
       downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/action-server-${build.version}/${build.linux.assetName}`,
       releaseTitle: `Actions Runtime ${build.version}`,
-      releaseNotes: `Release bundle mirrored from ${build.upstreamTag}`,
+      releaseNotes: `Linux x86-64 only release bundle mirrored from ${build.upstreamTag}`,
       commitMessage: `Update action-server cask to v${build.version}`,
       upstream: {
         kind: "github_release",
@@ -2368,10 +2366,9 @@ end
 
   private async buildActionServerArtifacts(): Promise<ActionServerBuild> {
     const releases = await this.fetchJson("https://api.github.com/repos/joshyorko/actions/releases?per_page=100") as ActionsRuntimeRelease[]
-    const { version, upstreamTag, linux, macosArm } = resolveActionsRuntimeRelease(releases)
+    const { version, upstreamTag, linux } = resolveActionsRuntimeRelease(releases)
     let container = this.githubApiContainer()
     container = this.downloadAsset(container, linux.browser_download_url, `/tmp/${linux.name}`)
-    container = this.downloadAsset(container, macosArm.browser_download_url, `/tmp/${macosArm.name}`)
     return {
       version,
       upstreamTag,
@@ -2381,12 +2378,6 @@ end
         artifactPath: `/tmp/${linux.name}`,
         sha256: verifyActionsRuntimeDigest(linux, await this.sha256For(container, `/tmp/${linux.name}`)),
         sourceUrl: linux.browser_download_url,
-      },
-      macosArm: {
-        assetName: macosArm.name,
-        artifactPath: `/tmp/${macosArm.name}`,
-        sha256: verifyActionsRuntimeDigest(macosArm, await this.sha256For(container, `/tmp/${macosArm.name}`)),
-        sourceUrl: macosArm.browser_download_url,
       },
     }
   }
@@ -2819,26 +2810,13 @@ end
   private renderActionServerCask(build: ActionServerBuild, releaseTag: string): string {
     return this.renderActionServerCaskWithUrls(build, {
       linux: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linux.assetName}`,
-      macosArm: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosArm.assetName}`,
-      macosIntel: build.macosIntel
-        ? `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosIntel.assetName}`
-        : undefined,
     })
   }
 
   private renderActionServerCaskWithUrls(
     build: ActionServerBuild,
-    urls: { linux: string; macosArm: string; macosIntel?: string },
+    urls: { linux: string },
   ): string {
-    const macIntelBlock = build.macosIntel ? [
-      "    on_intel do",
-      `      sha256 \"${build.macosIntel.sha256}\"`,
-      `      url \"${urls.macosIntel}\"`,
-      `      binary \"${build.macosIntel.assetName}\", target: \"action-server\"`,
-      "    end",
-      "",
-    ] : []
-
     return [
       "cask \"action-server\" do",
       `  version \"${build.version}\"`,
@@ -2847,25 +2825,15 @@ end
       "    skip \"Updated by the tap's GitHub Actions workflow.\"",
       "  end",
       "",
-      "  on_macos do",
-      ...(!build.macosIntel ? ["    depends_on arch: :arm64"] : []),
-      "    on_arm do",
-      `      sha256 \"${build.macosArm.sha256}\"`,
-      `      url \"${urls.macosArm}\"`,
-      `      binary \"${build.macosArm.assetName}\", target: \"action-server\"`,
-      "    end",
-      "",
-      ...macIntelBlock,
-      "  end",
-      "",
       "  on_linux do",
+      "    depends_on arch: :x86_64",
       `    sha256 \"${build.linux.sha256}\"`,
       `    url \"${urls.linux}\"`,
       `    binary \"${build.linux.assetName}\", target: \"action-server\"`,
       "  end",
       "",
       "  name \"Action Server\"",
-      "  desc \"Action Server - Host AI agent actions via HTTP/MCP\"",
+      "  desc \"Action Server - Host AI agent actions via HTTP/MCP (Linux x86-64 only)\"",
       "  homepage \"https://github.com/joshyorko/actions\"",
       "",
       "  caveats <<~EOS",
@@ -2879,7 +2847,7 @@ end
       "      action-server version",
       "",
       "    Legacy 1.2.6 installs require: brew reinstall --cask joshyorko/tools/action-server",
-      "    Runtime binaries are unsigned; macOS builds are not notarized.",
+      "    Linux x86-64 only. Runtime binaries are unsigned; macOS is not supported by this cask.",
       "  EOS",
       "end",
       "",
@@ -3173,13 +3141,11 @@ end
             "action-server.rb",
             this.renderActionServerCaskWithUrls(build, {
               linux: `file:///artifacts/${build.linux.assetName}`,
-              macosArm: `file:///artifacts/${build.macosArm.assetName}`,
-              macosIntel: build.macosIntel ? `file:///artifacts/${build.macosIntel.assetName}` : undefined,
             }),
           ),
         )
 
-        let smoke = dag
+        const smoke = dag
           .container()
           .from(BREW_IMAGE)
           .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
@@ -3188,11 +3154,6 @@ end
           .withDirectory("/tap", smokeTap)
           .withFile("/tmp/legacy-action-server.rb", tap.file("dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"))
           .withFile(`/artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
-          .withFile(`/artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
-
-        if (build.macosIntel) {
-          smoke = smoke.withFile(`/artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
-        }
 
         return smoke.withExec([
             "bash",
@@ -4042,16 +4003,11 @@ end
         const renderedCask = this.renderActionServerCask(build, releaseTag)
         const release = this.actionServerReleaseMetadata(build)
 
-        let bundle = dag.directory()
+        const bundle = dag.directory()
           .withFile(`artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
-          .withFile(`artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
           .withFile("homebrew/action-server.rb", dag.file("action-server.rb", renderedCask))
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
-
-        if (build.macosIntel) {
-          bundle = bundle.withFile(`artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
-        }
 
         return bundle
       }

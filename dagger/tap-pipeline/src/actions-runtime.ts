@@ -17,9 +17,8 @@ export function resolveActionsRuntimeRelease(releases: ActionsRuntimeRelease[]) 
   if (!release) throw new Error("No stable Actions Runtime release found")
   const version = release.tag_name.slice("actions-runtime-".length)
   const linux = release.assets.find((asset) => asset.name === `${release.tag_name}-linux64`)
-  const macosArm = release.assets.find((asset) => asset.name === `${release.tag_name}-macos-arm64`)
-  if (!linux || !macosArm) throw new Error("Actions Runtime release is missing required Linux or macOS arm64 assets")
-  return { version, upstreamTag: release.tag_name, linux, macosArm }
+  if (!linux) throw new Error("Actions Runtime release is missing required Linux x86-64 asset")
+  return { version, upstreamTag: release.tag_name, linux }
 }
 
 export function verifyActionsRuntimeDigest(asset: ActionsRuntimeAsset, actual: string): string {

@@ -15,7 +15,7 @@ test("selects stable Runtime assets despite newer legacy, draft and prerelease e
   ])
   assert.equal(selected.version, "1.0.1")
   assert.equal(selected.linux.name, "actions-runtime-1.0.1-linux64")
-  assert.equal(selected.macosArm.name, "actions-runtime-1.0.1-macos-arm64")
+  assert.equal(Object.hasOwn(selected, "macosArm"), false)
 })
 
 test("fails closed for legacy-only releases and missing required assets", () => {
@@ -27,4 +27,11 @@ test("verifies upstream digest and rejects missing or mismatched checksums", () 
   assert.equal(verifyActionsRuntimeDigest(asset("runtime"), "a".repeat(64)), "a".repeat(64))
   assert.throws(() => verifyActionsRuntimeDigest(asset("runtime"), "b".repeat(64)), /checksum mismatch/)
   assert.throws(() => verifyActionsRuntimeDigest({ ...asset("runtime"), digest: undefined }, "a".repeat(64)), /SHA-256/)
+})
+
+test("accepts verified Linux-only Runtime1.1.0 without inventing Mac availability", () => {
+  const selected = resolveActionsRuntimeRelease([{ ...release("actions-runtime-1.1.0"), assets: [asset("actions-runtime-1.1.0-linux64")] }])
+  assert.equal(selected.version, "1.1.0")
+  assert.equal(selected.linux.name, "actions-runtime-1.1.0-linux64")
+  assert.deepEqual(Object.keys(selected).sort(), ["linux", "upstreamTag", "version"])
 })
