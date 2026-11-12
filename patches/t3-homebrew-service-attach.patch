@@ -106,7 +106,7 @@ index 0000000..df3a191
 +    localEnvironmentEnabled?: boolean;
 +  },
 +  check: (fixture: {
-+    run: Effect.Effect<void, unknown, Scope.Scope>;
++    run: Effect.Effect<void, Effect.Error<typeof DesktopApp.bootstrap>, Scope.Scope>;
 +    lock: NodeSqlite.DatabaseSync;
 +    events: string[];
 +    settings: DesktopAppSettings.DesktopAppSettings["Service"];
