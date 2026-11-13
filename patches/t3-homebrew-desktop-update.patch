@@ -522,7 +522,7 @@ index 14688e5..4f77bda 100644
          // Callers fall back to the channel's reason only when nothing else turns updates off.
          ...(Option.isSome(disabledReason) &&
          disabledReason.value === Option.getOrUndefined(channelBlockedReason(channel))
-@@ -708,19 +881,26 @@ export const make = Effect.gen(function* () {
+@@ -708,20 +881,27 @@ export const make = Effect.gen(function* () {
            onNone: () => ({}),
            onSome: (version) => ({ notAppliedVersion: version }),
          }),
@@ -543,6 +543,7 @@ index 14688e5..4f77bda 100644
 -      Ref.set(desktopState.quitting, false),
 -      Ref.set(installRunningBackendsRef, []),
 -      removeUpdateRestartMarker,
+-      removeUpdateInProgressMarker,
 -      removeInstallRecord,
 -    ],
 -    { discard: true },
@@ -553,20 +554,23 @@ index 14688e5..4f77bda 100644
 +    yield* Ref.set(installRunningBackendsRef, []);
 +    if (!homebrewManaged) {
 +      yield* removeUpdateRestartMarker;
++      yield* removeUpdateInProgressMarker;
 +      yield* removeInstallRecord;
 +    }
 +  });
 
    const recoverFailedInstall = Effect.fn("desktop.updates.recoverFailedInstall")(function* (
      message: string,
-@@ -733,8 +913,10 @@ export const make = Effect.gen(function* () {
+@@ -733,9 +914,11 @@ export const make = Effect.gen(function* () {
      if (!ownsRecovery) return;
 
      yield* Ref.set(desktopState.quitting, false);
 -    yield* removeUpdateRestartMarker;
+-    yield* removeUpdateInProgressMarker;
 -    yield* removeInstallRecord;
 +    if (!homebrewManaged) {
 +      yield* removeUpdateRestartMarker;
++      yield* removeUpdateInProgressMarker;
 +      yield* removeInstallRecord;
 +    }
      yield* Effect.gen(function* () {
@@ -581,15 +585,17 @@ index 14688e5..4f77bda 100644
                  !hasExpectedDownload
                ) {
                  return "refused" as const;
-@@ -808,9 +990,11 @@ export const make = Effect.gen(function* () {
+@@ -808,10 +992,12 @@ export const make = Effect.gen(function* () {
          yield* Ref.set(installRunningBackendsRef, []);
 
          return yield* Effect.gen(function* () {
 -          yield* writeUpdateRestartMarker;
+-          yield* writeUpdateInProgressMarker;
            const { downloadedVersion } = yield* Ref.get(updateStateRef);
 -          if (downloadedVersion !== null) yield* writeInstallRecord(downloadedVersion);
 +          if (!homebrewManaged) {
 +            yield* writeUpdateRestartMarker;
++            yield* writeUpdateInProgressMarker;
 +            if (downloadedVersion !== null) yield* writeInstallRecord(downloadedVersion);
 +          }
            // Stop pooled backends and SSH tunnels before quitAndInstall can outrun their scope finalizers.

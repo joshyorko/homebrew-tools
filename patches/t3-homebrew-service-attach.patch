@@ -376,13 +376,13 @@ diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/b
 index 82d542b..f4ff24f 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
-@@ -16,8 +16,7 @@ import { ChildProcessSpawner } from "effect/process";
+@@ -16,8 +16,8 @@ import { ChildProcessSpawner } from "effect/process";
 
  import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
  import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 -import * as DesktopHomeOwner from "./DesktopHomeOwner.ts";
--import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 +import * as HomebrewServiceAttachment from "./HomebrewServiceAttachment.ts";
+ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
  import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -394,7 +394,7 @@ index 82d542b..f4ff24f 100644
 
  const { logWarning: logBackendPoolWarning } =
    DesktopObservability.makeComponentLogger("desktop-backend-pool");
-@@ -109,14 +107,13 @@ export const layer = Layer.effect(
+@@ -109,13 +107,12 @@ export const layer = Layer.effect(
      const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
      const desktopWindow = yield* DesktopWindow.DesktopWindow;
      const electronDialog = yield* ElectronDialog.ElectronDialog;
@@ -410,10 +410,7 @@ index 82d542b..f4ff24f 100644
 +      Effect.Services<typeof HomebrewServiceAttachment.recover>
      >();
 
-     // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
-@@ -179,17 +176,7 @@ export const layer = Layer.effect(
-         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
-       onShutdown: () => desktopWindow.handleBackendNotReady,
+@@ -181,15 +178,5 @@ export const layer = Layer.effect(
        onPreflightFailed: handlePrimaryPreflightFailure,
 -      onStateDirOwned: () =>
 -        DesktopHomeOwner.readLiveHomeOwner().pipe(
@@ -1183,10 +1180,11 @@ index e1af3be..e61c687 100644
    scopes: authScopesFlag(AuthStandardClientScopes),
    ttl: ttlFlag,
    label: labelFlag,
-@@ -499,6 +532,16 @@ export const pairCommand = Command.make("pair", {
+@@ -499,7 +532,17 @@ export const pairCommand = Command.make("pair", {
        const logLevel = Option.getOrElse(cliLogLevel, () => "Warn" as const);
 
-       const target = yield* discoverPairTarget(Option.getOrUndefined(flags.baseDir));
+       const explicitBaseDir = Option.getOrUndefined(flags.baseDir);
+       const target = yield* discoverPairTarget(explicitBaseDir);
 +      const expectedHomebrewOwner = Option.getOrUndefined(flags.expectedHomebrewOwner);
 +      const verifiedOwner = yield* verifyHomebrewOwner(join(target.baseDir, target.variant), expectedHomebrewOwner);
 +      if (verifiedOwner !== undefined && (
