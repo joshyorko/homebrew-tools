@@ -1,5 +1,5 @@
 cask "action-server" do
-  version "1.1.0"
+  version "1.1.1"
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."
@@ -7,9 +7,9 @@ cask "action-server" do
 
   on_linux do
     depends_on arch: :x86_64
-    sha256 "e163684dc296f632a177e95d4f355ac6d4f2299c62aab53789f43a642f41c0f1"
-    url "https://github.com/joshyorko/homebrew-tools/releases/download/action-server-1.1.0/actions-runtime-1.1.0-linux64"
-    binary "actions-runtime-1.1.0-linux64", target: "action-server"
+    sha256 "8c27fbed198aef16c98cdc7a45230fbc4708b06dff1c3523aeddfcdf7840efd0"
+    url "https://github.com/joshyorko/homebrew-tools/releases/download/action-server-1.1.1/actions-runtime-1.1.1-linux64"
+    binary "actions-runtime-1.1.1-linux64", target: "action-server"
   end
 
   name "Action Server"
