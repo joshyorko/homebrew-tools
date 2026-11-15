@@ -604,11 +604,11 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
            );
 +          if (homebrewManaged) {
 +            if (downloadedVersion === null) {
-+              return yield* Effect.fail(new HomebrewDesktopUpdateError({ message: "The prepared Homebrew version is missing.", cause: undefined }));
++              return yield* new HomebrewDesktopUpdateError({ message: "The prepared Homebrew version is missing.", cause: undefined });
 +            }
 +            const electronApp = yield* Effect.serviceOption(ElectronApp.ElectronApp);
 +            if (Option.isNone(electronApp)) {
-+              return yield* Effect.fail(new HomebrewDesktopUpdateError({ message: "Electron could not restart T3 Code.", cause: undefined }));
++              return yield* new HomebrewDesktopUpdateError({ message: "Electron could not restart T3 Code.", cause: undefined });
 +            }
 +            yield* Effect.tryPromise({
 +              try: () =>
