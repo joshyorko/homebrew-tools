@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..67398cc85ec61814b6b90a75423b84e684383de6
 --- /dev/null
 +++ b/apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,265 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import { DesktopUpdateStateSchema } from "@t3tools/contracts";
 +import * as Effect from "effect/Effect";
@@ -24,6 +24,7 @@ index 0000000000000000000000000000000000000000..67398cc85ec61814b6b90a75423b84e6
 +  root: string,
 +  status: "current" | "available",
 +  failPrepare = false,
++  mismatch?: "check" | "prepare",
 +) {
 +  const availableVersion =
 +    status === "current" ? HOMEBREW_CURRENT_VERSION : HOMEBREW_AVAILABLE_VERSION;
@@ -36,8 +37,12 @@ index 0000000000000000000000000000000000000000..67398cc85ec61814b6b90a75423b84e6
 +    formula: availableVersion,
 +    cask: availableVersion,
 +  });
-+  const check = JSON.stringify({ status, ...JSON.parse(fields) });
-+  const prepare = JSON.stringify({ status: "prepared", ...JSON.parse(fields) });
++  const check = JSON.stringify({ status, ...JSON.parse(fields),
++    ...(mismatch === "check" ? { currentVersion: HOMEBREW_AVAILABLE_VERSION } : {}),
++  });
++  const prepare = JSON.stringify({ status: "prepared", ...JSON.parse(fields),
++    ...(mismatch === "prepare" ? { currentVersion: HOMEBREW_AVAILABLE_VERSION } : {}),
++  });
 +  writeFileSync(
 +    join(root, "t3-homebrew-update.sh"),
 +    `#!/bin/bash
@@ -209,6 +214,42 @@ index 0000000000000000000000000000000000000000..67398cc85ec61814b6b90a75423b84e6
 +      Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
 +    );
 +  });
++  for (const phase of ["check", "prepare"] as const) {
++    it.effect(`recovers from a mismatched ${phase} response and permits a retry`, () => {
++      const root = mkdtempSync(join(tmpdir(), "t3-homebrew-mismatch-"));
++      writeHomebrewHelper(root, "available", false, phase);
++      const harness = makeHarness({
++        platform: "linux",
++        appVersion: "0.1.7",
++        homebrewResourcePath: root,
++        env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" },
++      });
++      return Effect.scoped(Effect.gen(function* () {
++        const updates = yield* DesktopUpdates.DesktopUpdates;
++        yield* updates.configure;
++        if (phase === "check") {
++          assert.isFalse((yield* updates.check("manual")).checked);
++        } else {
++          assert.isTrue((yield* updates.check("manual")).checked);
++          const result = yield* updates.download;
++          assert.isTrue(result.accepted);
++          assert.isFalse(result.completed);
++        }
++        const failed = yield* updates.getState;
++        assert.equal(failed.errorContext, phase === "check" ? "check" : "download");
++        assert.isTrue(failed.canRetry);
++        assert.equal(failed.status, phase === "check" ? "error" : "available");
++        assert.notInclude(harness.installSteps, "electronApp.quit");
++        writeHomebrewHelper(root, "available");
++        assert.isTrue((yield* updates.check("manual")).checked);
++        if (phase === "prepare") assert.isTrue((yield* updates.download).completed);
++      })).pipe(
++        Effect.provide(Layer.merge(TestClock.layer(), harness.layer)),
++        Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
++      );
++    });
++  }
++
 +  for (const identity of [null, "invalid JSON"]) {
 +    it.effect(`disables Homebrew updates for ${identity === null ? "missing" : "invalid"} build identity`, () => {
 +      const root = mkdtempSync(join(tmpdir(), "t3-homebrew-identity-"));
@@ -353,7 +394,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..aef27712c4301bdea232af583117a045
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -557,6 +612,40 @@ export const make = Effect.gen(function* () {
+@@ -557,6 +612,44 @@ export const make = Effect.gen(function* () {
      });
    });
  
@@ -370,11 +411,15 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..aef27712c4301bdea232af583117a045
 +      }).pipe(
 +        Effect.flatMap((result) =>
 +          Effect.gen(function* () {
-+            const transition = stateAfterHomebrewCheck({
-+              state: yield* Ref.get(updateStateRef),
-+              result,
-+              packageVersion: homebrewPackageVersion,
-+              checkedAt,
++            const currentState = yield* Ref.get(updateStateRef);
++            const transition = yield* Effect.try({
++              try: () => stateAfterHomebrewCheck({
++                state: currentState,
++                result,
++                packageVersion: homebrewPackageVersion,
++                checkedAt,
++              }),
++              catch: (cause) => cause instanceof Error ? cause : new Error("Invalid Homebrew update response.", { cause }),
 +            });
 +            yield* Ref.set(homebrewUpdateMetadataRef, Option.some(transition.metadata));
 +            yield* updateState(() => transition.state);
@@ -394,7 +439,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..aef27712c4301bdea232af583117a045
    const checkForUpdates = Effect.fn("desktop.updates.checkForUpdates")(function* (
      reason: string,
      actionReservation: "acquire" | "held" = "acquire",
-@@ -619,12 +708,45 @@ export const make = Effect.gen(function* () {
+@@ -619,12 +708,49 @@ export const make = Effect.gen(function* () {
          );
    });
  
@@ -410,11 +455,15 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..aef27712c4301bdea232af583117a045
 +    }).pipe(
 +      Effect.flatMap((prepared) =>
 +        Effect.gen(function* () {
-+          const transition = stateAfterHomebrewPreparation({
-+            state: yield* Ref.get(updateStateRef),
-+            prepared,
-+            packageVersion: homebrewPackageVersion,
-+            expectedVersion: version,
++          const currentState = yield* Ref.get(updateStateRef);
++          const transition = yield* Effect.try({
++            try: () => stateAfterHomebrewPreparation({
++              state: currentState,
++              prepared,
++              packageVersion: homebrewPackageVersion,
++              expectedVersion: version,
++            }),
++            catch: (cause) => cause instanceof Error ? cause : new Error("Invalid Homebrew update response.", { cause }),
 +          });
 +          yield* Ref.set(homebrewUpdateMetadataRef, Option.some(transition.metadata));
 +          const state = yield* updateState(() => transition.state);
@@ -1146,7 +1195,7 @@ index 0000000000000000000000000000000000000000..beefeb13fc1b5fb53cb7215d454359f3
 +  }
 +}
 +
-+export function createHomebrewDesktopUpdateProvider(input: {
++export function createHomebrewDesktopUpdates(input: {
 +  readonly helperPath: string;
 +  readonly stateHome: string;
 +  readonly homeDirectory: string;
