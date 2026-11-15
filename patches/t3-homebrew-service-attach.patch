@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..92aeb8b9a9ac0eb4ac6542cedb828dc444c6b692
 --- /dev/null
 +++ b/apps/desktop/src/app/DesktopApp.homebrew.test.ts
-@@ -0,0 +1,331 @@
+@@ -0,0 +1,329 @@
 +import * as NodeSqlite from "node:sqlite";
 +import * as NodeServices from "@effect/platform-node/NodeServices";
 +import { assert, describe, it } from "@effect/vitest";
@@ -256,9 +256,8 @@ index 0000000000000000000000000000000000000000..92aeb8b9a9ac0eb4ac6542cedb828dc4
 +    yield* check({
 +      run: DesktopApp.startLocalBackend.pipe(
 +        Effect.flatMap((backendStarted) => DesktopApp.bootstrap(backendStarted)),
-+        Effect.provide(layer),
 +        Effect.provideService(DesktopAppSettings.DesktopAppSettings, settings),
-+        Effect.provide(NodeServices.layer),
++        Effect.provide(layer.pipe(Layer.provideMerge(NodeServices.layer))),
 +      ),
 +      lock,
 +      events,
@@ -269,9 +268,8 @@ index 0000000000000000000000000000000000000000..92aeb8b9a9ac0eb4ac6542cedb828dc4
 +      DesktopAppSettings.layerTest({
 +        ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
 +        localEnvironmentEnabled: input.localEnvironmentEnabled ?? true,
-+      }),
++      }).pipe(Layer.provideMerge(NodeServices.layer)),
 +    ),
-+    Effect.provide(NodeServices.layer),
 +  );
 +
 +describe("Homebrew service recovery during actual Desktop bootstrap", () => {
