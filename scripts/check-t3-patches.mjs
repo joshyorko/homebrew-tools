@@ -26,8 +26,10 @@ export function checkT3Patches({ sourceRef, packageIds, repository = "https://gi
     if (fetched !== sourceRef) throw new Error(`T3 source mismatch: selected ${sourceRef}, fetched ${fetched}`)
     for (const variant of variants) {
       const tree = join(root, variant)
-      const paths = patchesForVariant(variant).flatMap((name) =>
-        [...readFileSync(join(patchRoot, name), "utf8").matchAll(/^--- a\/(.+)$/gm)].map((match) => `/${match[1]}`))
+      const paths = [...new Set(patchesForVariant(variant).flatMap((name) => {
+        const patch = readFileSync(join(patchRoot, name), "utf8")
+        return [...patch.matchAll(/^(?:--- a\/|\+\+\+ b\/)(.+)$/gm)].map((match) => `/${match[1]}`)
+      }))]
       git(["--git-dir", objects, "worktree", "add", "--detach", "--no-checkout", tree, sourceRef])
       git(["-C", tree, "sparse-checkout", "set", "--no-cone", "--stdin"], `${paths.join("\n")}\n`)
       git(["-C", tree, "checkout", "--detach", "--quiet", sourceRef])

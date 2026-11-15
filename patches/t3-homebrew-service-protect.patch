@@ -1,28 +1,78 @@
-diff --git a/apps/server/src/cli/service.test.ts b/apps/server/src/cli/service.test.ts
-index 900c41e..a67ce84 100644
---- a/apps/server/src/cli/service.test.ts
-+++ b/apps/server/src/cli/service.test.ts
-@@ -12,8 +12,16 @@ import { afterEach, vi } from "vite-plus/test";
- 
- import packageJson from "../../package.json" with { type: "json" };
- import * as BootService from "../cloud/bootService.ts";
+diff --git a/apps/server/src/cli/service.homebrew.test.ts b/apps/server/src/cli/service.homebrew.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..32c8d475858caeb5597e7ccec40efc5aa26e13c1
+--- /dev/null
++++ b/apps/server/src/cli/service.homebrew.test.ts
+@@ -0,0 +1,197 @@
++import * as NodeServices from "@effect/platform-node/NodeServices";
++import { expect, it } from "@effect/vitest";
++import * as HostProcess from "@t3tools/shared/HostProcess";
++import * as NetService from "@t3tools/shared/Net";
++import * as ConfigProvider from "effect/ConfigProvider";
++import * as Effect from "effect/Effect";
++import * as FileSystem from "effect/FileSystem";
++import * as Layer from "effect/Layer";
++import * as TestConsole from "effect/testing/TestConsole";
++import { Command } from "effect/cli";
++import { afterEach, vi } from "vite-plus/test";
++
++import packageJson from "../../package.json" with { type: "json" };
++import * as BootService from "../cloud/bootService.ts";
 +import * as ServiceProtection from "../cloud/serviceProtection.ts";
 +import * as ServiceProtectionTarget from "../cloud/serviceProtectionTarget.ts";
- import { serviceCommand } from "./service.ts";
- 
++import { serviceCommand } from "./service.ts";
++
 +vi.mock("../cloud/serviceProtection.ts", async (importOriginal) => {
 +  const actual = await importOriginal<typeof import("../cloud/serviceProtection.ts")>();
 +  const effect = await import("effect/Effect");
 +  return { ...actual, detectRemoteAccessUnits: effect.succeed(["ssh.service"]) };
 +});
 +
- afterEach(() => vi.restoreAllMocks());
- 
- const status = {
-@@ -258,4 +266,131 @@ it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("service commands
-       expect(output).toContain(input.otherHome ? "--base-dir '/home/me/.t3'" : "Removed");
-     }),
-   );
++afterEach(() => vi.restoreAllMocks());
++
++const status = {
++  supported: true,
++  installed: true,
++  current: true,
++  unitPath: "/home/me/.config/systemd/user/t3code.service",
++  logPath: "/home/me/.t3/userdata/logs/boot-service.log",
++} as const;
++
++const newerServiceStatus = { ...status, current: false, installedVersion: "999.0.0" };
++
++function makeTestService(
++  serviceStatus: BootService.BootServiceStatus,
++  restartOutcome: "restarted" | "queued" = "restarted",
++) {
++  const installOptions: Array<Parameters<BootService.BootService["Service"]["install"]>[0]> = [];
++  const restarts: Array<true> = [];
++  const uninstalls: Array<true> = [];
++  const service = BootService.BootService.of({
++    status: Effect.succeed(serviceStatus),
++    withStopped: (operation) => operation,
++    restart: Effect.sync(() => {
++      restarts.push(true);
++      return serviceStatus.installed ? restartOutcome : "skipped";
++    }),
++    install: (options) =>
++      Effect.sync(() => {
++        installOptions.push(options);
++        return {
++          program: ["/test/t3/runtime/versions/1.0.0/t3", "__service-launcher"],
++          baseDir: "/test/t3",
++          unitPath: serviceStatus.unitPath,
++          logPath: serviceStatus.logPath,
++        };
++      }),
++    uninstall: Effect.sync(() => {
++      uninstalls.push(true);
++      return serviceStatus.installed;
++    }),
++  });
++  return { service, installOptions, restarts, uninstalls };
++}
++
++it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("Homebrew service protection", (it) => {
 +  it.effect.each([
 +    { unit: "t3code.service", state: "running", restartCommand: "t3 service restart" },
 +    {
@@ -150,7 +200,8 @@ index 900c41e..a67ce84 100644
 +      expect(restarts).toEqual([]);
 +    }),
 +  );
- });
++});
+
 diff --git a/apps/server/src/cli/service.ts b/apps/server/src/cli/service.ts
 index ce43154..d179f08 100644
 --- a/apps/server/src/cli/service.ts
