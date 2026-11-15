@@ -1374,11 +1374,13 @@ end
         "node", "/tap/scripts/t3-source-patches.mjs",
         "--source", "/upstream", "--source-ref", commit, "--variant", "cli",
       ])
+      .withExec(["bash", "-lc", "test -f apps/server/src/cli/service.homebrew.test.ts || { echo 'Required Homebrew CLI acceptance test missing.' >&2; exit 1; }"])
       .withExec([
         "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
         "--maxWorkers=1",
         "src/cloud/serviceProtection.test.ts",
         "src/cloud/serviceProtectionTarget.test.ts",
+        "src/cli/service.homebrew.test.ts",
         "src/cli/service.test.ts",
       ])
       .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
@@ -2577,6 +2579,12 @@ end
       .withWorkdir("/upstream")
       .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
       .withExec(["pnpm", "install", "--frozen-lockfile"])
+      .withExec(["bash", "-lc", [
+        "set -euo pipefail",
+        "for file in apps/desktop/src/app/DesktopApp.homebrew.test.ts apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts apps/desktop/src/backend/HomebrewServiceOwnership.test.ts apps/desktop/src/backend/HomebrewServiceRecovery.test.ts apps/desktop/src/backend/DesktopBackendPool.test.ts packages/shared/src/homebrewServerOwner.test.ts apps/server/src/cli/pair.test.ts apps/web/src/components/homebrewDesktopUpdate.logic.test.ts apps/web/src/components/desktopUpdate.logic.test.ts; do",
+        "  test -f \"$file\" || { echo \"Required Homebrew acceptance test missing: $file\" >&2; exit 1; }",
+        "done",
+      ].join("\n")])
       .withExec([
         "pnpm",
         "exec",
@@ -2585,8 +2593,8 @@ end
         "run",
         "--passWithNoTests",
         "apps/desktop/src/app/DesktopApp.homebrew.test.ts",
-        "apps/desktop/src/updates/HomebrewDesktopUpdateProvider.test.ts",
-        "apps/desktop/src/updates/DesktopUpdates.test.ts",
+        "apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts",
+        "apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts",
         "apps/desktop/src/backend/HomebrewServiceOwnership.test.ts",
         "apps/desktop/src/backend/HomebrewServiceRecovery.test.ts",
         "apps/desktop/src/backend/DesktopBackendPool.test.ts",
@@ -2595,7 +2603,7 @@ end
         "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
         "apps/web/src/components/desktopUpdate.logic.test.ts",
       ])
-      .withExec(["node", "/tap/scripts/check-t3-source-types.mjs", "/upstream", "/tap/patches/t3-homebrew-service-attach.patch", "/tmp/t3-source-typechecks"])
+      .withExec(["node", "/tap/scripts/check-t3-source-types.mjs", "/upstream", "/tmp/t3-source-typechecks", "/tap/patches/t3-homebrew-desktop-update.patch", "/tap/patches/t3-homebrew-service-attach.patch"])
       .withExec([
         "pnpm",
         "dist:desktop:linux",
