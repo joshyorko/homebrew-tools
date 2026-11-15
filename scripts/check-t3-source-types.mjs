@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process"
-import { readFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -31,14 +31,27 @@ export function regressions(baseline, current, changedFiles) {
   })
 }
 
-function check(source, patch, reports) {
+function check(source, reports, patches) {
   mkdirSync(reports, { recursive: true })
   const packages = [
     ["desktop", "@t3tools/desktop", "apps/desktop/"],
+    ["web", "@t3tools/web", "apps/web/"],
+    ["contracts", "@t3tools/contracts", "packages/contracts/"],
     ["server", "t3", "apps/server/"],
     ["shared", "@t3tools/shared", "packages/shared/"],
   ]
-  const changed = [...readFileSync(patch, "utf8").matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1])
+  const homebrewOwnedFiles = new Set([
+    "apps/desktop/src/updates/HomebrewDesktopUpdates.ts",
+    "apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts",
+    "apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts",
+    "apps/desktop/src/updates/homebrewUpdatesTestHarness.ts",
+    "apps/desktop/src/app/DesktopApp.homebrew.test.ts",
+    "apps/web/src/components/homebrewDesktopUpdate.logic.ts",
+    "apps/web/src/components/sidebar/useHomebrewUpdateResult.ts",
+  ])
+  for (const file of homebrewOwnedFiles) {
+    if (!existsSync(resolve(source, file))) throw new Error(`Required Homebrew source file is missing: ${file}`)
+  }
   const run = (stage) => packages.map(([label, , prefix]) => {
     const freshState = mkdtempSync(resolve(reports, `${stage}-${label}-`))
     const result = spawnSync("pnpm", ["exec", "effect-tsgo", "tsrs", "--noEmit", "--pretty", "false",
@@ -54,26 +67,31 @@ function check(source, patch, reports) {
     return errors
   })
 
-  execFileSync("git", ["apply", "--reverse", "--check", patch], { cwd: source })
-  execFileSync("git", ["apply", "--reverse", patch], { cwd: source })
+  for (const patch of [...patches].reverse()) {
+    execFileSync("git", ["apply", "--reverse", "--check", patch], { cwd: source })
+    execFileSync("git", ["apply", "--reverse", patch], { cwd: source })
+  }
   let baseline
-  try { baseline = run("updater-only") }
-  finally { execFileSync("git", ["apply", patch], { cwd: source }) }
-  const current = run("service-attach")
+  try { baseline = run("upstream") }
+  finally {
+    for (const patch of patches) execFileSync("git", ["apply", patch], { cwd: source })
+  }
+  const current = run("homebrew")
   const report = packages.map(([label, , prefix], index) => {
-    const touched = new Set(changed.filter((file) => file.startsWith(prefix)).map((file) => file.slice(prefix.length)))
-    const added = regressions(baseline[index], current[index], touched)
+    const owned = new Set([...homebrewOwnedFiles].filter((file) => file.startsWith(prefix)).map((file) => file.slice(prefix.length)))
+    const added = regressions(baseline[index], current[index], owned)
+    const ownedDiagnostics = current[index].filter((item) => owned.has(item.file))
     return { package: label, baselineErrors: baseline[index].length, currentErrors: current[index].length,
-      regressions: added, inherited: current[index].filter((item) => !added.includes(item)) }
+      regressions: added, ownedDiagnostics, inherited: current[index].filter((item) => !added.includes(item)) }
   })
   writeFileSync(resolve(reports, "report.json"), JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report, null, 2))
   if (report.some((entry) => entry.regressions.length > 0)) throw new Error("T3 source type-check regressions")
-  console.log("No type-check errors in attachment files and no new errors elsewhere; inherited diagnostics are listed above.")
+  console.log("No diagnostics in Homebrew-owned modules and no increased diagnostics elsewhere; inherited diagnostics are listed above.")
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [source, patch, reports] = process.argv.slice(2)
-  if (!source || !patch || !reports) throw new Error("Usage: check-t3-source-types.mjs source patch reports")
-  check(resolve(source), resolve(patch), resolve(reports))
+  const [source, reports, ...patches] = process.argv.slice(2)
+  if (!source || !reports || patches.length === 0) throw new Error("Usage: check-t3-source-types.mjs source reports patch [patch ...]")
+  check(resolve(source), resolve(reports), patches.map((patch) => resolve(patch)))
 }

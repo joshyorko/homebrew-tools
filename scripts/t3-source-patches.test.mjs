@@ -19,15 +19,15 @@ function fixture(run) {
     mkdirSync(patches)
     const git = (...args) => execFileSync("git", ["-C", source, ...args], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 10_000 })
     git("init", "-q")
-    writeFileSync(join(source, "entry.txt"), "before\nbase\nafter\n")
+    writeFileSync(join(source, "entry.txt"), "lead\nbefore\nbase\nafter\ntrail\n")
     git("add", ".")
     git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture")
     const sha = git("rev-parse", "HEAD").trim()
-    const patch = (name, from, to) => writeFileSync(join(patches, name), `diff --git a/entry.txt b/entry.txt\n--- a/entry.txt\n+++ b/entry.txt\n@@ -1,3 +1,3 @@\n before\n-${from}\n+${to}\n after\n`)
+    const patch = (name, from, to) => writeFileSync(join(patches, name), `diff --git a/entry.txt b/entry.txt\n--- a/entry.txt\n+++ b/entry.txt\n@@ -2,3 +2,3 @@\n before\n-${from}\n+${to}\n after\n`)
     patch("t3-homebrew-desktop-update.patch", "base", "desktop")
     patch("t3-homebrew-service-attach.patch", "desktop", "attached")
     patch("t3-homebrew-service-protect.patch", "base", "cli")
-    run({ root, source, patches, sha, patch })
+    run({ root, source, patches, sha, patch, git })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -45,7 +45,7 @@ test("real Git applies both variants to independent pristine trees in production
   const attachment = result.stdout.indexOf("t3-homebrew-service-attach.patch")
   assert.ok(updater >= 0 && updater < attachment)
   assert.match(result.stdout, /t3-homebrew-service-protect\.patch/)
-  assert.equal(readFileSync(join(f.source, "entry.txt"), "utf8"), "before\nbase\nafter\n")
+  assert.equal(readFileSync(join(f.source, "entry.txt"), "utf8"), "lead\nbefore\nbase\nafter\ntrail\n")
 }))
 
 test("incompatible context names the selected SHA, patch, file and failing hunk", () => fixture((f) => {
@@ -56,6 +56,72 @@ test("incompatible context names the selected SHA, patch, file and failing hunk"
   assert.match(result.stderr, /t3-homebrew-service-attach\.patch/)
   assert.match(result.stderr, /entry\.txt/)
   assert.match(result.stderr, /hunk|patch failed/i)
+}))
+
+test("sparse preflight includes old and new paths and rejects an owned-file collision", () => fixture((f) => {
+  writeFileSync(join(f.source, "owned.ts"), "export const upstreamOwned = true\n")
+  f.git("add", "owned.ts")
+  f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "upstream collision")
+  f.sha = f.git("rev-parse", "HEAD").trim()
+  writeFileSync(join(f.patches, "t3-homebrew-desktop-update.patch"), [
+    "diff --git a/entry.txt b/entry.txt",
+    "--- a/entry.txt",
+    "+++ b/entry.txt",
+    "@@ -2,3 +2,3 @@",
+    " before",
+    "-base",
+    "+desktop",
+    " after",
+    "diff --git a/owned.ts b/owned.ts",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/owned.ts",
+    "@@ -0,0 +1 @@",
+    "+export const tapOwned = true",
+    "",
+  ].join("\n"))
+  const result = check(f)
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /owned\.ts/)
+  assert.match(result.stderr, /already exists|patch does not apply|patch failed/i)
+}))
+
+test("a changed DesktopUpdates hook signature remains incompatible", () => fixture((f) => {
+  const hook = join(f.source, "apps/desktop/src/updates/DesktopUpdates.ts")
+  mkdirSync(join(f.source, "apps/desktop/src/updates"), { recursive: true })
+  writeFileSync(hook, 'export const checkForUpdates = (reason: "manual") => reason\n')
+  f.git("add", "apps/desktop/src/updates/DesktopUpdates.ts")
+  f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "upstream hook")
+  writeFileSync(hook, 'export const checkForUpdates = (reason: "manual" | "startup" | "poll") => reason\n')
+  f.git("add", "apps/desktop/src/updates/DesktopUpdates.ts")
+  f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "changed upstream hook")
+  f.sha = f.git("rev-parse", "HEAD").trim()
+  writeFileSync(join(f.patches, "t3-homebrew-desktop-update.patch"), [
+    "diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts",
+    "--- a/apps/desktop/src/updates/DesktopUpdates.ts",
+    "+++ b/apps/desktop/src/updates/DesktopUpdates.ts",
+    "@@ -1 +1 @@",
+    '-export const checkForUpdates = (reason: "manual") => reason',
+    '+export const checkForUpdates = (reason: "manual" | "startup") => reason',
+    "",
+  ].join("\n"))
+  const result = check(f)
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /DesktopUpdates\.ts/)
+  assert.match(result.stderr, /patch failed|does not apply/i)
+}))
+
+test("unrelated comments, test imports, and line shifts do not break a compatible patch", () => fixture((f) => {
+  writeFileSync(join(f.source, "unused.test.ts"), "import { test } from \"node:test\"; // harmless\n")
+  const hookPath = join(f.source, "apps/web/src/components/sidebar/useUpdateEverything.ts")
+  mkdirSync(join(f.source, "apps/web/src/components/sidebar"), { recursive: true })
+  writeFileSync(hookPath, "export const unrelatedStagingEdit = true // preserved\n")
+  writeFileSync(join(f.source, "entry.txt"), "// harmless comment shifts hunk\nlead\nbefore\nbase\nafter\ntrail\n")
+  f.git("add", "unused.test.ts", "apps/web/src/components/sidebar/useUpdateEverything.ts", "entry.txt")
+  f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "unrelated comment")
+  f.sha = f.git("rev-parse", "HEAD").trim()
+  const result = check(f)
+  assert.equal(result.status, 0, result.stderr)
 }))
 
 test("failure stops the resolve sequence before either package build is admitted", () => fixture((f) => {
@@ -76,7 +142,7 @@ test("the same application routine works after packaging removes Git metadata", 
   const result = spawnSync(process.execPath, [routine, "--source", f.source,
     "--source-ref", f.sha, "--variant", "desktop", "--patch-root", f.patches], { encoding: "utf8", timeout: 10_000 })
   assert.equal(result.status, 0, result.stderr)
-  assert.equal(readFileSync(join(f.source, "entry.txt"), "utf8"), "before\nattached\nafter\n")
+  assert.equal(readFileSync(join(f.source, "entry.txt"), "utf8"), "lead\nbefore\nattached\nafter\ntrail\n")
 }))
 
 test("moving source refs are rejected before Git or package work", () => {
@@ -95,7 +161,7 @@ test("manual acceptance rejects moving refs before the Dagger action and preserv
     ["workflow_dispatch", "26e769d6c4fd955429595828ac572efeca006168", true],
     ["pull_request", "", true],
   ]) {
-    const result = spawnSync("bash", ["-euo", "pipefail", "-c", run], {
+    const result = spawnSync("/usr/bin/bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", run], {
       encoding: "utf8", timeout: 5000,
       env: { ...process.env, GITHUB_EVENT_NAME: event, T3_SOURCE_REF: ref },
     })

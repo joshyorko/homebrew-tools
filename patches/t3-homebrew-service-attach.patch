@@ -1,9 +1,9 @@
 diff --git a/apps/desktop/src/app/DesktopApp.homebrew.test.ts b/apps/desktop/src/app/DesktopApp.homebrew.test.ts
 new file mode 100644
-index 0000000..df3a191
+index 0000000000000000000000000000000000000000..94da8884163ec49c6999a9a9f4c712738d9c4ed8
 --- /dev/null
 +++ b/apps/desktop/src/app/DesktopApp.homebrew.test.ts
-@@ -0,0 +1,330 @@
+@@ -0,0 +1,331 @@
 +import * as NodeSqlite from "node:sqlite";
 +import * as NodeServices from "@effect/platform-node/NodeServices";
 +import { assert, describe, it } from "@effect/vitest";
@@ -254,7 +254,8 @@ index 0000000..df3a191
 +      ),
 +    );
 +    yield* check({
-+      run: DesktopApp.bootstrap.pipe(
++      run: DesktopApp.startLocalBackend.pipe(
++        Effect.flatMap((backendStarted) => DesktopApp.bootstrap(backendStarted)),
 +        Effect.provide(layer),
 +        Effect.provideService(DesktopAppSettings.DesktopAppSettings, settings),
 +        Effect.provide(NodeServices.layer),
@@ -282,7 +283,7 @@ index 0000000..df3a191
 +        assert.deepEqual(f.events, []);
 +        yield* TestClock.adjust("6 seconds");
 +        yield* Fiber.join(boot);
-+        assert.deepEqual(f.events, ["recovery-dialog", "backup", "window"]);
++        assert.deepEqual(f.events, ["recovery-dialog", "backup", "window", "window"]);
 +        assert.isFalse((yield* f.settings.get).localEnvironmentEnabled);
 +        assert.deepEqual(desktop.links, ["t3code://pair?fixture"]);
 +      }),
@@ -335,7 +336,7 @@ index 0000000..df3a191
 +  );
 +});
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 7ebeaa7..ea5b141 100644
+index 0e7f949bc042cfc8152984b6140a63d83647bb18..bce6d8584b9b94be8b929ea6b06be3cc82c4cd4e 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -22,6 +22,7 @@ import * as PreviewPasskeys from "../preview/Passkeys.ts";
@@ -343,19 +344,19 @@ index 7ebeaa7..ea5b141 100644
  import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
  import * as DesktopHomeOwner from "../backend/DesktopHomeOwner.ts";
 +import * as HomebrewServiceAttachment from "../backend/HomebrewServiceAttachment.ts";
+ import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
  import * as DesktopEnvironment from "./DesktopEnvironment.ts";
  import * as DesktopLegacyLocalStorage from "./DesktopLegacyLocalStorage.ts";
- import * as DesktopLifecycle from "./DesktopLifecycle.ts";
-@@ -168,7 +169,7 @@ const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
-   },
+@@ -170,7 +171,7 @@ const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
  );
-
--const bootstrap = Effect.gen(function* () {
-+export const bootstrap = Effect.gen(function* () {
+ 
+ // Spawns the local backend as soon as the protocol, IPC, and legacy storage that every window needs exist.
+-const startLocalBackend = Effect.gen(function* () {
++export const startLocalBackend = Effect.gen(function* () {
    const state = yield* DesktopState.DesktopState;
    const environment = yield* DesktopEnvironment.DesktopEnvironment;
    const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
-@@ -229,15 +230,7 @@ const bootstrap = Effect.gen(function* () {
+@@ -210,15 +211,7 @@ const startLocalBackend = Effect.gen(function* () {
      !(settings.wslOnly && settings.wslBackendEnabled) &&
      !(yield* DesktopHomeOwner.awaitHomeOwnershipRelease())
    ) {
@@ -367,34 +368,42 @@ index 7ebeaa7..ea5b141 100644
 -      "This T3 home is unavailable",
 -      DesktopHomeOwner.homeOwnedMessage(owner),
 -    );
--    return yield* (yield* ElectronApp.ElectronApp).quit;
-+    return yield* HomebrewServiceAttachment.recover;
+-    yield* (yield* ElectronApp.ElectronApp).quit;
++    yield* HomebrewServiceAttachment.recover;
+     return false;
    }
-
-   const backendPortSelection = yield* resolveDesktopBackendPort(environment.configuredBackendPort);
+ 
+@@ -274,7 +267,7 @@ const startLocalBackend = Effect.gen(function* () {
+   return true;
+ }).pipe(Effect.withSpan("desktop.startLocalBackend"));
+ 
+-const bootstrap = Effect.fn("desktop.bootstrap")(function* (backendStarted: boolean) {
++export const bootstrap = Effect.fn("desktop.bootstrap")(function* (backendStarted: boolean) {
+   const state = yield* DesktopState.DesktopState;
+   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
 diff --git a/apps/desktop/src/backend/DesktopBackendPool.ts b/apps/desktop/src/backend/DesktopBackendPool.ts
-index 82d542b..f4ff24f 100644
+index d69e1ce1427fecac22af9d0abd8884915539a273..f8b66a1cc1de82f6c9b51ee70df297d7b4bd35e0 100644
 --- a/apps/desktop/src/backend/DesktopBackendPool.ts
 +++ b/apps/desktop/src/backend/DesktopBackendPool.ts
-@@ -16,8 +16,7 @@ import { ChildProcessSpawner } from "effect/process";
-
+@@ -23,7 +23,7 @@ import { ChildProcessSpawner } from "effect/process";
+ 
  import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
  import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 -import * as DesktopHomeOwner from "./DesktopHomeOwner.ts";
--import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 +import * as HomebrewServiceAttachment from "./HomebrewServiceAttachment.ts";
+ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
- import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
-@@ -26,7 +25,6 @@ import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
+@@ -33,7 +33,6 @@ import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
  import * as ElectronDialog from "../electron/ElectronDialog.ts";
 -import * as ElectronApp from "../electron/ElectronApp.ts";
-
+ 
  const { logWarning: logBackendPoolWarning } =
    DesktopObservability.makeComponentLogger("desktop-backend-pool");
-@@ -109,14 +107,13 @@ export const layer = Layer.effect(
+@@ -122,14 +121,13 @@ export const layer = Layer.effect(
      const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
      const desktopWindow = yield* DesktopWindow.DesktopWindow;
      const electronDialog = yield* ElectronDialog.ElectronDialog;
@@ -409,11 +418,11 @@ index 82d542b..f4ff24f 100644
 +    const recoveryContext = yield* Effect.context<
 +      Effect.Services<typeof HomebrewServiceAttachment.recover>
      >();
-
-     // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
-@@ -179,17 +176,7 @@ export const layer = Layer.effect(
-         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
-       onShutdown: () => desktopWindow.handleBackendNotReady,
+ 
+     const updateMarkerPath = environment.path.join(
+@@ -231,17 +229,7 @@ export const layer = Layer.effect(
+           Effect.andThen(desktopWindow.handleBackendNotReady),
+         ),
        onPreflightFailed: handlePrimaryPreflightFailure,
 -      onStateDirOwned: () =>
 -        DesktopHomeOwner.readLiveHomeOwner().pipe(
@@ -428,14 +437,14 @@ index 82d542b..f4ff24f 100644
 -        ),
 +      onStateDirOwned: () => HomebrewServiceAttachment.recover.pipe(Effect.provide(recoveryContext)),
      });
-
+ 
      const instancesRef = yield* SynchronizedRef.make<
 diff --git a/apps/desktop/src/backend/HomebrewServiceAttachment.ts b/apps/desktop/src/backend/HomebrewServiceAttachment.ts
 new file mode 100644
-index 0000000..9891f30
+index 0000000000000000000000000000000000000000..435b0487570a76344e01a6c7ee2fc3ec64f0c45f
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceAttachment.ts
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,111 @@
 +import * as Cause from "effect/Cause";
 +import * as Effect from "effect/Effect";
 +import * as Electron from "electron";
@@ -486,7 +495,10 @@ index 0000000..9891f30
 +        })
 +        .pipe(Effect.map((choice) => choice.response)),
 +  });
-+  if (recovery._tag === "quit") return yield* electronApp.quit;
++  if (recovery._tag === "quit") {
++    yield* electronApp.quit;
++    return false;
++  }
 +  if (recovery._tag === "open") {
 +    yield* HomebrewServiceOwnerProbe.backupHomebrewDesktopSettings();
 +    yield* appSettings.setLocalEnvironmentEnabled(false);
@@ -518,7 +530,7 @@ index 0000000..9891f30
 +        "Desktop is open with its local environment off. The server changed or could not be paired; add it from Settings > Connections after verifying it.",
 +      );
 +    }
-+    return;
++    return false;
 +  }
 +
 +  const detail =
@@ -527,6 +539,7 @@ index 0000000..9891f30
 +      : "Another process owns this T3 home, but T3 could not verify it as the same-user Homebrew service or confirm its environment identity. Inspect the owner before reconnecting. No service was stopped and no data was changed.";
 +  yield* electronDialog.showErrorBox("T3 home owner could not be verified", detail);
 +  yield* electronApp.quit;
++  return false;
 +}).pipe(
 +  Effect.catchCause((cause) =>
 +    Effect.gen(function* () {
@@ -538,13 +551,14 @@ index 0000000..9891f30
 +        "Recovery could not complete. The existing service was not stopped. Review the Desktop logs before retrying.",
 +      );
 +      yield* (yield* ElectronApp.ElectronApp).quit;
++      return false;
 +    }),
 +  ),
 +  Effect.withSpan("desktop.homebrewServiceAttachment"),
 +);
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 new file mode 100644
-index 0000000..18844a3
+index 0000000000000000000000000000000000000000..18844a3469db491b2f17f50432365ce086e9e318
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnerProbe.ts
 @@ -0,0 +1,247 @@
@@ -797,7 +811,7 @@ index 0000000..18844a3
 +);
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
 new file mode 100644
-index 0000000..ad9f57e
+index 0000000000000000000000000000000000000000..ad9f57e86c16d6e261cc9fd515f651834d49fa05
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnership.test.ts
 @@ -0,0 +1,54 @@
@@ -857,7 +871,7 @@ index 0000000..ad9f57e
 +});
 diff --git a/apps/desktop/src/backend/HomebrewServiceOwnership.ts b/apps/desktop/src/backend/HomebrewServiceOwnership.ts
 new file mode 100644
-index 0000000..93c84a1
+index 0000000000000000000000000000000000000000..93c84a1da628bc186cdacb2b988da91575fc99e2
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceOwnership.ts
 @@ -0,0 +1,69 @@
@@ -932,7 +946,7 @@ index 0000000..93c84a1
 +}
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 new file mode 100644
-index 0000000..6022314
+index 0000000000000000000000000000000000000000..6022314d817aedc543b1ffb16dcae5fae1e37723
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.test.ts
 @@ -0,0 +1,96 @@
@@ -1034,7 +1048,7 @@ index 0000000..6022314
 +}));
 diff --git a/apps/desktop/src/backend/HomebrewServiceRecovery.ts b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 new file mode 100644
-index 0000000..0196f75
+index 0000000000000000000000000000000000000000..0196f757a82027ee51e9afaebf14e34b1d5b7979
 --- /dev/null
 +++ b/apps/desktop/src/backend/HomebrewServiceRecovery.ts
 @@ -0,0 +1,46 @@
@@ -1085,12 +1099,12 @@ index 0000000..0196f75
 +  },
 +);
 diff --git a/apps/server/src/cli/pair.test.ts b/apps/server/src/cli/pair.test.ts
-index e626461..5f431a5 100644
+index 9619030be2fab47f08db5612cde10d1666ded762..417887e766bdff64d93f91d763c4f52f76efa6d5 100644
 --- a/apps/server/src/cli/pair.test.ts
 +++ b/apps/server/src/cli/pair.test.ts
-@@ -126,6 +126,24 @@ const withDescriptorServer = <A, E, R>(
+@@ -131,6 +131,24 @@ const withDescriptorServer = <A, E, R>(
    );
-
+ 
  describe("t3 pair", () => {
 +  it.effect("rejects an unbound Homebrew owner before opening the authentication database", () =>
 +    withDescriptorServer((origin) => Effect.gen(function* () {
@@ -1114,7 +1128,7 @@ index e626461..5f431a5 100644
      withDescriptorServer(
        (origin) =>
 diff --git a/apps/server/src/cli/pair.ts b/apps/server/src/cli/pair.ts
-index e1af3be..e61c687 100644
+index 4b563155c6bfe1853966b00afb720b29860904ec..6422362dabab2ef8cc091bcca25f09be1f57570c 100644
 --- a/apps/server/src/cli/pair.ts
 +++ b/apps/server/src/cli/pair.ts
 @@ -1,3 +1,7 @@
@@ -1125,10 +1139,10 @@ index e1af3be..e61c687 100644
  import {
    type AuthEnvironmentScope,
    AuthStandardClientScopes,
-@@ -432,20 +436,45 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
+@@ -463,20 +467,45 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
    },
  );
-
+ 
 +const verifyHomebrewOwner = Effect.fn("pair.verifyHomebrewOwner")(function* (
 +  stateDir: string,
 +  expected: string | undefined,
@@ -1172,8 +1186,8 @@ index e1af3be..e61c687 100644
    }).pipe(
      Effect.provide(
        EnvironmentAuth.layerRuntime.pipe(
-@@ -484,6 +513,10 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
-
+@@ -515,6 +544,10 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
+ 
  export const pairCommand = Command.make("pair", {
    baseDir: baseDirFlag,
 +  expectedHomebrewOwner: Flag.String("expected-homebrew-owner").pipe(
@@ -1183,10 +1197,10 @@ index e1af3be..e61c687 100644
    scopes: authScopesFlag(AuthStandardClientScopes),
    ttl: ttlFlag,
    label: labelFlag,
-@@ -499,6 +532,16 @@ export const pairCommand = Command.make("pair", {
-       const logLevel = Option.getOrElse(cliLogLevel, () => "Warn" as const);
-
-       const target = yield* discoverPairTarget(Option.getOrUndefined(flags.baseDir));
+@@ -531,6 +564,16 @@ export const pairCommand = Command.make("pair", {
+ 
+       const explicitBaseDir = Option.getOrUndefined(flags.baseDir);
+       const target = yield* discoverPairTarget(explicitBaseDir);
 +      const expectedHomebrewOwner = Option.getOrUndefined(flags.expectedHomebrewOwner);
 +      const verifiedOwner = yield* verifyHomebrewOwner(join(target.baseDir, target.variant), expectedHomebrewOwner);
 +      if (verifiedOwner !== undefined && (
@@ -1200,16 +1214,18 @@ index e1af3be..e61c687 100644
        // Each protocol keeps auth in its own database, so a token minted here
        // for another protocol's server would never be accepted by it. Refuse
        // before any local layer opens (and migrates) that database.
-@@ -528,7 +571,7 @@ export const pairCommand = Command.make("pair", {
+@@ -566,7 +609,9 @@ export const pairCommand = Command.make("pair", {
          pairingBaseUrl = resolved.baseUrl;
          notes.push(...resolved.notes);
        } else {
--        pairingBaseUrl = resolveDirectPairingBaseUrl(target.state);
-+        pairingBaseUrl = expectedHomebrewOwner === undefined ? resolveDirectPairingBaseUrl(target.state) : target.state.origin;
+-        pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
++        pairingBaseUrl = expectedHomebrewOwner === undefined
++          ? resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform)
++          : target.state.origin;
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
            notes.push(
              "This URL is only reachable from this machine. To reach it from your other devices, run `t3 up`, or re-run with --tailscale.",
-@@ -551,7 +594,9 @@ export const pairCommand = Command.make("pair", {
+@@ -589,7 +634,9 @@ export const pairCommand = Command.make("pair", {
          scopes: flags.scopes,
          ttl: flags.ttl,
          label: flags.label,
@@ -1217,16 +1233,16 @@ index e1af3be..e61c687 100644
        });
 +      yield* verifyHomebrewOwner(config.stateDir, expectedHomebrewOwner);
        const pairingUrl = buildPairingUrl(pairingBaseUrl, issued.credential);
-
+ 
        yield* Console.log(
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index f5f7692..1e0fd63 100644
+index 089706926387a5730b52249c8823b5e241c9d845..1e08fb17f5b68006f11f25e65a5f41994bcc0be5 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -3,6 +3,10 @@
-   "private": true,
-   "type": "module",
-   "exports": {
+@@ -7,6 +7,10 @@
+       "types": "./src/png.ts",
+       "import": "./src/png.ts"
+     },
 +    "./homebrewServerOwner": {
 +      "types": "./src/homebrewServerOwner.ts",
 +      "import": "./src/homebrewServerOwner.ts"
@@ -1236,7 +1252,7 @@ index f5f7692..1e0fd63 100644
        "import": "./src/pullRequestAnchor.ts"
 diff --git a/packages/shared/src/homebrewServerOwner.test.ts b/packages/shared/src/homebrewServerOwner.test.ts
 new file mode 100644
-index 0000000..722c5b0
+index 0000000000000000000000000000000000000000..722c5b0c6b5db80c726b4f6677d14583401e53c5
 --- /dev/null
 +++ b/packages/shared/src/homebrewServerOwner.test.ts
 @@ -0,0 +1,69 @@
@@ -1311,7 +1327,7 @@ index 0000000..722c5b0
 +});
 diff --git a/packages/shared/src/homebrewServerOwner.ts b/packages/shared/src/homebrewServerOwner.ts
 new file mode 100644
-index 0000000..f92d7f0
+index 0000000000000000000000000000000000000000..f92d7f0620648e3631cf3b466fee4f346ad0202e
 --- /dev/null
 +++ b/packages/shared/src/homebrewServerOwner.ts
 @@ -0,0 +1,113 @@
