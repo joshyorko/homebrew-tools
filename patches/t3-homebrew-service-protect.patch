@@ -3,10 +3,11 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..32c8d475858caeb5597e7ccec40efc5aa26e13c1
 --- /dev/null
 +++ b/apps/server/src/cli/service.homebrew.test.ts
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,197 @@
 +import * as NodeServices from "@effect/platform-node/NodeServices";
 +import { expect, it } from "@effect/vitest";
 +import * as HostProcess from "@t3tools/shared/HostProcess";
++import * as NetService from "@t3tools/shared/Net";
 +import * as ConfigProvider from "effect/ConfigProvider";
 +import * as Effect from "effect/Effect";
 +import * as FileSystem from "effect/FileSystem";
@@ -71,7 +72,7 @@ index 0000000000000000000000000000000000000000..32c8d475858caeb5597e7ccec40efc5a
 +  return { service, installOptions, restarts, uninstalls };
 +}
 +
-+it.layer(Layer.mergeAll(NodeServices.layer))("Homebrew service protection", (it) => {
++it.layer(Layer.mergeAll(NodeServices.layer, NetService.layer))("Homebrew service protection", (it) => {
 +  it.effect.each([
 +    { unit: "t3code.service", state: "running", restartCommand: "t3 service restart" },
 +    {

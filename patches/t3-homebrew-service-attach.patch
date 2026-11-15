@@ -283,7 +283,7 @@ index 0000000000000000000000000000000000000000..94da8884163ec49c6999a9a9f4c71273
 +        assert.deepEqual(f.events, []);
 +        yield* TestClock.adjust("6 seconds");
 +        yield* Fiber.join(boot);
-+        assert.deepEqual(f.events, ["recovery-dialog", "backup", "window"]);
++        assert.deepEqual(f.events, ["recovery-dialog", "backup", "window", "window"]);
 +        assert.isFalse((yield* f.settings.get).localEnvironmentEnabled);
 +        assert.deepEqual(desktop.links, ["t3code://pair?fixture"]);
 +      }),
