@@ -67,6 +67,7 @@ try {
   await writeFile(root + "/renderer-readiness.json", JSON.stringify(observations, null, 2))
   const close = page.getByRole("button", { name: "Close", exact: true })
   if (await close.isVisible().catch(() => false)) await close.click()
+  await page.getByRole("button", { name: "Start without an agent", exact: true }).click({ timeout: 30_000 })
   const checked = await page.evaluate(() => window.desktopBridge.checkForUpdate())
   assert.equal(checked.checked, true)
   const availableState = await page.evaluate(() => window.desktopBridge.getUpdateState())

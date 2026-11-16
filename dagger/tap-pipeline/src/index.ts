@@ -3323,7 +3323,7 @@ end
               "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
               "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3\"",
               "brew test test/tap/t3code-cli-main",
-              `test "$(t3 --version)" = "${build.provenance.upstream.version}"`,
+              `version_output="$(t3 --version)"; test "$version_output" = "t3 v${build.provenance.upstream.version}" || { printf 'Unexpected CLI version: %s\\n' "$version_output" >&2; exit 1; }`,
               "t3 --help",
               ...t3CliConnectGateChecks(),
             ].join("\n"),
