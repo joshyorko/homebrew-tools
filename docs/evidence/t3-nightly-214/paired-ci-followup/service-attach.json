@@ -1,0 +1,21 @@
+{
+  "scenario": "service-attach",
+  "packageVersion": "0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f",
+  "sourceCommit": "b5554ac8114f2ce7ce8b5973690ccb8cbb248efd",
+  "serviceEnvironmentId": "b0dc7e29-feb4-4c1b-9039-d325c4d1d46a",
+  "serviceProcessPreserved": true,
+  "existingProjectAndIdleThreadPreserved": true,
+  "existingConversationHistoryPreserved": true,
+  "existingBearerCredentialAuthenticated": true,
+  "syntheticMarkersPreserved": true,
+  "originalDesktopSettingsBackedUp": true,
+  "isolatedHome": true,
+  "network": "internal bridge without host gateway, external routing or DNS",
+  "systemd": "fake user-unit metadata",
+  "result": {
+    "environmentId": "b0dc7e29-feb4-4c1b-9039-d325c4d1d46a",
+    "serverOrigin": "http://127.0.0.1:3773",
+    "websocketUrl": "ws://127.0.0.1:3773/ws",
+    "repeatWebsocketUrl": "ws://127.0.0.1:3773/ws"
+  }
+}
