@@ -1373,7 +1373,7 @@ index 0000000000000000000000000000000000000000..f92d7f0620648e3631cf3b466fee4f34
 +  return sockets.some((socket) => listeners.has(socket.match(/^socket:\[(\d+)\]$/u)?.[1]));
 +};
 +
-+const packageVersionPattern = /^main\.\d{14}\.[0-9a-f]{12}$/u;
++const packageVersionPattern = /^(?:main\.\d{14}|\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*)\.[0-9a-f]{12}$/u;
 +
 +export async function readHomebrewDesktopPackage(resourcesPath: string): Promise<string | null> {
 +  try {

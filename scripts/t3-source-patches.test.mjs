@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import test from "node:test"
 
 const script = fileURLToPath(new URL("./check-t3-patches.mjs", import.meta.url))
@@ -167,4 +167,41 @@ test("manual acceptance rejects moving refs before the Dagger action and preserv
     })
     assert.equal(result.status === 0, succeeds, result.stderr)
   }
+})
+
+
+test("nightly service ownership validates the matching immutable package and receipt", async () => {
+  const root = mkdtempSync(join(tmpdir(), "t3-owner-identity-"))
+  try {
+    execFileSync("git", ["init", "-q", root])
+    execFileSync("git", ["-C", root, "apply", "--include=packages/shared/src/homebrewServerOwner.ts",
+      fileURLToPath(new URL("../patches/t3-homebrew-service-attach.patch", import.meta.url))])
+    const { homebrewPackageFromEntry, readHomebrewDesktopPackage } = await import(
+      pathToFileURL(join(root, "packages/shared/src/homebrewServerOwner.ts")))
+    const commit = "16695c812fffe75e85f8cc3084d2c561aa3ca93f"
+    const resources = join(root, "resources")
+    mkdirSync(resources)
+    for (const version of ["main.20261116074827.16695c812fff",
+      "0.1.10-nightly.20261116.4774.homebrew.1.16695c812fff",
+      "0.1.10-nightly.20261116.4774.homebrew.2.16695c812fff"]) {
+      const keg = join(root, "Cellar/t3code-cli-main", version)
+      const entry = join(keg, "libexec/dist/bin.mjs")
+      mkdirSync(join(keg, "libexec/dist"), { recursive: true })
+      writeFileSync(entry, "export {}\n")
+      const receipt = join(keg, "INSTALL_RECEIPT.json")
+      writeFileSync(receipt, JSON.stringify({ source: { tap: "joshyorko/tools" } }))
+      writeFileSync(join(resources, "t3-homebrew-build.json"), JSON.stringify({ packageVersion: version, sourceCommit: commit }))
+      assert.equal(await homebrewPackageFromEntry(entry), version)
+      assert.equal(await readHomebrewDesktopPackage(resources), version)
+      writeFileSync(receipt, JSON.stringify({ source: { tap: "foreign/tools" } }))
+      assert.equal(await homebrewPackageFromEntry(entry), null)
+      writeFileSync(join(resources, "t3-homebrew-build.json"), JSON.stringify({ packageVersion: version, sourceCommit: "f".repeat(40) }))
+      assert.equal(await readHomebrewDesktopPackage(resources), null)
+    }
+    for (const version of ["0.1.10", "0.1.10-preview.20261116.4774.homebrew.1.16695c812fff",
+      "0.1.10-nightly.20261116.4774.homebrew.0.16695c812fff"]) {
+      writeFileSync(join(resources, "t3-homebrew-build.json"), JSON.stringify({ packageVersion: version, sourceCommit: commit }))
+      assert.equal(await readHomebrewDesktopPackage(resources), null)
+    }
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })
