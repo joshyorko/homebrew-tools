@@ -227,6 +227,8 @@ async function main() {
 
   cpSync(distDir, join(packageDir, "dist"), { recursive: true });
   cpSync(licensePath, join(packageDir, "LICENSE"));
+  const nightlyProvenancePath = join(upstreamDir, "t3-homebrew-upstream.json");
+  if (existsSync(nightlyProvenancePath)) cpSync(nightlyProvenancePath, join(packageDir, "t3-homebrew-upstream.json"));
   cpSync(readmePath, join(packageDir, "README.md"));
   writeFileSync(join(packageDir, "package.json"), `${JSON.stringify(runtimePackageJson, null, 2)}\n`);
 

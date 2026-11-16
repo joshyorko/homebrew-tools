@@ -146,6 +146,32 @@ under `${XDG_STATE_HOME:-$HOME/.local/state}/t3code/homebrew-update/`; nothing
 in `~/.t3` is used for update bookkeeping. For status outside the Desktop, run
 `brew services info t3code-cli-main`.
 
+## Transition from a main snapshot to nightly
+
+The old `main.*` Desktop embeds a helper that recognizes only snapshot versions.
+Its update button cannot install the first nightly package. Installing nightly does
+not retroactively update that embedded helper. A one-time migration must use the
+updated helper from the tap, not the helper inside the running old AppImage.
+
+After a paired nightly release is published, an operator can run the tap helper's
+`check --json --app-version <installed-package-version>` and then
+`prepare --app-version <installed-package-version> --version <offered-package-version>`.
+Use `scripts/t3-homebrew-update.sh` under the path returned by
+`brew --repo joshyorko/tools`. Review both versions and the source commit before
+continuing. These stages validate the pair and fetch artifacts without installation.
+
+To install, start that same helper with `apply`, the same version arguments, and
+`--wait-for-pid <running-Desktop-PID>` in a separate terminal. Then close that Desktop.
+The helper waits for it to exit before installing, preserves the active service
+state, and rolls back a failed pair. Keep the terminal open until the helper finishes.
+Use the actual Desktop process ID; do not substitute a shell PID. This operation
+closes local T3 servers and changes the installed packages. Do not run it until the
+paired nightly is published and the workstation upgrade is authorized.
+
+After migration, nightly-to-nightly updates use the Desktop control normally.
+The new helper's snapshot-version tests cover its input compatibility; they do not
+prove that an old installed helper can perform this transition.
+
 ## Recovery and rollback
 
 If a Desktop child process remains after the main process exits, the helper

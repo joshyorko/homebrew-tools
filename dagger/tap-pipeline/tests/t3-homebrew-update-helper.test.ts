@@ -11,6 +11,7 @@ const originalVersion = "main.20261106111159.6577c6b61851"
 const availableVersion = "main.20261107123456.112233445566"
 
 type FixtureOptions = {
+  readonly upstreamNotes?: unknown
   readonly currentFormula?: string
   readonly currentCask?: string
   readonly appVersion?: string
@@ -42,6 +43,9 @@ function makeFixture(options: FixtureOptions = {}) {
   const availableCask = options.availableCask ?? availableFull
   const appVersion = options.appVersion ?? originalVersion
 
+  const tapRoot = join(root, "tap")
+  mkdirSync(join(tapRoot, "metadata", "t3-nightly"), { recursive: true })
+  if (options.upstreamNotes !== undefined) writeFileSync(join(tapRoot, "metadata", "t3-nightly", `${availableFull}.json`), JSON.stringify(options.upstreamNotes))
   mkdirSync(home, { recursive: true })
   mkdirSync(state, { recursive: true })
   mkdirSync(fakeState, { recursive: true })
@@ -71,6 +75,11 @@ function makeFixture(options: FixtureOptions = {}) {
 const source = process.argv[2] ?? ""
 const data = JSON.parse(readFileSync(0, "utf8"))
 const formula = data.formulae?.find((entry) => entry.name === "t3code-cli-main")
+if (source.includes('value["schemaVersion"]')) {
+  if (data.schemaVersion !== 1) process.exit(1)
+  process.stdout.write(JSON.stringify(data))
+  process.exit(0)
+}
 if (source.includes("foreign installed tap") && data.source?.tap !== "joshyorko/tools") process.exit(1)
 if (source.includes('data.fetch("source").fetch("tap")')) {
   if (data.source?.tap !== "joshyorko/tools") process.exit(1)
@@ -109,6 +118,7 @@ printf 'brew|%s\\n' "$*" >> "$EVENT_LOG"
 command="$1"
 shift
 case "$command" in
+  --repo) printf '%s\\n' "$FAKE_TAP_ROOT" ;;
   --prefix) printf '%s\\n' "$FAKE_PREFIX" ;;
   --cellar) printf '%s\\n' "$FAKE_CELLAR" ;;
   ruby)
@@ -213,6 +223,7 @@ printf 'desktop.relaunch\\n' >> "$EVENT_LOG"
     EVENT_LOG: eventLog,
     FAKE_STATE_DIR: fakeState,
     FAKE_PREFIX: prefix,
+    FAKE_TAP_ROOT: tapRoot,
     FAKE_CELLAR: cellar,
     NODE_BINARY: process.execPath,
     ACTIVE_UNIT: options.activeUnit ?? "sh.brew.t3code-cli-main.service",
@@ -608,4 +619,32 @@ test("updater refuses multiple active Homebrew labels without changing packages"
     assert.doesNotMatch(fixture.events().join("\n"), /service\.(?:stop|start)|brew\|upgrade/)
     assert.equal(readResult(fixture.resultPath).outcome, "failed")
   } finally { rmSync(fixture.root, { recursive: true, force: true }) }
+})
+
+const nightlyVersion = "0.1.10-nightly.20261116.4774.homebrew.1.16695c812fff"
+
+test("nightly pair check preserves shipped provenance without fetching notes", () => {
+  const upstreamNotes = { schemaVersion: 1, packageVersion: nightlyVersion, sourceCommit: "16695c812fffe75e85f8cc3084d2c561aa3ca93f" }
+  const fixture = makeFixture({ availableFormula: nightlyVersion, upstreamNotes })
+  try {
+    const result = fixture.run(["check", "--json", "--app-version", fixture.appVersion])
+    assert.equal(result.status, 0, result.stderr)
+    const response = JSON.parse(result.stdout)
+    assert.equal(response.availableVersion, nightlyVersion)
+    assert.equal(response.sourceCommit, "16695c812fff")
+    assert.deepEqual(response.upstreamNotes, upstreamNotes)
+    assert.ok(!fixture.events().some((event) => /^brew\|(?:fetch|curl|wget)\b/.test(event)))
+  } finally { rmSync(fixture.root, { recursive: true, force: true }) }
+})
+
+test("missing or invalid shipped notes do not block nightly paired updates", () => {
+  for (const upstreamNotes of [undefined, { schemaVersion: 2 }]) {
+    const fixture = makeFixture({ currentFormula: nightlyVersion, currentCask: nightlyVersion, appVersion: nightlyVersion, availableFormula: nightlyVersion, upstreamNotes })
+    try {
+      const result = fixture.run(["check", "--json", "--app-version", fixture.appVersion])
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(JSON.parse(result.stdout).status, "current")
+      assert.equal(JSON.parse(result.stdout).upstreamNotes, undefined)
+    } finally { rmSync(fixture.root, { recursive: true, force: true }) }
+  }
 })

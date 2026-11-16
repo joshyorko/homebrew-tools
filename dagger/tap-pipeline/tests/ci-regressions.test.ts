@@ -241,7 +241,7 @@ test("T3 release bundles reuse one immutable source ref and version across CI an
   const resolver = section(pipeline, "async resolveT3Source(", "private setGithubToken(")
   const releaseBundle = section(pipeline, "async releaseBundle(", "async recoveryExport(")
 
-  assert.match(resolver, /resolveGitHeadVersion\(entry\.upstream\.repo, ref \|\| entry\.autoUpdate\.ref/)
+  assert.match(resolver, /resolveT3Nightly\(ref\)/)
   assert.match(resolver, /immutable 40-character source SHA/)
   assert.match(releaseBundle, /selectedT3SourceRef = resolved\.commit/)
   assert.match(releaseBundle, /selectedT3SourceVersion = resolved\.version/)
@@ -473,6 +473,9 @@ test("T3 packaging stages only upstream runtime externals and preserves its patc
       }),
     )
 
+    const nightlyProvenance = { schemaVersion: 1, packageVersion: "nightly.fixture", sourceCommit: "a".repeat(40), upstream: { tag: "v0.1.10-nightly.20261116.4774" }, releases: [] }
+    writeFileSync(join(upstream, "t3-homebrew-upstream.json"), JSON.stringify(nightlyProvenance))
+
     const observedManifest = join(tempRoot, "observed-package.json")
     const npmStub = join(tempRoot, "npm")
     writeFileSync(
@@ -538,6 +541,7 @@ test("T3 packaging stages only upstream runtime externals and preserves its patc
     const unpacked = join(tempRoot, "unpacked")
     mkdirSync(unpacked)
     execFileSync("tar", ["-xzf", join(tempRoot, "package.tar.gz"), "-C", unpacked])
+    assert.deepEqual(JSON.parse(readFileSync(join(unpacked, "t3-homebrew-upstream.json"), "utf8")), nightlyProvenance)
     const patchedDependency = JSON.parse(
       readFileSync(join(unpacked, "node_modules/@ff-labs/fff-node/package.json"), "utf8"),
     )

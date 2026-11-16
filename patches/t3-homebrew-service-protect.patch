@@ -1,6 +1,6 @@
 diff --git a/apps/server/src/cli/service.homebrew.test.ts b/apps/server/src/cli/service.homebrew.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..32c8d475858caeb5597e7ccec40efc5aa26e13c1
+index 00000000..43f2b749
 --- /dev/null
 +++ b/apps/server/src/cli/service.homebrew.test.ts
 @@ -0,0 +1,197 @@
@@ -201,9 +201,8 @@ index 0000000000000000000000000000000000000000..32c8d475858caeb5597e7ccec40efc5a
 +    }),
 +  );
 +});
-
 diff --git a/apps/server/src/cli/service.ts b/apps/server/src/cli/service.ts
-index ce43154..d179f08 100644
+index fc2aa8d0..1ea7ae8c 100644
 --- a/apps/server/src/cli/service.ts
 +++ b/apps/server/src/cli/service.ts
 @@ -12,6 +12,7 @@ import { FetchHttpClient } from "effect/http";
@@ -214,7 +213,7 @@ index ce43154..d179f08 100644
  import { compareExactServiceVersions, SERVICE_ENV_FILE } from "../cloud/serviceProtocol.ts";
  import * as ServerConfig from "../config.ts";
  import * as ProcessRunner from "../processRunner.ts";
-@@ -377,13 +378,11 @@ const serviceProtectCommand = Command.make("protect", {
+@@ -414,13 +415,11 @@ const serviceProtectCommand = Command.make("protect", {
          flags,
          Effect.gen(function* () {
            const uid = yield* HostProcess.UserId;
@@ -229,7 +228,7 @@ index ce43154..d179f08 100644
            if (flags.undo) {
              const installed = yield* ServiceProtection.installedProtection(
                ServiceProtection.protectionPlan({
-@@ -395,6 +394,7 @@ const serviceProtectCommand = Command.make("protect", {
+@@ -432,6 +431,7 @@ const serviceProtectCommand = Command.make("protect", {
              if (installed === undefined) {
                return yield* Console.log("T3 Code service protection is not set up.");
              }
@@ -237,7 +236,7 @@ index ce43154..d179f08 100644
              yield* Console.log(
                [
                  "Removes:",
-@@ -405,12 +405,26 @@ const serviceProtectCommand = Command.make("protect", {
+@@ -442,12 +442,26 @@ const serviceProtectCommand = Command.make("protect", {
                ].join("\n"),
              );
              if (!(yield* confirm(flags.yes, "Remove T3 Code service protection?"))) return;
@@ -265,7 +264,7 @@ index ce43154..d179f08 100644
            yield* Console.log(
              [
                "Keeps T3 Code running when agents fill this machine's memory:",
-@@ -429,8 +443,10 @@ const serviceProtectCommand = Command.make("protect", {
+@@ -466,8 +480,10 @@ const serviceProtectCommand = Command.make("protect", {
            const plan = ServiceProtection.protectionPlan({
              uid,
              userUnitDir,
@@ -276,21 +275,23 @@ index ce43154..d179f08 100644
            yield* Console.log(
              [
                "Drop-ins it writes, as root through sudo:",
-@@ -440,9 +456,11 @@ const serviceProtectCommand = Command.make("protect", {
-             ].join("\n"),
-           );
+@@ -481,11 +497,11 @@ const serviceProtectCommand = Command.make("protect", {
+             yield* Console.log(`Only the OOM scores can apply: ${MEMORY_CONTROLLER_DISABLED}`);
+           }
            if (!(yield* confirm(flags.yes, "Apply these settings?"))) return;
 +          yield* ServiceProtectionTarget.revalidateProtectionTarget(targetInput, target);
            yield* ServiceProtection.applyProtection(plan);
 +          const effective = yield* ServiceProtection.readProtection(userUnitDir, target.unit);
            yield* Console.log(
--            "Protected T3 Code. Memory protection applies now; the server takes its OOM score after `t3 service restart`. Undo with `t3 service protect --undo`.",
-+            `Protection drop-ins installed for ${target.unit}. Running OOM score: ${effective?.oomScoreAdj ?? "unavailable"}. ${restart} Undo with \`t3 service protect --undo\`.`,
+-            memoryController
+-              ? "Protected T3 Code. Memory protection applies now; the server takes its OOM score after `t3 service restart`. Undo with `t3 service protect --undo`."
+-              : "Protected T3 Code's OOM score; the server takes it after `t3 service restart`. Memory protection applies once the kernel's memory controller is enabled. Undo with `t3 service protect --undo`.",
++            `Protection drop-ins installed for ${target.unit}. Running OOM score: ${effective?.oomScoreAdj ?? "unavailable"}. ${restart} ${memoryController ? "" : "Memory protection applies once the kernel's memory controller is enabled. "}Undo with \`t3 service protect --undo\`.`,
            );
          }).pipe(Effect.provide(ProcessRunner.layer)),
        );
 diff --git a/apps/server/src/cloud/serviceProtection.test.ts b/apps/server/src/cloud/serviceProtection.test.ts
-index eef78cd..812e5c8 100644
+index a3d75609..5b97bff5 100644
 --- a/apps/server/src/cloud/serviceProtection.test.ts
 +++ b/apps/server/src/cloud/serviceProtection.test.ts
 @@ -190,7 +190,10 @@ it.effect("lowers no score before the manager default is in place, and undoes in
@@ -305,10 +306,10 @@ index eef78cd..812e5c8 100644
              }
            }),
          ),
-@@ -268,3 +271,251 @@ it.effect("counts memory.min as protection and names the first cgroup that grant
-     Effect.provide(NodeServices.layer),
-   );
- });
+@@ -297,3 +300,251 @@ it.effect(
+     );
+   },
+ );
 +
 +it("targets the Homebrew server without changing the ancestor or remote-access protections", () => {
 +  const native = ServiceProtection.protectionPlan({
@@ -558,7 +559,7 @@ index eef78cd..812e5c8 100644
 +  );
 +});
 diff --git a/apps/server/src/cloud/serviceProtection.ts b/apps/server/src/cloud/serviceProtection.ts
-index 780aee8..0040684 100644
+index 48790bcf..9f65ed78 100644
 --- a/apps/server/src/cloud/serviceProtection.ts
 +++ b/apps/server/src/cloud/serviceProtection.ts
 @@ -8,6 +8,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -675,7 +676,7 @@ index 780aee8..0040684 100644
    const managerDefaults = yield* exists(plan.managerDefaults);
    return system.length + user.length === 0 && !managerDefaults
      ? undefined
-@@ -307,13 +360,16 @@ export interface ServiceProtectionState {
+@@ -323,13 +376,16 @@ export interface ServiceProtectionState {
  }
  
  /** Reads what the kernel applies to the running service, whoever configured it. */
@@ -694,16 +695,16 @@ index 780aee8..0040684 100644
      "--property=ControlGroup,MainPID",
    ]).pipe(Effect.option);
    if (Option.isNone(shown)) return undefined;
-@@ -327,7 +383,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
-     );
+@@ -345,7 +401,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
    let unprotected: string | undefined;
    const grants = (value: string) => value !== "" && value !== "0";
--  for (let depth = 1; depth <= controlGroup.length && unprotected === undefined; depth++) {
-+  for (let depth = 1; depth < controlGroup.length && unprotected === undefined; depth++) {
+   const depths = memoryController ? controlGroup.length : 0;
+-  for (let depth = 1; depth <= depths && unprotected === undefined; depth++) {
++  for (let depth = 1; depth < depths && unprotected === undefined; depth++) {
      const directory = path.join("/sys/fs/cgroup", ...controlGroup.slice(0, depth));
      const low = yield* read(path.join(directory, "memory.low"));
      const min = yield* read(path.join(directory, "memory.min"));
-@@ -339,7 +395,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
+@@ -358,7 +414,7 @@ export const readProtection = Effect.fn("ServiceProtection.read")(function* (use
      unprotected,
      oomScoreAdj: score === "" ? undefined : Number(score),
      setByProtect: yield* fs
@@ -714,7 +715,7 @@ index 780aee8..0040684 100644
  });
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.test.ts b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 new file mode 100644
-index 0000000..12e5199
+index 00000000..12e51997
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.test.ts
 @@ -0,0 +1,505 @@
@@ -1225,7 +1226,7 @@ index 0000000..12e5199
 +});
 diff --git a/apps/server/src/cloud/serviceProtectionTarget.ts b/apps/server/src/cloud/serviceProtectionTarget.ts
 new file mode 100644
-index 0000000..e03046d
+index 00000000..e03046d8
 --- /dev/null
 +++ b/apps/server/src/cloud/serviceProtectionTarget.ts
 @@ -0,0 +1,397 @@

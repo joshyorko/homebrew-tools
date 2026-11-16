@@ -275,32 +275,23 @@ test("fizzy-popper self-hosted opts into timestamped git-head versions", () => {
   }
 })
 
-test("t3code CLI main uses timestamped main snapshots instead of smoke labels", () => {
-  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "t3code-cli-main")
-
-  assert.ok(entry)
-  assert.equal(entry.autoUpdate.kind, "git_head_sha")
-
-  if (entry.autoUpdate.kind === "git_head_sha") {
-    assert.equal(entry.autoUpdate.prefix, "main.")
-    assert.equal(entry.autoUpdate.includeCommitDate, true)
+test("T3 CLI and Desktop resolve official nightly identities rather than main snapshots", () => {
+  for (const id of ["t3code-cli-main", "t3-code-linux"]) {
+    const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === id)
+    assert.ok(entry)
+    assert.equal(entry.autoUpdate.kind, "t3_nightly")
+    assert.equal(entry.upstream.kind, "git")
+    if (entry.upstream.kind === "git") assert.equal(entry.upstream.ref, "refs/tags/v*-nightly.*")
   }
 })
 
-test("t3-code-linux builds the desktop AppImage from upstream main", () => {
+test("t3-code-linux builds the patched desktop AppImage from an official nightly", () => {
   const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "t3-code-linux")
-
   assert.ok(entry)
   assert.equal(entry.kind, "source_build_node_appimage_cask")
   assert.equal(entry.homebrewPath, "Casks/t3-code-linux.rb")
-  assert.equal(entry.autoUpdate.kind, "git_head_sha")
+  assert.equal(entry.autoUpdate.kind, "t3_nightly")
   assert.equal(entry.upstream.kind, "git")
-
-  if (entry.autoUpdate.kind === "git_head_sha") {
-    assert.equal(entry.autoUpdate.ref, "main")
-    assert.equal(entry.autoUpdate.prefix, "main.")
-    assert.equal(entry.autoUpdate.includeCommitDate, true)
-  }
 
   const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
   const cask = readFileSync(new URL("../../../Casks/t3-code-linux.rb", import.meta.url), "utf8")

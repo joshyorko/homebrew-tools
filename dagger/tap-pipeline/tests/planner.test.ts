@@ -73,6 +73,17 @@ test("package revisions compare against the first cask version component", () =>
   assert.equal(packagedVersionForUpstreamComparison("rcc", "18.18.0"), "18.18.0")
 })
 
+test("nightly polling ignores downstream revisions but retains upstream identity", () => {
+  for (const id of ["t3code-cli-main", "t3-code-linux"]) {
+    const version = "0.1.10-nightly.20261116.4774"
+    const identity = `${version}.16695c812fff`
+    assert.equal(packagedVersionForUpstreamComparison(id, `${version}.homebrew.1.16695c812fff`), identity)
+    assert.equal(packagedVersionForUpstreamComparison(id, `${version}.homebrew.7.16695c812fff_2`), identity)
+    assert.notEqual(packagedVersionForUpstreamComparison(id, `${version}.homebrew.1.aaaaaaaaaaaa`), identity)
+    assert.notEqual(packagedVersionForUpstreamComparison(id, "0.1.10-nightly.20261116.4761.homebrew.1.16695c812fff"), identity)
+  }
+})
+
 test("listAutoUpdateSlots returns the stable slot order", () => {
   assert.deepEqual(
     listAutoUpdateSlots().map((slot) => slot.id),
@@ -474,7 +485,7 @@ test("transient upstream probe errors are explicitly marked", () => {
 test("real Git monolith and registry diffs retain scoped routing", () => {
   const fixture = mkdtempSync(join(tmpdir(), "tap-ci-impact-git-"))
   const repo = new URL("../../..", import.meta.url)
-  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", ".github/workflows/tap-ci.yml"]
+  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", "dagger/tap-pipeline/src/t3-nightly.ts", ".github/workflows/tap-ci.yml"]
   try {
     execFileSync("git", ["init", "-q"], { cwd: fixture })
     execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })

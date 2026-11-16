@@ -185,6 +185,7 @@ jobs:
         cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         call: >-
           t-3-code-linux-candidate
+          --github-token=env://GH_TOKEN
           --t-3-source-ref="${{ fromJSON(steps.t3_source.outputs.output).commit }}"
           --t-3-source-version="${{ fromJSON(steps.t3_source.outputs.output).version }}"
           export --path="${{ runner.temp }}/t3-service-attach-candidate/candidate.AppImage"

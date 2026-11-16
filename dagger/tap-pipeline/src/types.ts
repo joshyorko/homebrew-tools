@@ -53,6 +53,9 @@ export type UpstreamSource =
 
 export type AutoUpdateStrategy =
   | {
+      kind: "t3_nightly"
+    }
+  | {
       kind: "github_release_latest_tag"
       stripPrefix?: string
     }
