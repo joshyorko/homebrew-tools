@@ -42,6 +42,8 @@ function check(source, reports, patches) {
   ]
   const homebrewOwnedFiles = new Set([
     "apps/desktop/src/updates/HomebrewDesktopUpdates.ts",
+    "apps/desktop/src/updates/HomebrewReleaseNotes.ts",
+    "apps/desktop/src/updates/HomebrewReleaseNotes.test.ts",
     "apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts",
     "apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts",
     "apps/desktop/src/updates/homebrewUpdatesTestHarness.ts",

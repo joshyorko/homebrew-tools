@@ -200,7 +200,7 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | `brew install --cask joshyorko/tools/chatgpt-linux` | Install ChatGPT Desktop from OpenAI's official Linux package |
 | `brew install --cask joshyorko/tools/codex-desktop` | Install the PatchRaptor Codex Desktop Linux build |
 | `brew install joshyorko/tools/headroom-self-hosted` | Install the self-hosted Headroom CLI and proxy |
-| `brew install joshyorko/tools/t3code-cli-main` | Install T3 Code CLI from `main` |
+| `brew install joshyorko/tools/t3code-cli-main` | Install patched T3 Code nightly CLI |
 | `brew install joshyorko/tools/camp` | Install the latest verified Camp Linux release |
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
 | `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
@@ -263,11 +263,25 @@ devpod provider list-available
 ### T3 Code (Linux Cask)
 
 T3 Code desktop packaged for Linux Homebrew as a separate cask. The tap builds
-the Linux AppImage from upstream `pingdotgg/t3code` `main` with Dagger, uploads
+the Linux AppImage from a verified upstream `pingdotgg/t3code` nightly tag with Dagger, uploads
 that immutable artifact to this tap's releases, then renders the cask around it.
 The cask launches its extracted `AppRun` directly, so it does not require FUSE at runtime.
 The Linux-specific token avoids colliding with the official `homebrew/cask`
 `t3-code` package.
+
+Both package lanes resolve one published upstream nightly tag to its immutable source commit
+and apply this tap's maintained fixes. Scheduled checks discover upstream releases; they do
+not create new `main` snapshots. Rechecking the same nightly does not request another build.
+An explicit patch-only rebuild keeps the upstream version and increments the separate
+`homebrew` revision. CLI/Desktop channel availability disagreements stop resolution.
+
+Release bundles retain the official notes, publication dates, tag, source commit, and
+canonical upstream links in `metadata/t3-nightly/<package-version>.json`. Desktop updates
+reuse upstream's note parser and popover. Verified skipped-nightly ranges appear once;
+migration from old snapshots or incomplete history is labeled as limited, and a tap-only
+rebuild reports no new upstream changes. Notes are shipped with the tap, so install does not
+require a live upstream GitHub request. Artifact installation, checksums, paired updates,
+rollback, service ownership, and telemetry controls remain owned by this tap.
 
 > [!NOTE]
 > Use the full tap path to make the distinction explicit:
@@ -318,9 +332,10 @@ disables this updater, and an administrator-managed `feedUrl` is not replaced.
 See [the T3 Homebrew lifecycle guide](docs/t3-homebrew-lifecycle.md) for the
 confirmation flow, migration, recovery behavior, and policy limits.
 
-### T3 Code CLI (Main Formula)
+### T3 Code CLI (Nightly Formula)
 
-T3 Code CLI packaged from the latest upstream `main` commit for Linux/devcontainer use.
+T3 Code CLI packaged from the same verified upstream nightly as the Desktop for Linux/devcontainer use.
+The historical `t3code-cli-main` formula name remains unchanged.
 The formula downloads an immutable prebuilt tarball emitted by the tap's generic Dagger release bundle,
 including runtime dependencies, and runs it with Homebrew's `node@24`.
 

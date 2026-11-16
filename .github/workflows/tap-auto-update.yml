@@ -369,6 +369,10 @@ jobs:
             echo "T3 CLI/Desktop source metadata mismatch: CLI=$cli_version@$cli_commit Desktop=$desktop_version@$desktop_commit selected=$T3_SOURCE_VERSION@$T3_SOURCE_COMMIT" >&2
             exit 1
           fi
+          if ! cmp -s <(jq -S '.upstream_notes' "$cli_release") <(jq -S '.upstream_notes' "$desktop_release"); then
+            echo "T3 CLI/Desktop nightly provenance differs; refusing mixed notes." >&2
+            exit 1
+          fi
         fi
 
         for package_id in "${package_ids[@]}"; do
@@ -415,6 +419,10 @@ jobs:
             result="updated"
             updated_ids+=("$package_id")
             changed_paths+=("$homebrew_path")
+            upstream_notes_path="$(jq -r '.upstream_notes_path // empty' "$release_json")"
+            if [ -n "$upstream_notes_path" ]; then
+              changed_paths+=("$upstream_notes_path")
+            fi
             updated_release_jsons+=("$release_json")
           fi
 

@@ -1,0 +1,32 @@
+{
+  "scenario": "nightly-notes",
+  "sourceCommit": "16695c812fffe75e85f8cc3084d2c561aa3ca93f",
+  "builtIdentity": {
+    "packageVersion": "0.1.10-nightly.20261116.4774.homebrew.1.16695c812fff",
+    "sourceCommit": "16695c812fffe75e85f8cc3084d2c561aa3ca93f"
+  },
+  "syntheticInstalledIdentity": {
+    "packageVersion": "0.1.10-nightly.20261115.4749.homebrew.1.295a0a7332aa",
+    "sourceCommit": "295a0a7332aa1b0cc2f737dae71bd5e607a6ebb9"
+  },
+  "upstreamTag": "v0.1.10-nightly.20261116.4774",
+  "includedVersions": [
+    "0.1.10-nightly.20261116.4774",
+    "0.1.10-nightly.20261116.4761"
+  ],
+  "stats": "26 changes from 7 contributors",
+  "statsTarget": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.10-nightly.20261116.4774",
+  "clickedExternalUrls": [
+    "https://github.com/pingdotgg/t3code/releases/tag/v0.1.10-nightly.20261116.4774"
+  ],
+  "clickDidNotPrepareOrInstall": true,
+  "availableAndDownloadedNotesMatch": true,
+  "installed": false,
+  "network": "none",
+  "homebrew": "fake",
+  "systemd": "fake",
+  "runtime": {
+    "version": "0.1.10-nightly.20261116.4774",
+    "packaged": true
+  }
+}

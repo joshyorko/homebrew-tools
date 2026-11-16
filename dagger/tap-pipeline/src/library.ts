@@ -186,7 +186,13 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 }
 
 export function packagedVersionForUpstreamComparison(packageId: string, version: string): string {
-  return ["devsy-desktop", "t3-code-linux"].includes(packageId) ? version.split(",", 1)[0] : version
+  const packageVersion = ["devsy-desktop", "t3-code-linux"].includes(packageId) ? version.split(",", 1)[0] : version
+  if (["t3code-cli-main", "t3-code-linux"].includes(packageId)) {
+    // Polling tracks the official nightly identity; an explicit downstream
+    // patch revision must not make every tick rebuild or downgrade that source.
+    return packageVersion.replace(/\.homebrew\.[1-9]\d*\.([a-f0-9]{12})(?:_\d+)?$/, ".$1")
+  }
+  return packageVersion
 }
 
 export function codexDesktopBuildVersion(
@@ -221,17 +227,11 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     homebrewPath: "Formula/t3code-cli-main.rb",
     supportsPrCi: true,
     supportsReleaseBundle: true,
-    autoUpdate: {
-      kind: "git_head_sha",
-      ref: "main",
-      prefix: "main.",
-      shaLength: 12,
-      includeCommitDate: true,
-    },
+    autoUpdate: { kind: "t3_nightly" },
     upstream: {
       kind: "git",
       repo: "https://github.com/pingdotgg/t3code",
-      ref: "main",
+      ref: "refs/tags/v*-nightly.*",
     },
   },
   {
@@ -443,17 +443,11 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     kind: "source_build_node_appimage_cask",
     homebrewPath: "Casks/t3-code-linux.rb",
     supportsPrCi: true,
-    autoUpdate: {
-      kind: "git_head_sha",
-      ref: "main",
-      prefix: "main.",
-      shaLength: 12,
-      includeCommitDate: true,
-    },
+    autoUpdate: { kind: "t3_nightly" },
     upstream: {
       kind: "git",
       repo: "https://github.com/pingdotgg/t3code",
-      ref: "main",
+      ref: "refs/tags/v*-nightly.*",
     },
   },
   {

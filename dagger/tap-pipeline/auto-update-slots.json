@@ -31,12 +31,12 @@
   },
   {
     "id": "t3-daily",
-    "description": "Daily T3 package refresh for the CLI main build and Linux desktop cask.",
+    "description": "Discover official upstream T3 nightlies for the paired CLI and Linux desktop; unchanged identities do not rebuild.",
     "packageIds": ["t3code-cli-main", "t3-code-linux"]
   },
   {
     "id": "t3-code-6h",
-    "description": "Six-hour paired T3 CLI and Linux desktop refresh from one upstream commit.",
+    "description": "Poll for a new official T3 nightly between the other checks; build the paired CLI and desktop only when its identity changes.",
     "packageIds": ["t3code-cli-main", "t3-code-linux"]
   },
   {

@@ -1,6 +1,6 @@
 diff --git a/apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts b/apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..8cbe3ebc74493e4a97adc648069eac2ec9ae4488
+index 00000000..8cbe3ebc
 --- /dev/null
 +++ b/apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts
 @@ -0,0 +1,268 @@
@@ -273,7 +273,7 @@ index 0000000000000000000000000000000000000000..8cbe3ebc74493e4a97adc648069eac2e
 +
 +});
 diff --git a/apps/desktop/src/updates/DesktopUpdates.ts b/apps/desktop/src/updates/DesktopUpdates.ts
-index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe196ebb18e4 100644
+index 775a9ff6..53374607 100644
 --- a/apps/desktop/src/updates/DesktopUpdates.ts
 +++ b/apps/desktop/src/updates/DesktopUpdates.ts
 @@ -33,12 +33,25 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
@@ -317,7 +317,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 +    ...(homebrewManaged ? { updateProvider: "homebrew" as const } : {}),
    };
  }
- 
+
 @@ -384,6 +399,32 @@ export const make = Effect.gen(function* () {
    const fileSystem = yield* FileSystem.FileSystem;
    const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
@@ -350,7 +350,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 +  );
    // Any user can set the mock flag, so it never replaces an administrator's update source.
    const mockUpdates = config.mockUpdates && policy.message === null;
- 
+
 @@ -396,6 +437,12 @@ export const make = Effect.gen(function* () {
    const updaterConfiguredRef = yield* Ref.make(false);
    const lastLoggedDownloadMilestoneRef = yield* Ref.make(-1);
@@ -380,12 +380,12 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 -  );
 +    ...(homebrewManaged ? { updateProvider: "homebrew" as const } : {}),
 +  });
- 
+
    const stateChanges = yield* PubSub.sliding<DesktopUpdateState>(16);
    // Serialize writes and publishes against subscription so snapshots cannot overlap the first change.
 @@ -472,6 +520,13 @@ export const make = Effect.gen(function* () {
    );
- 
+
    const resolveDisabledReason = Effect.gen(function* () {
 +    if (homebrewManaged) {
 +      return Option.fromNullishOr(homebrewDisabledReason({
@@ -397,10 +397,10 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
      const hasFeedConfig = yield* hasUpdateFeedConfig;
      return Option.fromNullishOr(
        getAutoUpdateDisabledReason({
-@@ -557,6 +612,44 @@ export const make = Effect.gen(function* () {
-     });
+@@ -568,6 +623,44 @@ export const make = Effect.gen(function* () {
+     );
    });
- 
+
 +  const checkHomebrewForUpdates = Effect.fn("desktop.updates.checkHomebrewForUpdates")(
 +    function* () {
 +      const current = yield* Ref.get(updateStateRef);
@@ -442,10 +442,18 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
    const checkForUpdates = Effect.fn("desktop.updates.checkForUpdates")(function* (
      reason: string,
      actionReservation: "acquire" | "held" = "acquire",
-@@ -619,12 +712,49 @@ export const make = Effect.gen(function* () {
+@@ -575,6 +668,7 @@ export const make = Effect.gen(function* () {
+   ) {
+     yield* Effect.annotateCurrentSpan({ reason });
+     if (yield* Ref.get(desktopState.quitting)) return false;
++    if (homebrewManaged) return yield* checkHomebrewForUpdates();
+     if (!(yield* Ref.get(updaterConfiguredRef))) return false;
+
+     const state = yield* Ref.get(updateStateRef);
+@@ -626,6 +720,43 @@ export const make = Effect.gen(function* () {
          );
    });
- 
+
 +  const prepareHomebrewUpdate = Effect.fn("desktop.updates.prepareHomebrewUpdate")(function* (state: DesktopUpdateState) {
 +    if (!state.enabled || state.status !== "available" || state.availableVersion === null) {
 +      return { accepted: false, completed: false };
@@ -483,8 +491,10 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 +    );
 +  });
 +
-   const downloadAvailableUpdate = Effect.gen(function* () {
-     const admission = yield* Effect.scoped(
+   // Install refreshes before downloading, and a second check could pick a stale, older release.
+   const downloadAvailableUpdate = Effect.fn("desktop.updates.downloadAvailableUpdate")(function* (
+     refresh: boolean,
+@@ -634,7 +765,7 @@ export const make = Effect.gen(function* () {
        admitAfterCheck(
          Effect.gen(function* () {
            const state = yield* Ref.get(updateStateRef);
@@ -493,17 +503,17 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
              return "refused" as const;
            }
            const activeAction = yield* Ref.get(activeUpdateActionRef);
-@@ -644,6 +774,7 @@ export const make = Effect.gen(function* () {
+@@ -654,6 +785,7 @@ export const make = Effect.gen(function* () {
      }
- 
-     const state = yield* Ref.get(updateStateRef);
-+    if (homebrewManaged) return yield* prepareHomebrewUpdate(state);
+
+     const offered = yield* Ref.get(updateStateRef);
++    if (homebrewManaged) return yield* prepareHomebrewUpdate(offered);
+     let state = offered;
      return yield* Effect.gen(function* () {
-       yield* setState(reduceDesktopUpdateStateOnDownloadStart(state));
-       yield* electronUpdater.setDisableDifferentialDownload(
-@@ -771,9 +902,14 @@ export const make = Effect.gen(function* () {
+       if (refresh) {
+@@ -802,9 +934,14 @@ export const make = Effect.gen(function* () {
    );
- 
+
    const baseUpdateState = (channel: DesktopUpdateChannel, disabledReason: Option.Option<string>) =>
 -    Ref.get(notAppliedVersionRef).pipe(
 -      Effect.map((notAppliedVersion) => ({
@@ -519,7 +529,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
          // Callers fall back to the channel's reason only when nothing else turns updates off.
          ...(Option.isSome(disabledReason) &&
          disabledReason.value === Option.getOrUndefined(channelBlockedReason(channel))
-@@ -783,20 +919,27 @@ export const make = Effect.gen(function* () {
+@@ -814,20 +951,27 @@ export const make = Effect.gen(function* () {
            onNone: () => ({}),
            onSome: (version) => ({ notAppliedVersion: version }),
          }),
@@ -533,7 +543,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 +        }),
        })),
      );
- 
+
 -  const resetInstallAction = Effect.all(
 -    [
 -      finishUpdateAction("install"),
@@ -555,12 +565,12 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 +      yield* removeInstallRecord;
 +    }
 +  });
- 
+
    const recoverFailedInstall = Effect.fn("desktop.updates.recoverFailedInstall")(function* (
      message: string,
-@@ -809,9 +952,11 @@ export const make = Effect.gen(function* () {
+@@ -840,9 +984,11 @@ export const make = Effect.gen(function* () {
      if (!ownsRecovery) return;
- 
+
      yield* Ref.set(desktopState.quitting, false);
 -    yield* removeUpdateRestartMarker;
 -    yield* removeUpdateInProgressMarker;
@@ -573,7 +583,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
      yield* Effect.gen(function* () {
        const runningInstances = yield* Ref.getAndSet(installRunningBackendsRef, []);
        const instances = (yield* pool.list).filter((instance) =>
-@@ -845,7 +990,7 @@ export const make = Effect.gen(function* () {
+@@ -876,7 +1022,7 @@ export const make = Effect.gen(function* () {
                (expectedVersion === undefined || state.downloadedVersion === expectedVersion);
              if (
                (yield* Ref.get(desktopState.quitting)) ||
@@ -582,9 +592,9 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
                !hasExpectedDownload
              ) {
                return "refused" as const;
-@@ -873,10 +1018,12 @@ export const make = Effect.gen(function* () {
+@@ -904,10 +1050,12 @@ export const make = Effect.gen(function* () {
          yield* Ref.set(installRunningBackendsRef, []);
- 
+
          return yield* Effect.gen(function* () {
 -          yield* writeUpdateRestartMarker;
 -          yield* writeUpdateInProgressMarker;
@@ -598,7 +608,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
            // Stop pooled backends and SSH tunnels before quitAndInstall can outrun their scope finalizers.
            const instances = yield* pool.list;
            // stop clears desiredRunning, so retain the recovery set beforehand.
-@@ -896,6 +1043,22 @@ export const make = Effect.gen(function* () {
+@@ -927,6 +1075,22 @@ export const make = Effect.gen(function* () {
              ],
              { concurrency: "unbounded" },
            );
@@ -621,7 +631,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
            yield* electronUpdater.quitAndInstall({
              isSilent: true,
              isForceRunAfter: true,
-@@ -903,6 +1066,16 @@ export const make = Effect.gen(function* () {
+@@ -934,6 +1098,16 @@ export const make = Effect.gen(function* () {
            return { accepted: true, completed: false, failed: false };
          }).pipe(
            Effect.catchTags({
@@ -638,10 +648,10 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
              ElectronUpdaterQuitAndInstallError: Effect.fn("desktop.updates.handleInstallFailure")(
                function* (error) {
                  yield* recoverFailedInstall(error.message);
-@@ -1194,6 +1367,21 @@ export const make = Effect.gen(function* () {
+@@ -1260,6 +1434,21 @@ export const make = Effect.gen(function* () {
          void Effect.runPromiseWith(context)(effect);
        };
- 
+
 +      if (homebrewManaged) {
 +        const previousResult = yield* Effect.tryPromise({
 +          try: () => homebrewUpdateProvider.takeResult(),
@@ -659,8 +669,8 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
 +
        const appUpdateYmlConfig = yield* readAppUpdateYml;
        yield* Ref.set(appUpdateYmlConfigRef, appUpdateYmlConfig);
- 
-@@ -1277,6 +1465,12 @@ export const make = Effect.gen(function* () {
+
+@@ -1343,6 +1532,12 @@ export const make = Effect.gen(function* () {
        options?: { readonly minimumVersion?: string | undefined },
      ) {
        yield* Effect.annotateCurrentSpan({ channel: nextChannel });
@@ -673,7 +683,7 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
        if (Option.isSome(channelBlockedReason(nextChannel))) {
          return yield* new DesktopUpdateChannelManagedError({
            channel: nextChannel,
-@@ -1344,6 +1538,13 @@ export const make = Effect.gen(function* () {
+@@ -1410,6 +1605,13 @@ export const make = Effect.gen(function* () {
        options?: { readonly allowDowngrade?: boolean },
      ) {
        yield* Effect.annotateCurrentSpan({ reason });
@@ -689,10 +699,10 @@ index 055c6574391a6ba7ab723264bcc871b56e135e05..73fc330ea95b2bb169b3b1b998e2fe19
            checked: false,
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts b/apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..7b5286d39c24213512ab581cdb8f5a2d5079cf0d
+index 00000000..761bd366
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,120 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import * as Effect from "effect/Effect";
 +import { rejects } from "node:assert/strict";
@@ -709,6 +719,12 @@ index 0000000000000000000000000000000000000000..7b5286d39c24213512ab581cdb8f5a2d
 +const updateFields = `"currentVersion":"${version}","availableVersion":"${nextVersion}","source":"joshyorko/tools","sourceCommit":"abcdef123456","formula":"${nextVersion}","cask":"${nextVersion}"`;
 +
 +describe("HomebrewDesktopUpdates", () => {
++  it("accepts a nightly package identity only when its source hash agrees", () => {
++    const nightly = "0.1.10-nightly.20261116.4774.homebrew.1.16695c812fff";
++    assert.equal(parseHomebrewBuildIdentity(JSON.stringify({ packageVersion: nightly, sourceCommit: "16695c812fffe75e85f8cc3084d2c561aa3ca93f" })), nightly);
++    assert.throws(() => parseHomebrewBuildIdentity(JSON.stringify({ packageVersion: nightly, sourceCommit: "0".repeat(40) })));
++  });
++
 +  it("uses the embedded package identity independently of Electron semver", () => {
 +    assert.equal(parseHomebrewBuildIdentity(JSON.stringify({ packageVersion: version, sourceCommit: "6577c6b6185167c0e502fa01f9e8e8f2dee6ff25" })), version);
 +    assert.throws(() => parseHomebrewBuildIdentity(JSON.stringify({ packageVersion: version, sourceCommit: "0".repeat(40) })));
@@ -809,10 +825,10 @@ index 0000000000000000000000000000000000000000..7b5286d39c24213512ab581cdb8f5a2d
 +});
 diff --git a/apps/desktop/src/updates/HomebrewDesktopUpdates.ts b/apps/desktop/src/updates/HomebrewDesktopUpdates.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a548b5f5b
+index 00000000..9875aac1
 --- /dev/null
 +++ b/apps/desktop/src/updates/HomebrewDesktopUpdates.ts
-@@ -0,0 +1,495 @@
+@@ -0,0 +1,501 @@
 +// @effect-diagnostics-next-line nodeBuiltinImport:off -- This Promise boundary supervises a detached native process beyond the Effect runtime lifetime.
 +import { execFile, spawn } from "node:child_process";
 +// @effect-diagnostics-next-line nodeBuiltinImport:off -- Native promises stage private helper files used after Electron exits.
@@ -822,6 +838,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +import { isAbsolute, join } from "node:path";
 +import type { DesktopUpdateState } from "@t3tools/contracts";
 +import * as Schema from "effect/Schema";
++import { homebrewReleaseNotes } from "./HomebrewReleaseNotes.ts";
 +import * as updateMachine from "./updateMachine.ts";
 +import type { UpdatePolicy } from "./DesktopUpdatePolicy.ts";
 +
@@ -842,6 +859,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +  sourceCommit: Schema.String,
 +  formula: Schema.String,
 +  cask: Schema.String,
++  upstreamNotes: Schema.optionalKey(Schema.Unknown),
 +  message: Schema.optionalKey(Schema.String),
 +});
 +export type HomebrewUpdateCheck = typeof HomebrewUpdateCheckSchema.Type;
@@ -854,6 +872,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +  sourceCommit: Schema.String,
 +  formula: Schema.String,
 +  cask: Schema.String,
++  upstreamNotes: Schema.optionalKey(Schema.Unknown),
 +  message: Schema.optionalKey(Schema.String),
 +});
 +export type HomebrewUpdatePrepared = typeof HomebrewUpdatePreparedSchema.Type;
@@ -924,7 +943,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +    : updateMachine.reduceDesktopUpdateStateOnNoUpdate(state, input.checkedAt);
 +  const metadata = metadataOfUpdate(result);
 +  return {
-+    state: { ...next, homebrewUpdate: metadata, ...(result.message === undefined ? {} : { message: result.message }) },
++    state: { ...next, ...(result.status === "available" ? homebrewReleaseNotes(result) : {}), homebrewUpdate: metadata, ...(result.message === undefined ? {} : { message: result.message }) },
 +    metadata,
 +  };
 +}
@@ -949,6 +968,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +  return {
 +    state: {
 +      ...next,
++      ...homebrewReleaseNotes(prepared),
 +      downloadPercent: null,
 +      homebrewUpdate: metadata,
 +      ...(prepared.message === undefined ? {} : { message: prepared.message }),
@@ -961,7 +981,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +const RESULT_FILE = "t3code/homebrew-update/result.json";
 +
 +export function sourceVersionOfPackageVersion(value: string): string {
-+  const sourceVersion = /^main\.\d{14}\.[a-f0-9]{12}(?:_[0-9]+)?$/i.exec(value)?.[0];
++  const sourceVersion = /^(?:main\.\d{14}|\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*)\.[a-f0-9]{12}(?:_[0-9]+)?$/i.exec(value)?.[0];
 +  if (sourceVersion === undefined) {
 +    throw new Error("Homebrew package version is not a recognized T3 build.");
 +  }
@@ -1012,6 +1032,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +    currentVersion: checkedVersion(result.currentVersion),
 +    availableVersion,
 +    ...metadata,
++    ...(result.upstreamNotes === undefined ? {} : { upstreamNotes: result.upstreamNotes }),
 +    ...(message === undefined ? {} : { message }),
 +  };
 +}
@@ -1056,6 +1077,7 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +    currentVersion: checkedVersion(result.currentVersion),
 +    availableVersion,
 +    ...metadata,
++    ...(result.upstreamNotes === undefined ? {} : { upstreamNotes: result.upstreamNotes }),
 +    ...(message === undefined ? {} : { message }),
 +  };
 +}
@@ -1308,9 +1330,221 @@ index 0000000000000000000000000000000000000000..2fc6452709085e02d83afbbaf41f215a
 +    },
 +  };
 +}
+diff --git a/apps/desktop/src/updates/HomebrewReleaseNotes.test.ts b/apps/desktop/src/updates/HomebrewReleaseNotes.test.ts
+new file mode 100644
+index 00000000..6fd98c71
+--- /dev/null
++++ b/apps/desktop/src/updates/HomebrewReleaseNotes.test.ts
+@@ -0,0 +1,77 @@
++import { assert, describe, it } from "@effect/vitest";
++
++import { homebrewReleaseNotes } from "./HomebrewReleaseNotes.ts";
++
++const commit = "a".repeat(40);
++const previousCommit = "b".repeat(40);
++const installedCommit = "c".repeat(40);
++const version = "0.1.10-nightly.20261116.4774";
++const previousVersion = "0.1.10-nightly.20261116.4761";
++const installedVersion = "0.1.10-nightly.20261115.4749";
++const packageVersion = `${version}.homebrew.1.${commit.slice(0, 12)}`;
++const currentVersion = `${installedVersion}.homebrew.1.${installedCommit.slice(0, 12)}`;
++const repository = "https://github.com/pingdotgg/t3code";
++function release(v: string, sha: string, previous: string | null, counts: string, title: string) {
++  return {
++    tag: `v${v}`, version: v, commit: sha,
++    publishedAt: v === installedVersion ? "2026-11-15T18:00:00Z" : "2026-11-16T07:48:27Z",
++    url: `${repository}/releases/tag/v${v}`,
++    previousTag: previous === null ? null : `v${previous}`,
++    body: `**v${v}** · ${counts}\n\n- **${title}.** A useful upstream highlight.\n- **Second highlight.** Preserved from upstream.\n\n### Plus 23 more bug fixes.\n\n<details>\n<summary>Full changelog</summary>\n\n**Full Changelog**: ${repository}/compare/v${previous}...v${v}\n\n</details>`,
++  };
++}
++const newest = release(version, commit, previousVersion, "26 changes from 7 contributors", "File search");
++const previous = release(previousVersion, previousCommit, installedVersion, "23 changes from 9 contributors", "Steer Grok responses");
++const installed = release(installedVersion, installedCommit, null, "40 changes from 8 contributors", "Older release");
++const provenance = { schemaVersion: 1, packageVersion, sourceCommit: commit, upstream: newest, releases: [newest, previous, installed] };
++const input = { currentVersion, availableVersion: packageVersion, sourceCommit: commit.slice(0, 12), upstreamNotes: provenance };
++
++describe("Homebrew upstream nightly release notes", () => {
++  it("reuses upstream highlights, footer, stats and exact dates across skipped versions once", () => {
++    const result = homebrewReleaseNotes(input);
++    assert.deepEqual(result.releaseNotes.map((note) => note.version), [version, previousVersion]);
++    assert.deepEqual(result.releaseNotes.map((note) => note.stats), ["26 changes from 7 contributors", "23 changes from 9 contributors"]);
++    assert.equal(result.releaseNotes[0]?.items.length, 2);
++    assert.equal(result.releaseNotes[0]?.items[0], "**File search.** A useful upstream highlight.");
++    assert.equal(result.releaseNotes[0]?.footer, "Plus 23 more bug fixes.");
++    assert.equal(result.releaseNotes[0]?.releasedAt, newest.publishedAt);
++    assert.equal(result.homebrewReleaseNotes?.message, "");
++  });
++  it("does not invent an upgrade range for a main snapshot migration", () => {
++    const result = homebrewReleaseNotes({ ...input, currentVersion: "main.20261115183026.295a0a7332aa" });
++    assert.deepEqual(result.releaseNotes.map((note) => note.version), [version]);
++    assert.include(result.homebrewReleaseNotes?.message ?? "", "Limited upstream history");
++  });
++  it("shows a tap-only rebuild without new upstream changes or contributor counts", () => {
++    const result = homebrewReleaseNotes({ ...input, currentVersion: `${version}.homebrew.1.${commit.slice(0, 12)}_1` });
++    assert.include(result.homebrewReleaseNotes?.message ?? "", "no new upstream changes");
++    assert.isUndefined(result.releaseNotes[0]?.stats);
++  });
++  it("limits missing, stale, wrong-source, wrong-channel, unsafe URL, duplicate or broken-range metadata", () => {
++    for (const upstreamNotes of [
++      undefined,
++      { ...provenance, packageVersion: "other" },
++      { ...provenance, sourceCommit: "d".repeat(40) },
++      { ...provenance, upstream: { ...newest, version: "0.1.10-preview.20261116.4774" } },
++      { ...provenance, upstream: { ...newest, url: "javascript:alert(1)" } },
++      { ...provenance, releases: [newest, newest] },
++      { ...provenance, releases: [newest] },
++    ]) {
++      const result = homebrewReleaseNotes({ ...input, upstreamNotes });
++      assert.include(result.homebrewReleaseNotes?.message ?? "", "Limited upstream history");
++      assert.isAtMost(result.releaseNotes.length, 1);
++    }
++  });
++  it("does not render a newer or unrelated record outside the verified chain", () => {
++    const extra = release("0.1.10-nightly.20261117.4800", "d".repeat(40), version, "3 changes from 2 contributors", "Future");
++    const result = homebrewReleaseNotes({ ...input, upstreamNotes: { ...provenance, releases: [extra, ...provenance.releases] } });
++    assert.deepEqual(result.releaseNotes.map((note) => note.version), [version, previousVersion]);
++  });
++  it("keeps markup as text through upstream parsing instead of creating navigation", () => {
++    const body = newest.body.replace("A useful upstream highlight.", "[Unsafe](javascript:alert(1)) <img src=x onerror=alert(1)>");
++    const malicious = { ...newest, body };
++    const result = homebrewReleaseNotes({ ...input, upstreamNotes: { ...provenance, upstream: malicious, releases: [malicious, previous, installed] } });
++    assert.notInclude(result.releaseNotes[0]?.items[0] ?? "", "javascript:");
++    assert.notInclude(result.releaseNotes[0]?.items[0] ?? "", "<img");
++  });
++});
+diff --git a/apps/desktop/src/updates/HomebrewReleaseNotes.ts b/apps/desktop/src/updates/HomebrewReleaseNotes.ts
+new file mode 100644
+index 00000000..84700106
+--- /dev/null
++++ b/apps/desktop/src/updates/HomebrewReleaseNotes.ts
+@@ -0,0 +1,123 @@
++import type { DesktopUpdateState } from "@t3tools/contracts";
++import * as Schema from "effect/Schema";
++
++import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
++
++const NightlyReleaseSchema = Schema.Struct({
++  tag: Schema.String,
++  version: Schema.String,
++  commit: Schema.String,
++  publishedAt: Schema.String,
++  url: Schema.String,
++  body: Schema.String,
++  previousTag: Schema.NullOr(Schema.String),
++});
++const ProvenanceSchema = Schema.Struct({
++  schemaVersion: Schema.Literal(1),
++  packageVersion: Schema.String,
++  sourceCommit: Schema.String,
++  upstream: NightlyReleaseSchema,
++  releases: Schema.Array(NightlyReleaseSchema),
++});
++type NightlyRelease = typeof NightlyReleaseSchema.Type;
++const NIGHTLY = /^\d+\.\d+\.\d+-nightly\.\d{8}\.\d+$/;
++const PACKAGE = /^(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)\.homebrew\.[1-9]\d*\.([a-f0-9]{12})(?:_\d+)?$/;
++const REPOSITORY = "https://github.com/pingdotgg/t3code";
++
++function compareNightlies(left: string, right: string): number {
++  const parts = (value: string) => value.replace("-nightly.", ".").split(".").map(BigInt);
++  const rightParts = parts(right);
++  for (const [index, part] of parts(left).entries()) {
++    const other = rightParts[index];
++    if (other === undefined) return 0;
++    if (part !== other) return part > other ? 1 : -1;
++  }
++  return 0;
++}
++
++function validRelease(release: NightlyRelease): boolean {
++  if (!NIGHTLY.test(release.version) || release.tag !== `v${release.version}` ||
++    !/^[a-f0-9]{40}$/.test(release.commit) ||
++    release.url !== `${REPOSITORY}/releases/tag/${release.tag}` ||
++    !Number.isFinite(Date.parse(release.publishedAt)) || release.body.length > 200_000) return false;
++  const heading = release.body.trimStart().match(/^\*\*(v[^*]+)\*\*/)?.[1];
++  if (heading && heading !== release.tag) return false;
++  if (release.previousTag === null) return true;
++  return NIGHTLY.test(release.previousTag.slice(1)) && release.previousTag.startsWith("v") &&
++    compareNightlies(release.previousTag.slice(1), release.version) < 0 &&
++    release.body.includes(`**Full Changelog**: ${REPOSITORY}/compare/${release.previousTag}...${release.tag}`);
++}
++
++/** Notes are optional: unavailable or mismatched provenance must never prevent paired installation. */
++export function homebrewReleaseNotes(input: {
++  readonly currentVersion: string;
++  readonly availableVersion: string;
++  readonly sourceCommit: string;
++  readonly upstreamNotes?: unknown;
++}): Pick<DesktopUpdateState, "releaseNotes" | "omittedReleaseCount" | "homebrewReleaseNotes"> {
++  const offered = PACKAGE.exec(input.availableVersion);
++  const version = offered?.[1];
++  const source = offered?.[2];
++  if (!version || !source) return { releaseNotes: [], omittedReleaseCount: 0 };
++  const limited = (message: string) => ({
++    releaseNotes: [{ version, items: [], totalItems: 0, intro: "View the exact upstream nightly release for its changelog and contributors." }],
++    omittedReleaseCount: 0,
++    homebrewReleaseNotes: { version, message },
++  });
++  const fallback = limited("Limited upstream history: verified notes are unavailable for this package.");
++  try {
++    const provenance = Schema.decodeUnknownSync(ProvenanceSchema)(input.upstreamNotes);
++    if (provenance.packageVersion !== input.availableVersion ||
++      provenance.sourceCommit !== provenance.upstream.commit ||
++      provenance.upstream.version !== version ||
++      !provenance.sourceCommit.startsWith(source) || source !== input.sourceCommit ||
++      provenance.releases.length === 0 || provenance.releases.length > 60 ||
++      !validRelease(provenance.upstream) || !provenance.releases.every(validRelease)) return fallback;
++    const records = new Map<string, NightlyRelease>();
++    let totalLength = 0;
++    for (const release of provenance.releases) {
++      totalLength += release.body.length;
++      if (records.has(release.tag) || totalLength > 800_000) return fallback;
++      records.set(release.tag, release);
++    }
++    const available = records.get(provenance.upstream.tag);
++    if (!available || JSON.stringify(available) !== JSON.stringify(provenance.upstream)) return fallback;
++    const installed = PACKAGE.exec(input.currentVersion);
++    if (installed?.[2] === source) {
++      return limited("Homebrew package rebuild: no new upstream changes.");
++    }
++    const selected: NightlyRelease[] = [];
++    const seen = new Set<string>();
++    let next: NightlyRelease | undefined = available;
++    let complete = false;
++    while (next && !seen.has(next.tag)) {
++      if (installed && next.version === installed[1] && next.commit.startsWith(installed[2] ?? "!")) {
++        complete = true;
++        break;
++      }
++      seen.add(next.tag);
++      selected.push(next);
++      next = next.previousTag === null ? undefined : records.get(next.previousTag);
++    }
++    // A migration has no provable included range. Show only the exact offered release, labeled clearly.
++    const included = complete ? selected : [available];
++    const normalized = normalizeDesktopUpdateReleaseNotes(
++      included.map((release) => ({ version: release.version, note: release.body })),
++      version,
++      "nightly",
++      available.publishedAt,
++    );
++    if (normalized.releaseNotes.length === 0) return fallback;
++    const dates = new Map(included.map((release) => [release.version, release.publishedAt]));
++    return {
++      ...normalized,
++      releaseNotes: normalized.releaseNotes.map((note) => ({ ...note, releasedAt: dates.get(note.version) ?? available.publishedAt })),
++      homebrewReleaseNotes: {
++        version,
++        message: complete ? "" : "Limited upstream history: showing this nightly only; the installed build's release range could not be verified.",
++      },
++    };
++  } catch {
++    return fallback;
++  }
++}
 diff --git a/apps/desktop/src/updates/homebrewUpdatesTestHarness.ts b/apps/desktop/src/updates/homebrewUpdatesTestHarness.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..484b57b5afa67f4bdc72152dbd6af6f849d384cb
+index 00000000..484b57b5
 --- /dev/null
 +++ b/apps/desktop/src/updates/homebrewUpdatesTestHarness.ts
 @@ -0,0 +1,356 @@
@@ -1670,9 +1904,25 @@ index 0000000000000000000000000000000000000000..484b57b5afa67f4bdc72152dbd6af6f8
 +    },
 +  };
 +}
+diff --git a/apps/web/src/components/desktopUpdate.toast.tsx b/apps/web/src/components/desktopUpdate.toast.tsx
+index 18817978..4955eb21 100644
+--- a/apps/web/src/components/desktopUpdate.toast.tsx
++++ b/apps/web/src/components/desktopUpdate.toast.tsx
+@@ -48,7 +48,10 @@ export function showDesktopUpdateDownloadedToast(
+   shell: DesktopUpdateShell,
+   state: DesktopUpdateState,
+ ): void {
+-  const releaseUrl = getDesktopUpdateReleaseUrl(getDesktopUpdateDownloadedVersion(state));
++  const releaseUrl = getDesktopUpdateReleaseUrl(
++    state.homebrewReleaseNotes?.version ?? getDesktopUpdateDownloadedVersion(state),
++    state.updateProvider === "homebrew" ? "pingdotgg/t3code" : undefined,
++  );
+   toastManager.add({
+     type: "success",
+     title: "Update downloaded",
 diff --git a/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts b/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1452ce104e8f14fbcd1a437c89334baec0410e55
+index 00000000..1452ce10
 --- /dev/null
 +++ b/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts
 @@ -0,0 +1,71 @@
@@ -1749,7 +1999,7 @@ index 0000000000000000000000000000000000000000..1452ce104e8f14fbcd1a437c89334bae
 +});
 diff --git a/apps/web/src/components/homebrewDesktopUpdate.logic.ts b/apps/web/src/components/homebrewDesktopUpdate.logic.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..b882a11e407d32ecdafeb35a000ceb718534e69f
+index 00000000..b882a11e
 --- /dev/null
 +++ b/apps/web/src/components/homebrewDesktopUpdate.logic.ts
 @@ -0,0 +1,40 @@
@@ -1794,7 +2044,7 @@ index 0000000000000000000000000000000000000000..b882a11e407d32ecdafeb35a000ceb71
 +  return `${action}\n\nT3 Code and its local servers will close during the update. Make sure running tasks are ready to stop.`;
 +}
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 5df8007ef46772d7efc2b8c3389bb945c74e3502..5ee83ac5e99656f8ecc80cce097d35c34cc505a2 100644
+index 5df8007e..5ee83ac5 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 @@ -14,6 +14,10 @@ import { ensureLocalApi } from "../../localApi";
@@ -1817,7 +2067,7 @@ index 5df8007ef46772d7efc2b8c3389bb945c74e3502..5ee83ac5e99656f8ecc80cce097d35c3
    clearSavedUpdateEverythingResult,
    saveUpdateEverythingResult,
 @@ -198,6 +203,7 @@ export function SidebarUpdatePill() {
- 
+
  function SidebarUpdateControl() {
    const state = useDesktopUpdateState();
 +  useHomebrewUpdateResult(state?.homebrewUpdateResult);
@@ -1853,15 +2103,137 @@ index 5df8007ef46772d7efc2b8c3389bb945c74e3502..5ee83ac5e99656f8ecc80cce097d35c3
        } catch (error) {
 @@ -363,6 +369,7 @@ function SidebarUpdateControl() {
    };
- 
+
    const runEverything = async () => {
 +    if (state?.updateProvider === "homebrew") return;
      const bridge = window.desktopBridge;
      setIsConfirmingEverything(false);
      setIsActionPending(true);
+diff --git a/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.homebrew.browser.test.tsx b/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.homebrew.browser.test.tsx
+new file mode 100644
+index 00000000..006fac48
+--- /dev/null
++++ b/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.homebrew.browser.test.tsx
+@@ -0,0 +1,42 @@
++import type { DesktopUpdateState } from "@t3tools/contracts";
++import { describe, expect, it, vi } from "vite-plus/test";
++import { page, userEvent } from "vite-plus/test/browser";
++
++import "~/index.css";
++import { render } from "../../../test/render";
++import { SidebarUpdateReleaseNotes } from "./SidebarUpdateReleaseNotes";
++
++const version = "0.1.10-nightly.20261116.4774";
++const packageVersion = `${version}.homebrew.1.16695c812fff`;
++const state: DesktopUpdateState = {
++  enabled: true, status: "available", channel: "nightly", currentVersion: "main.20261115183026.295a0a7332aa",
++  hostArch: "x64", appArch: "x64", runningUnderArm64Translation: false,
++  availableVersion: packageVersion, downloadedVersion: null,
++  releaseNotes: [{ version, items: ["**File search.** Searching no longer freezes the server.", "**Composer drafts.** Saved drafts preserve underscores."], totalItems: 2,
++    stats: "26 changes from 7 contributors", footer: "Plus 23 more bug fixes.", releasedAt: "2026-11-16T07:48:27Z" }],
++  omittedReleaseCount: 0, downloadPercent: null, checkedAt: null, message: null, errorContext: null, canRetry: false,
++  updateProvider: "homebrew", homebrewReleaseNotes: { version, message: "Limited upstream history: showing this nightly only." },
++};
++
++describe("Homebrew upstream notes navigation", () => {
++  it("clicks the canonical upstream stats link without invoking package actions", async () => {
++    const openExternal = vi.fn().mockResolvedValue(true);
++    const downloadUpdate = vi.fn();
++    const installUpdate = vi.fn();
++    const shell = { openExternal, downloadUpdate, installUpdate };
++    await using _screen = await render(<SidebarUpdateReleaseNotes state={state} shell={shell} tooltip="Homebrew package details" />);
++    await expect.element(page.getByText("File search.", { exact: true })).toBeVisible();
++    await expect.element(page.getByText("Plus 23 more bug fixes.")).toBeVisible();
++    const link = page.getByRole("link", { name: "26 changes from 7 contributors" });
++    await expect.element(link).toHaveAttribute("href", `https://github.com/pingdotgg/t3code/releases/tag/v${version}`);
++    await userEvent.click(link);
++    expect(openExternal).toHaveBeenCalledExactlyOnceWith(`https://github.com/pingdotgg/t3code/releases/tag/v${version}`);
++    expect(downloadUpdate).not.toHaveBeenCalled();
++    expect(installUpdate).not.toHaveBeenCalled();
++  });
++  it("retains meaningful upstream notes after packages are prepared", async () => {
++    await using _screen = await render(<SidebarUpdateReleaseNotes state={{ ...state, status: "downloaded", downloadedVersion: packageVersion }} shell={undefined} tooltip="Homebrew package details" />);
++    await expect.element(page.getByText("Update ready to install")).toBeVisible();
++    await expect.element(page.getByRole("link", { name: "26 changes from 7 contributors" })).toBeVisible();
++  });
++});
+diff --git a/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx b/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx
+index 34c4403a..c0413050 100644
+--- a/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx
++++ b/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx
+@@ -67,23 +67,25 @@ export function SidebarUpdateReleaseNotes({
+   if (state.releaseNotes.length === 0) {
+     return <>{tooltip}</>;
+   }
++  const offeredVersion = state.homebrewReleaseNotes?.version ?? state.availableVersion;
++  const releaseRepository = state.updateProvider === "homebrew" ? "pingdotgg/t3code" : undefined;
+   const releasedAt = state.releaseNotes.find(
+-    (releaseNote) => releaseNote.version === state.availableVersion,
++    (releaseNote) => releaseNote.version === offeredVersion,
+   )?.releasedAt;
+
+   return (
+     <div className="flex max-h-[calc(var(--available-height)-0.5rem)] min-h-0 w-fit max-w-[min(24rem,calc(100vw-2rem))] flex-col text-left text-pretty">
+       <div className="shrink-0 px-1">
+-        {state.status === "available" ? (
++        {state.status === "available" || state.updateProvider === "homebrew" ? (
+           <div>
+             <div className="whitespace-nowrap text-sm leading-5 font-medium">
+-              Update ready to download
++              {state.status === "downloaded" ? "Update ready to install" : "Update ready to download"}
+             </div>
+-            {state.availableVersion ? (
++            {offeredVersion ? (
+               <div className="mt-0.5 text-xs leading-4 text-muted-foreground">
+                 {releasedAt
+-                  ? `${state.availableVersion} · ${formatReleaseAge(releasedAt)}`
+-                  : state.availableVersion}
++                  ? `${offeredVersion} · ${formatReleaseAge(releasedAt)}`
++                  : offeredVersion}
+               </div>
+             ) : null}
+           </div>
+@@ -91,9 +93,10 @@ export function SidebarUpdateReleaseNotes({
+           <div className="text-sm leading-5 font-medium">{tooltip}</div>
+         )}
+       </div>
++      {state.homebrewReleaseNotes?.message ? <p className="px-1 pt-2 text-xs text-muted-foreground">{state.homebrewReleaseNotes.message}</p> : null}
+       <div className="min-h-0 max-h-[min(28rem,calc(100vh-6rem))] overflow-y-auto px-1 pt-3 pb-1">
+         {state.releaseNotes.map((releaseNote, index) => {
+-          const releaseUrl = getDesktopUpdateReleaseUrl(releaseNote.version);
++          const releaseUrl = getDesktopUpdateReleaseUrl(releaseNote.version, releaseRepository);
+           const omittedItemCount = Math.max(0, releaseNote.totalItems - releaseNote.items.length);
+           const linkLabel =
+             releaseNote.stats ??
+@@ -105,7 +108,7 @@ export function SidebarUpdateReleaseNotes({
+           return (
+             <section className={index > 0 ? "mt-4" : undefined} key={releaseNote.version}>
+               {generated ? (
+-                releaseNote.version !== state.availableVersion && (
++                releaseNote.version !== offeredVersion && (
+                   <h3 className="mb-1 text-xs leading-4 font-medium text-muted-foreground">
+                     {releaseNote.releasedAt
+                       ? `${releaseNote.version} · ${formatReleaseAge(releaseNote.releasedAt)}`
+@@ -150,9 +153,15 @@ export function SidebarUpdateReleaseNotes({
+             </section>
+           );
+         })}
++        {state.updateProvider === "homebrew" ? (
++          <details className="mt-3 text-xs text-muted-foreground">
++            <summary>Homebrew build details</summary>
++            <p className="pt-1 break-words">{tooltip}</p>
++          </details>
++        ) : null}
+         {state.omittedReleaseCount > 0 ? (
+           <div className="mt-3">
+-            <ReleaseLink releaseUrl={getDesktopUpdateReleaseHistoryUrl()} shell={shell}>
++            <ReleaseLink releaseUrl={getDesktopUpdateReleaseHistoryUrl(releaseRepository)} shell={shell}>
+               {`${state.omittedReleaseCount} older ${state.omittedReleaseCount === 1 ? "release" : "releases"} on GitHub`}
+             </ReleaseLink>
+           </div>
 diff --git a/apps/web/src/components/sidebar/useHomebrewUpdateResult.ts b/apps/web/src/components/sidebar/useHomebrewUpdateResult.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1d8897ec21e406e758352124c9cba519751564e
+index 00000000..d1d8897e
 --- /dev/null
 +++ b/apps/web/src/components/sidebar/useHomebrewUpdateResult.ts
 @@ -0,0 +1,22 @@
@@ -1888,14 +2260,15 @@ index 0000000000000000000000000000000000000000..d1d8897ec21e406e758352124c9cba51
 +  }, [result]);
 +}
 diff --git a/packages/contracts/src/ipc.ts b/packages/contracts/src/ipc.ts
-index 5fcf696b96d1d78390caafd763eecc862c91b255..4caf1e0f7d1fd83528373bca5dc1dafc707a0d62 100644
+index 25339cb3..f5df9773 100644
 --- a/packages/contracts/src/ipc.ts
 +++ b/packages/contracts/src/ipc.ts
-@@ -289,6 +289,19 @@ export interface DesktopUpdateState {
+@@ -289,6 +289,20 @@ export interface DesktopUpdateState {
    message: string | null;
    errorContext: "check" | "download" | "install" | null;
    canRetry: boolean;
 +  updateProvider?: "homebrew";
++  homebrewReleaseNotes?: { version: string; message: string };
 +  homebrewUpdate?: {
 +    source: string;
 +    sourceCommit: string;
@@ -1911,11 +2284,12 @@ index 5fcf696b96d1d78390caafd763eecc862c91b255..4caf1e0f7d1fd83528373bca5dc1dafc
    notAppliedVersion?: string;
    /** Off only because a managed policy rules out this channel; switching channels turns it on. */
    channelBlockedByPolicy?: true;
-@@ -321,6 +334,23 @@ export const DesktopUpdateStateSchema = Schema.Struct({
+@@ -321,6 +335,24 @@ export const DesktopUpdateStateSchema = Schema.Struct({
    enabled: Schema.Boolean,
    status: DesktopUpdateStatusSchema,
    channel: DesktopUpdateChannelSchema,
 +  updateProvider: Schema.optionalKey(Schema.Literal("homebrew")),
++  homebrewReleaseNotes: Schema.optionalKey(Schema.Struct({ version: Schema.String, message: Schema.String })),
 +  homebrewUpdate: Schema.optionalKey(
 +    Schema.Struct({
 +      source: Schema.String,
@@ -1936,15 +2310,16 @@ index 5fcf696b96d1d78390caafd763eecc862c91b255..4caf1e0f7d1fd83528373bca5dc1dafc
    hostArch: DesktopRuntimeArchSchema,
    appArch: DesktopRuntimeArchSchema,
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 9d34e2412b327f03f20f88385ee835209ffa3b6b..56daf6b08f17149407819d22e1ede871f4bdc3c0 100644
+index 9d34e241..56daf6b0 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -1092,6 +1092,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1092,6 +1092,9 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
  export const DESKTOP_EXTRA_RESOURCES = [
 +  { from: "apps/desktop/resources/t3-homebrew-update.sh", to: "t3-homebrew-update.sh" },
 +  { from: "apps/desktop/resources/t3-homebrew-build.json", to: "t3-homebrew-build.json" },
++  { from: "apps/desktop/resources/t3-homebrew-upstream.json", to: "t3-homebrew-upstream.json" },
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
      to: "node_modules/@cursor",

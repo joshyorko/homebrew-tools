@@ -1,0 +1,31 @@
+{
+  "upstream": "b5554ac8114f2ce7ce8b5973690ccb8cbb248efd",
+  "setupExitCode": 0,
+  "scenarios": [
+    {
+      "scenario": "service-attach",
+      "exitCode": 0,
+      "sourceMatches": true,
+      "passed": true
+    },
+    {
+      "scenario": "unknown-owner",
+      "exitCode": 0,
+      "sourceMatches": true,
+      "passed": true
+    },
+    {
+      "scenario": "package-mismatch",
+      "exitCode": 0,
+      "sourceMatches": true,
+      "passed": true
+    },
+    {
+      "scenario": "manual-settings",
+      "exitCode": 0,
+      "sourceMatches": true,
+      "passed": true
+    }
+  ],
+  "passed": true
+}

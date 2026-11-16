@@ -42,12 +42,12 @@ fail() {
 }
 
 valid_package_version() {
-  [[ "$1" =~ ^main\.[0-9]{14}\.[0-9a-f]{12}(_[0-9]+)?$ ]]
+  source_version "$1" >/dev/null
 }
 
 source_version() {
   local value="$1"
-  if [[ "$value" =~ ^(main\.[0-9]{14}\.[0-9a-f]{12})(_[0-9]+)?$ ]]; then
+  if [[ "$value" =~ ^((main\.[0-9]{14}|[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[0-9]+\.homebrew\.[1-9][0-9]*)\.[0-9a-f]{12})(_[0-9]+)?$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -304,12 +304,30 @@ source_commit() {
   printf '%s' "${base##*.}"
 }
 
+# Notes are shipped with the tap. A failed metadata read must never prevent an update.
+upstream_notes() {
+  local available="$1" tap_root notes_file
+  tap_root="$(brew_run --repo "$TAP" 2>>"$LOG_FILE")" || return 0
+  [[ -n "$tap_root" && -d "$tap_root" ]] || return 0
+  notes_file="$tap_root/metadata/t3-nightly/$available.json"
+  [[ -f "$notes_file" && ! -L "$notes_file" ]] || return 0
+  [[ "$(stat -c '%s' -- "$notes_file")" -le 1048576 ]] || return 0
+  ruby_parse '
+value = JSON.parse(STDIN.read)
+raise "invalid nightly provenance" unless value.is_a?(Hash) && value["schemaVersion"] == 1
+STDOUT.write(JSON.generate(value))
+' < "$notes_file" 2>>"$LOG_FILE" || return 0
+}
+
 paired_result() {
   local status="$1" current="$2" available="$3"
-  local commit
+  local commit notes
   commit="$(source_commit "$available")" || fail "Could not identify the paired T3 source commit."
-  printf '{"status":"%s","currentVersion":"%s","availableVersion":"%s","source":"%s","sourceCommit":"%s","formula":"%s","cask":"%s"}\n' \
+  notes="$(upstream_notes "$available")"
+  printf '{"status":"%s","currentVersion":"%s","availableVersion":"%s","source":"%s","sourceCommit":"%s","formula":"%s","cask":"%s"' \
     "$status" "$current" "$available" "$TAP" "$commit" "$available" "$available"
+  if [[ -n "$notes" ]]; then printf ',"upstreamNotes":%s' "$notes"; fi
+  printf '}\n'
 }
 
 check_for_update() {
