@@ -1,11 +1,11 @@
 class T3codeCliMain < Formula
-  desc "T3 Code CLI built from pingdotgg/t3code main"
+  desc "T3 Code CLI built from an upstream nightly with Homebrew patches"
   homepage "https://github.com/pingdotgg/t3code"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-main.20261115183026.295a0a7332aa/t3code-cli-main-main.20261115183026.295a0a7332aa.tar.gz"
-  version "main.20261115183026.295a0a7332aa"
-  sha256 "e701d36023b4fbf707df1645fabe3b96fed2d93b3de3ffc05e80b2877a25cbb4"
-  license "MIT"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f/t3code-cli-main-0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f.tar.gz"
+  version "0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f"
   version_scheme 1
+  sha256 "571577cc6744bf97ad7962dfbd9d580f0c1772d5dc4fea2d1ca0e0f38314a276"
+  license "MIT"
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."
