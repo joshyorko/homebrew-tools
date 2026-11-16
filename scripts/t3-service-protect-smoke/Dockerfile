@@ -1,4 +1,4 @@
-FROM ghcr.io/homebrew/brew:main@sha256:96317570b8b7de4b5c950d89bf34a2c916d39a5ccb7ab9ae243c49f0a0f079c4
+FROM ghcr.io/homebrew/brew:main@sha256:c2a3f5fd19646ed59aef7f26ebf1da8a9ed5ab58ba15591d40979a9738327e2e
 USER root
 RUN . /etc/os-release && test "$ID" = ubuntu \
     && printf 'deb http://archive.ubuntu.com/ubuntu %s main universe\ndeb http://archive.ubuntu.com/ubuntu %s-updates main universe\n' "$VERSION_CODENAME" "$VERSION_CODENAME" > /tmp/fixture-apt.list \
