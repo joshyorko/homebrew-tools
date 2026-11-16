@@ -62,6 +62,7 @@ try {
     return { version: app.getVersion(), packaged: app.isPackaged }
   })
   assert.equal(runtime.packaged, true)
+  assert.equal(runtime.version, provenance.upstream.version, "Desktop runtime reports the upstream nightly version")
   const { page, observations } = await waitForApplicationRenderer(app)
   await writeFile(root + "/renderer-readiness.json", JSON.stringify(observations, null, 2))
   const close = page.getByRole("button", { name: "Close", exact: true })

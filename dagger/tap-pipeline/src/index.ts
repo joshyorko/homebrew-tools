@@ -3322,6 +3322,7 @@ end
               "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
               "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3\"",
               "brew test test/tap/t3code-cli-main",
+              `test "$(t3 --version)" = "${build.provenance.upstream.version}"`,
               "t3 --help",
               ...t3CliConnectGateChecks(),
             ].join("\n"),
@@ -3629,6 +3630,7 @@ end
               "asar=\"$app_dir/resources/app.asar\"",
               "test -x \"$app_dir/resources/t3-homebrew-update.sh\"",
               `node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (value.packageVersion !== process.argv[2] || value.sourceCommit !== process.argv[3]) process.exit(1)' "$app_dir/resources/t3-homebrew-build.json" "${build.version}" "${build.commit}"`,
+              `node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (value.packageVersion !== process.argv[2] || value.sourceCommit !== process.argv[3] || value.upstream.version !== process.argv[4] || !Array.isArray(value.releases)) process.exit(1)' "$app_dir/resources/t3-homebrew-upstream.json" "${build.version}" "${build.commit}" "${build.provenance.upstream.version}"`,
               ...t3PublicConnectAsarChecks(),
             ].join("\n"),
           ])

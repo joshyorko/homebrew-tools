@@ -2313,12 +2313,13 @@ diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.
 index 9d34e241..56daf6b0 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
-@@ -1092,6 +1092,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1092,6 +1092,9 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
  export const DESKTOP_EXTRA_RESOURCES = [
 +  { from: "apps/desktop/resources/t3-homebrew-update.sh", to: "t3-homebrew-update.sh" },
 +  { from: "apps/desktop/resources/t3-homebrew-build.json", to: "t3-homebrew-build.json" },
++  { from: "apps/desktop/resources/t3-homebrew-upstream.json", to: "t3-homebrew-upstream.json" },
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
      to: "node_modules/@cursor",
