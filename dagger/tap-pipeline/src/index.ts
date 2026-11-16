@@ -3285,6 +3285,7 @@ end
         ).trim().split(/\s+/)[0]
         const formulaContents = await tap.file("Formula/t3code-cli-main.rb").contents()
         const updatedFormula = formulaContents
+          .replace(/desc ".*"/, 'desc "T3 Code CLI built from an upstream nightly with Homebrew patches"')
           .replace(/^\s*version_scheme \d+\n/m, "")
           .replace(/^\s*revision \d+\n/m, "")
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
@@ -4142,6 +4143,7 @@ end
         const release = this.t3codeCliReleaseMetadata(build, sha256)
         const formulaContents = await tap.file("Formula/t3code-cli-main.rb").contents()
         const updatedFormula = formulaContents
+          .replace(/desc ".*"/, 'desc "T3 Code CLI built from an upstream nightly with Homebrew patches"')
           .replace(/^\s*version_scheme \d+\n/m, "")
           .replace(/^\s*revision \d+\n/m, "")
           .replace(/url ".*"/, `url "${String(release.download_url)}"`)

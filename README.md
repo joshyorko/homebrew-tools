@@ -332,7 +332,7 @@ disables this updater, and an administrator-managed `feedUrl` is not replaced.
 See [the T3 Homebrew lifecycle guide](docs/t3-homebrew-lifecycle.md) for the
 confirmation flow, migration, recovery behavior, and policy limits.
 
-### T3 Code CLI (Main Formula)
+### T3 Code CLI (Nightly Formula)
 
 T3 Code CLI packaged from the same verified upstream nightly as the Desktop for Linux/devcontainer use.
 The historical `t3code-cli-main` formula name remains unchanged.
