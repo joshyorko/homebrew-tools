@@ -25,8 +25,8 @@ bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o ./dist/release-bun
 
 The launcher provisions or resumes `homebrew-tools-dagger` using your configured
 Harvester provider. It keeps the VM running across a multi-command workflow.
-The VM has 12 vCPUs, 32 GiB RAM, and 200 GiB disk. The Dagger engine uses at most
-12 CPUs, 24 GiB RAM, 28 GiB total RAM plus swap, and 4096 processes.
+The VM has 6 vCPUs, 16 GiB RAM, and 200 GiB disk. The Dagger engine uses at most
+4 CPUs, 12 GiB RAM, 14 GiB total RAM plus swap, and 4096 processes.
 CPU affinity also limits build tools that size pools from the visible CPU count.
 Builds share an engine lock and use separate source snapshots.
 Before a heavy workload, check available space on the builder's `/builds`

@@ -67,10 +67,10 @@ elif name == "ssh":
         sys.exit(98)
 elif name == "docker":
     if "--format" in sys.argv:
-        cpus = ",".join(map(str, sorted(os.sched_getaffinity(0))[:12]))
-        print("12000000000 25769803776 30064771072 4096 private " + cpus)
+        cpus = ",".join(map(str, sorted(os.sched_getaffinity(0))[:4]))
+        print("4000000000 12884901888 15032385536 4096 private " + cpus)
     elif "exec" in sys.argv:
-        print("25769803776\n4294967296\n1200000 100000\n4096")
+        print("12884901888\n2147483648\n400000 100000\n4096")
 elif name == "dagger":
     print("dagger v0.21.11" if "version" in sys.argv else "remote driver completed")
 else:
@@ -127,6 +127,13 @@ class RemoteBuilderTests(unittest.TestCase):
 
     def upload(self):
         return tarfile.open(self.state / "upload.tar")
+
+    def test_existing_builder_uses_the_smaller_explicit_vm_budget(self):
+        result, calls = self.run_builder("call", "probe")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        startup = next(call for call in calls if call[0] == "devsy" and "up" in call)
+        self.assertIn("HARVESTER_CPU=6", startup)
+        self.assertIn("HARVESTER_MEMORY=16Gi", startup)
 
     def test_uploads_dirty_checkout_and_preserves_arguments(self):
         (self.repo / "tracked").write_text("edited\n")

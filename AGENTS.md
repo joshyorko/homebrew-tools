@@ -18,9 +18,9 @@ Use the Dagger smoke tests for real packaging verification:
 
 On the workstation, run every Dagger command through `bash scripts/dagger-devsy.sh`.
 It provisions or resumes the `homebrew-tools-dagger` Devsy workspace using the
-configured Harvester provider. The builder VM has 12 vCPUs, 32 GiB RAM, and a
-200 GiB disk. Its private engine cgroup has 12 CPUs with matching affinity,
-24 GiB RAM, 28 GiB total RAM plus swap, and 4096 processes.
+configured Harvester provider. The builder VM has 6 vCPUs, 16 GiB RAM, and a
+200 GiB disk. Its private engine cgroup has 4 CPUs with matching affinity,
+12 GiB RAM, 14 GiB total RAM plus swap, and 4096 processes.
 The launcher uploads the current checkout, including uncommitted changes and
 Git history, serializes builds, and copies one `-o` export back on success.
 Use repository-relative input paths. Do not run raw Dagger, Docker builds, or

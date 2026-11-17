@@ -30,18 +30,18 @@ if [[ "${1:-}" == --remote ]]; then
   version="$(dagger version | awk '{print $2}')"
   [[ "$version" == v0.21.11 ]] || fail "Unexpected remote Dagger version: $version. Recreate the builder after updating its profile."
   engine="homebrew-tools-dagger-$version"
-  cpu_set="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:12])))')"
+  cpu_set="$(python3 -c 'import os; print(",".join(map(str, sorted(os.sched_getaffinity(0))[:4])))')"
   if ! docker container inspect "$engine" >/dev/null 2>&1; then
     docker create --name "$engine" --privileged --cgroupns=private \
-      --cpus=12 --cpuset-cpus="$cpu_set" --memory=24g --memory-swap=28g --pids-limit=4096 \
+      --cpus=4 --cpuset-cpus="$cpu_set" --memory=12g --memory-swap=14g --pids-limit=4096 \
       --restart=unless-stopped --volume "$engine:/var/lib/dagger" \
       "registry.dagger.io/engine:$version" --debug >/dev/null
   fi
   limits="$(docker inspect "$engine" --format '{{.HostConfig.NanoCpus}} {{.HostConfig.Memory}} {{.HostConfig.MemorySwap}} {{.HostConfig.PidsLimit}} {{.HostConfig.CgroupnsMode}} {{.HostConfig.CpusetCpus}}')"
-  [[ "$limits" == "12000000000 25769803776 30064771072 4096 private $cpu_set" ]] || fail "Remote engine limits differ from the builder budget"
+  [[ "$limits" == "4000000000 12884901888 15032385536 4096 private $cpu_set" ]] || fail "Remote engine limits differ from the builder budget"
   docker start "$engine" >/dev/null
   effective="$(docker exec "$engine" cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.swap.max /sys/fs/cgroup/cpu.max /sys/fs/cgroup/pids.max)"
-  [[ "$effective" == $'25769803776\n4294967296\n1200000 100000\n4096' ]] || fail "Remote engine cgroup budget is not effective"
+  [[ "$effective" == $'12884901888\n2147483648\n400000 100000\n4096' ]] || fail "Remote engine cgroup budget is not effective"
   cd source
   echo "Running Dagger on $(hostname), $run/source" >&2
   exec env "_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://$engine" dagger "$@"
@@ -140,12 +140,13 @@ for ws in data:
 ' "$workspace" <<<"$existing")"
 if [[ -n "$provider" ]]; then
   [[ "$provider" == harvester ]] || fail "Existing workspace $workspace belongs to $provider, not Harvester"
-  up "$workspace" --ide none --ide-launch skip --ssh-tunnel=false
+  up "$workspace" --ide none --ide-launch skip --ssh-tunnel=false \
+    --provider-option HARVESTER_CPU=6 --provider-option HARVESTER_MEMORY=16Gi
 else
-  echo "Provisioning $workspace on Harvester with 12 vCPUs, 32 GiB RAM, and 200 GiB disk..." >&2
+  echo "Provisioning $workspace on Harvester with 6 vCPUs, 16 GiB RAM, and 200 GiB disk..." >&2
   up "$cache" --id "$workspace" --provider harvester \
     --ide none --ide-launch skip --ssh-configure --ssh-tunnel=false \
-    --provider-option HARVESTER_CPU=12 --provider-option HARVESTER_MEMORY=32Gi \
+    --provider-option HARVESTER_CPU=6 --provider-option HARVESTER_MEMORY=16Gi \
     --provider-option HARVESTER_DISK=200Gi >&2
 fi
 # Keep this lock through export retrieval so final cleanup cannot race a local job.
