@@ -10,9 +10,6 @@ on:
   - cron: "17 0,6,12,18 * * *"
   - cron: "27 0,6,12,18 * * *"
   - cron: "17 2,4,8,10,14,16,20,22 * * *"
-  - cron: "41 6 * * *"
-    # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
-  - cron: "41 0,12,18 * * *"
   - cron: "0 10 * * *"
   - cron: "31 10 * * *"
   - cron: "23 10 * * *"
@@ -30,8 +27,6 @@ on:
         - desktop-6h
         - devpod-6h
         - vscode-insiders-2h
-        - t3-daily
-        - t3-code-6h
         - devsy-daily
         - fizzy-daily
         - chatgpt-daily
@@ -94,8 +89,6 @@ jobs:
             "17 0,6,12,18 * * *") slot_id="desktop-6h" ;;
             "27 0,6,12,18 * * *") slot_id="devpod-6h" ;;
             "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
-            "41 6 * * *") slot_id="t3-daily" ;;
-            "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
             "0 10 * * *") slot_id="chatgpt-daily" ;;
             "31 10 * * *") slot_id="headroom-daily" ;;
             *)

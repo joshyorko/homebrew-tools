@@ -70,6 +70,9 @@ export function planTapCi({ baseRef, headRef, eventName } = {}) {
   }
 
   const { base, head, paths } = changedPaths(resolvedBaseRef, resolvedHeadRef, resolvedEventName)
+  if (paths.includes("config/t3-nightly.json")) {
+    return ["t3code-cli-main", "t3-code-linux"].map((package_id) => ({ package_id, mode: "build", reason: "pinned official T3 nightly changed; paired acceptance required" }))
+  }
   const cache = new Map()
   const read = (ref, path) => {
     const key = `${ref}:${path}`

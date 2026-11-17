@@ -18,6 +18,16 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Track official T3 nightly releases for the paired tap packages.",
+      "managerFilePatterns": ["/config\\/t3-nightly\\.json$/"],
+      "matchStrings": ["\\\"tag\\\":\\s*\\\"v(?<currentValue>\\d+\\.\\d+\\.\\d+-nightly\\.\\d{8}\\.\\d+)\\\""],
+      "depNameTemplate": "pingdotgg/t3code",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-nightly\\.(?<build>\\d{8})\\.(?<revision>\\d+)$",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
       "description": "Track the Dagger CLI version used by tap workflows.",
       "managerFilePatterns": [
         "/^\\.github/workflows/.+\\.ya?ml$/"

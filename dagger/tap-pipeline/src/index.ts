@@ -616,9 +616,12 @@ export class TapPipeline {
     const resolution = (async (): Promise<T3NightlyProvenance> => {
       const match = version?.match(/^(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)\.homebrew\.([1-9]\d*)\.([a-f0-9]{12})$/)
       if (version && !match) throw new Error("T3 package version must identify an official nightly and downstream revision")
+      const pin = JSON.parse(readFileSync(new URL("../../../config/t3-nightly.json", import.meta.url), "utf8")) as { tag?: string }
+      const pinnedTag = pin.tag
+      if (!version && !ref && (!pinnedTag || !/^v\d+\.\d+\.\d+-nightly\.\d{8}\.\d+$/.test(pinnedTag))) throw new Error("config/t3-nightly.json must contain an official T3 nightly tag")
       const result = await resolveNightlyReleases({
         fetchJson: (path) => this.fetchJson(`https://api.github.com/${path}`),
-        ...(match ? { requestedTag: `v${match[1]}` } : {}),
+        ...((match ? `v${match[1]}` : pinnedTag) ? { requestedTag: match ? `v${match[1]}` : pinnedTag } : {}),
         ...(ref ? { requestedCommit: ref } : {}),
       })
       const upstream = result.available
