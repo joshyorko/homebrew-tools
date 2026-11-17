@@ -251,27 +251,17 @@ test("T3 release bundles reuse one immutable source ref and version across CI an
   assert.match(releaseBundle, /buildT3CodeArtifact\(tap, selectedT3SourceRef!, selectedT3SourceVersion\)/)
 })
 
-test("T3 auto-update slots build and validate CLI/Desktop as one source pair", () => {
-  const slots = JSON.parse(read("dagger/tap-pipeline/auto-update-slots.json")) as Array<{
-    id: string
-    packageIds: string[]
-  }>
-  const workflow = read(".github/workflows/tap-auto-update.yml")
-  const publish = section(workflow, "  publish:", "  no_updates_required:")
-
-  for (const slotId of ["t3-daily", "t3-code-6h"]) {
-    const slot = slots.find((candidate) => candidate.id === slotId)
-    assert.deepEqual(slot?.packageIds, ["t3code-cli-main", "t3-code-linux"])
-  }
-  assert.match(workflow, /Resolve shared T3 source/)
-  assert.match(workflow, /PACKAGE_IDS_JSON='\["t3code-cli-main","t3-code-linux"\]'/)
-  assert.match(workflow, /call: resolve-t-3-source --github-token=env:\/\/GH_TOKEN/)
-  assert.match(workflow, /--t-3-source-ref=.*--t-3-source-version=/)
-  assert.match(publish, /cli_commit.*desktop_commit.*T3_SOURCE_COMMIT/)
-  assert.ok(
-    publish.indexOf("T3 CLI/Desktop source metadata mismatch") < publish.indexOf("for package_id"),
-    "paired metadata must be validated before either release is published",
-  )
+test("T3 publication follows successful main CI and preserves paired recovery", () => {
+  const workflow = read(".github/workflows/t3-pin-publish.yml")
+  assert.match(workflow, /workflow_run:/)
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.match(workflow, /conclusion == 'success'/)
+  assert.match(workflow, /workflow_run.event == 'push'/)
+  assert.match(workflow, /workflow_run.head_branch == 'main'/)
+  assert.match(workflow, /github.ref == 'refs\/heads\/main'/)
+  assert.match(workflow, /group: tap-publish/)
+  for (const id of ["t3code-cli-main", "t3-code-linux"]) assert.ok(workflow.includes(`release-bundle --package-id="${id}"`))
+  assert.doesNotMatch(read(".github/workflows/tap-auto-update.yml"), /cron: "41 (6|0,12,18)/)
 })
 
 test("T3 PR acceptance resolves one source for both package checks", () => {

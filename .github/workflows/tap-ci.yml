@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       t3_source_ref:
-        description: "Immutable upstream SHA for T3 acceptance replay only"
+        description: "Immutable upstream SHA matching config/t3-nightly.json for acceptance replay"
         required: true
         type: string
   push:
@@ -51,6 +51,7 @@ jobs:
         python3 scripts/test-dagger-devsy.py
         python3 scripts/test-rcc-maintenance-pin.py
         node scripts/test-t3-dagger-cli.mjs
+        node --test scripts/t3-pin-publish.test.mjs
         node --test scripts/check-t3-source-types.test.mjs
         node --test scripts/t3-source-patches.test.mjs
         node --test scripts/t3-homebrew-desktop-e2e/run-all.test.mjs scripts/t3-homebrew-desktop-e2e/renderer-readiness.test.mjs
@@ -240,7 +241,7 @@ jobs:
           --package-id="${{ matrix.package_id }}"
 
     - name: Run package source CI through Dagger
-      if: matrix.mode == 'build' && true
+      if: matrix.mode == 'build' && matrix.package_id != 't3code-cli-main' && matrix.package_id != 't3-code-linux'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
       with:
         version: ${{ env.DAGGER_VERSION }}

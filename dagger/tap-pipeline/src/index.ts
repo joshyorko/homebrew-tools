@@ -36,7 +36,7 @@ import {
 import { resolveReviewRelease, verifyReviewArtifact } from "./review-release.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
-import { nightlyPackageVersion, resolveNightlyReleases, type T3NightlyRelease } from "./t3-nightly.js"
+import { pinnedNightlySelection, nightlyPackageVersion, resolveNightlyReleases, type T3NightlyRelease } from "./t3-nightly.js"
 import {
   artifactCheckPlan,
   rejectForbiddenShaCommand,
@@ -616,23 +616,12 @@ export class TapPipeline {
     const resolution = (async (): Promise<T3NightlyProvenance> => {
       const match = version?.match(/^(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)\.homebrew\.([1-9]\d*)\.([a-f0-9]{12})$/)
       if (version && !match) throw new Error("T3 package version must identify an official nightly and downstream revision")
-      const pin = JSON.parse(readFileSync(new URL("../../../config/t3-nightly.json", import.meta.url), "utf8")) as { tag?: string }
-      const pinnedTag = pin.tag
-      if (!version && !ref && (!pinnedTag || !/^v\d+\.\d+\.\d+-nightly\.\d{8}\.\d+$/.test(pinnedTag))) throw new Error("config/t3-nightly.json must contain an official T3 nightly tag")
+      const pin: unknown = JSON.parse(await this.source.file("config/t3-nightly.json").contents())
       const result = await resolveNightlyReleases({
         fetchJson: (path) => this.fetchJson(`https://api.github.com/${path}`),
-        ...((match ? `v${match[1]}` : pinnedTag) ? { requestedTag: match ? `v${match[1]}` : pinnedTag } : {}),
-        ...(ref ? { requestedCommit: ref } : {}),
+        ...pinnedNightlySelection(pin, ref, version),
       })
       const upstream = result.available
-      if (!ref && !version) {
-        // npm and Desktop publish separately upstream. Wait for a coherent pair;
-        // never replace a missing CLI nightly with a newer arbitrary main head.
-        const cli: unknown = await this.fetchJson("https://registry.npmjs.org/t3/nightly", false)
-        if (typeof cli !== "object" || cli === null || !("version" in cli) || cli.version !== upstream.version) {
-          throw new Error(`Upstream CLI/Desktop nightly availability mismatch: Desktop ${upstream.version}; CLI ${typeof cli === "object" && cli !== null && "version" in cli ? String(cli.version) : "unavailable"}. Waiting for an aligned official nightly.`)
-        }
-      }
       const packageVersion = nightlyPackageVersion(upstream, match ? Number(match[2]) : 1)
       if (version && packageVersion !== version) throw new Error("T3 nightly source and package identity disagree")
       if (ref && upstream.commit !== ref) throw new Error("T3 source is not the selected official nightly commit")

@@ -40,6 +40,20 @@ function nightlyTag(value: unknown): string {
   return value
 }
 
+export function parseNightlyPin(value: unknown): string {
+  const pin = object(value)
+  if (Object.keys(pin).length !== 1) throw new Error("T3 pin must contain only tag")
+  return nightlyTag(pin.tag)
+}
+
+export function pinnedNightlySelection(pin: unknown, ref = "", version?: string): { requestedTag: string, requestedCommit?: string } {
+  const tag = parseNightlyPin(pin)
+  const match = version?.match(/^(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)\.homebrew\.([1-9]\d*)\.([a-f0-9]{12})$/)
+  if (version && (!match || `v${match[1]}` !== tag)) throw new Error("T3 package version must match the declared nightly pin")
+  if (ref) commitSha(ref)
+  return { requestedTag: tag, ...(ref ? { requestedCommit: ref } : {}) }
+}
+
 export function compareNightlyTags(left: string, right: string): number {
   const numbers = (tag: string) => nightlyTag(tag).slice(1).replace("-nightly.", ".").split(".").map(BigInt)
   const rightParts = numbers(right)
@@ -152,6 +166,7 @@ export async function resolveNightlyReleases({ fetchJson, requestedTag, requeste
   if (requestedTag) {
     const raw = await fetchJson(`repos/${REPOSITORY}/releases/tags/${encodeURIComponent(requestedTag)}`)
     available = parseNightlyRelease(raw, await resolveTagCommit(fetchJson, requestedTag))
+    if (available.tag !== requestedTag) throw new Error("Requested nightly release tag mismatch")
     if (requestedCommit && available.commit !== requestedCommit) throw new Error("Requested nightly tag and source commit disagree")
     releases.push(available)
     seen.add(available.tag)

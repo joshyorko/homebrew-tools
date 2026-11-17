@@ -260,6 +260,36 @@ devpod provider add loft-sh/devpod-provider-dockerless
 devpod provider list-available
 ```
 
+### Pinned T3 nightly automation
+
+`config/t3-nightly.json` owns the single official `pingdotgg/t3code` release tag
+used by both packages. Patchraptor's existing central Renovate schedule updates
+only this pin; the local regex version scheme orders the nightly day and build
+numerically and excludes stable and preview tags. Only this dependency receives
+local PR automerge permission, with tests required. Keep the Tap Pipeline Tests
+and T3 paired CLI and Desktop acceptance checks required in branch protection.
+
+A pin PR runs the paired CLI/Desktop checks against one dereferenced immutable
+SHA. Other changed packages retain their own CI selection. The Dagger resolver
+requires a published, non-draft upstream prerelease, never a moving main or
+latest ref. Both packages apply the existing audited patches just before building;
+incompatible patches stop CI. Notes, provenance, digests, telemetry configuration,
+and the Homebrew service integration remain part of the existing verified bundles.
+
+After successful Tap CI on a pin merge to main, `t3-pin-publish.yml` rebuilds and
+verifies both bundles at the merged pin. Publication shares the tap publisher lock,
+checks that main has not moved, verifies the pair and artifact digests, and refuses
+to overwrite conflicting release assets. Both Homebrew definitions, upstream notes,
+and `metadata/t3-nightly/published.json` are committed together. A repeat of the same
+published pair is a no-op. A crash after one release upload can be retried: matching
+assets are reused, while mismatches require investigation. External release uploads
+are not atomic; the tap definitions advance only after both assets are verified.
+
+For emergency recovery, dispatch **Publish pinned T3 pair** on **main**. It uses the
+committed pin and the same paired checks and publication guards. To replay another
+nightly, change the pin through a PR first. Tap Manual refuses individual T3 releases
+and force releases. No T3 fork or T3 polling cron is used.
+
 ### T3 Code (Linux Cask)
 
 T3 Code desktop packaged for Linux Homebrew as a separate cask. The tap builds

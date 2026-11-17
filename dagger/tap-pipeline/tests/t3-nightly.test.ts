@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { nightlyPackageVersion, parseNightlyRelease, resolveNightlyBaseline, resolveNightlyReleases, selectNightlyHistory } from "../src/t3-nightly.ts"
+import { compareNightlyTags, parseNightlyPin, pinnedNightlySelection, nightlyPackageVersion, parseNightlyRelease, resolveNightlyBaseline, resolveNightlyReleases, selectNightlyHistory } from "../src/t3-nightly.ts"
 
 const tag = "v0.1.10-nightly.20261116.4774"
 const previous = "v0.1.10-nightly.20261116.4761"
@@ -144,4 +144,21 @@ test("JSON escaping cannot silently push even a single offered record over the t
     if (path.includes("releases?")) return [{ ...record(), body: "\\".repeat(190_000) }]
     return { ref: `refs/tags/${tag}`, object: { type: "commit", sha: commit } }
   } }), /transport byte limit/)
+})
+
+
+test("pin boundary rejects moving, stable and preview identities and mismatched replay", () => {
+  for (const bad of [null, {}, { tag: "latest" }, { tag: "v1.2.3" }, { tag: "v1.2.3-preview.20261117.1" }, { tag, fallback: "latest" }]) assert.throws(() => parseNightlyPin(bad))
+  assert.deepEqual(pinnedNightlySelection({ tag }, commit, `${tag.slice(1)}.homebrew.1.${commit.slice(0, 12)}`), { requestedTag: tag, requestedCommit: commit })
+  assert.throws(() => pinnedNightlySelection({ tag }, commit, `${previous.slice(1)}.homebrew.1.${commit.slice(0, 12)}`), /declared/)
+  assert.ok(compareNightlyTags("v1.2.3-nightly.20261117.100", "v1.2.3-nightly.20261117.99") > 0)
+  assert.ok(compareNightlyTags("v1.2.3-nightly.20261118.1", "v1.2.3-nightly.20261117.999") > 0)
+})
+
+
+test("a pinned release lookup cannot substitute another valid nightly", async () => {
+  await assert.rejects(resolveNightlyReleases({ requestedTag: tag, fetchJson: async (path) => {
+    if (path.includes("releases/tags/")) return record(previous, before)
+    return { ref: `refs/tags/${tag}`, object: { type: "commit", sha: commit } }
+  } }), /tag mismatch/)
 })
