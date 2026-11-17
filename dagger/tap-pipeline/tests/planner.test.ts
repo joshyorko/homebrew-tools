@@ -525,3 +525,14 @@ test("real Git monolith and registry diffs retain scoped routing", () => {
     rmSync(fixture, { recursive: true, force: true })
   }
 })
+
+
+test("pin-only routing checks exactly the T3 pair and mixed changes retain other checks", () => {
+  const pair = ciPlanFromPaths(["config/t3-nightly.json"])
+  assert.deepEqual(pair.map(({ package_id, mode }) => ({ package_id, mode })), [
+    { package_id: "t3code-cli-main", mode: "build" },
+    { package_id: "t3-code-linux", mode: "build" },
+  ])
+  const mixed = ciPlanFromPaths(["config/t3-nightly.json", "Formula/devsy.rb"])
+  for (const id of ["t3code-cli-main", "t3-code-linux", "devsy"]) assert.ok(mixed.some((item) => item.package_id === id))
+})

@@ -10,9 +10,6 @@ on:
   - cron: "17 0,6,12,18 * * *"
   - cron: "27 0,6,12,18 * * *"
   - cron: "17 2,4,8,10,14,16,20,22 * * *"
-  - cron: "41 6 * * *"
-    # `t3-code-6h` relies on the separate 06:41 `t3-daily` run plus the times below to keep an effective 6-hour cadence.
-  - cron: "41 0,12,18 * * *"
   - cron: "0 10 * * *"
   - cron: "31 10 * * *"
   - cron: "23 10 * * *"
@@ -30,8 +27,6 @@ on:
         - desktop-6h
         - devpod-6h
         - vscode-insiders-2h
-        - t3-daily
-        - t3-code-6h
         - devsy-daily
         - fizzy-daily
         - chatgpt-daily
@@ -94,8 +89,6 @@ jobs:
             "17 0,6,12,18 * * *") slot_id="desktop-6h" ;;
             "27 0,6,12,18 * * *") slot_id="devpod-6h" ;;
             "17 2,4,8,10,14,16,20,22 * * *") slot_id="vscode-insiders-2h" ;;
-            "41 6 * * *") slot_id="t3-daily" ;;
-            "41 0,12,18 * * *") slot_id="t3-code-6h" ;;
             "0 10 * * *") slot_id="chatgpt-daily" ;;
             "31 10 * * *") slot_id="headroom-daily" ;;
             *)
@@ -106,18 +99,13 @@ jobs:
           trigger_source="schedule:$EVENT_SCHEDULE"
         fi
 
+        if [[ "$slot_id" == t3-daily || "$slot_id" == t3-code-6h ]]; then
+          echo 'T3 publication requires the dedicated paired pin workflow on main.' >&2
+          exit 1
+        fi
+
         echo "slot_id=$slot_id" >> "$GITHUB_OUTPUT"
         echo "trigger_source=$trigger_source" >> "$GITHUB_OUTPUT"
-
-    - name: Resolve shared T3 source
-      id: t3_source
-      if: steps.slot.outputs.slot_id == 't3-daily' || steps.slot.outputs.slot_id == 't3-code-6h'
-      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1
-      with:
-        version: ${{ env.DAGGER_VERSION }}
-        module: ./dagger/tap-pipeline
-        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        call: resolve-t-3-source --github-token=env://GH_TOKEN
 
     - name: Resolve packages needing update
       id: dagger_plan
@@ -139,23 +127,15 @@ jobs:
         SLOT_ID: ${{ steps.slot.outputs.slot_id }}
         TRIGGER_SOURCE: ${{ steps.slot.outputs.trigger_source }}
         STATUS_JSON: ${{ steps.dagger_plan.outputs.output }}
-        T3_SOURCE_JSON: ${{ steps.t3_source.outputs.output }}
+
       run: |
         set -euo pipefail
         PACKAGE_IDS_JSON="$(jq -cer '[.[] | select(.needs_update) | .id]' <<<"$STATUS_JSON")"
-        if [[ "$SLOT_ID" == "t3-daily" || "$SLOT_ID" == "t3-code-6h" ]] &&
-          jq -e '[.[] | select(.id == "t3code-cli-main" or .id == "t3-code-linux") | .needs_update] | any' <<<"$STATUS_JSON" >/dev/null; then
-          PACKAGE_IDS_JSON='["t3code-cli-main","t3-code-linux"]'
-        fi
         matrix="$(jq -cn --argjson package_ids "$PACKAGE_IDS_JSON" '{include: ($package_ids | map({package_id: .}))}')"
         count="$(jq '.include | length' <<<"$matrix")"
         package_ids="$(jq -r 'if length == 0 then "none" else join(", ") end' <<<"$PACKAGE_IDS_JSON")"
         t3_source_commit=""
         t3_source_version=""
-        if [[ "$SLOT_ID" == "t3-daily" || "$SLOT_ID" == "t3-code-6h" ]]; then
-          t3_source_commit="$(jq -er '.commit | select(test("^[0-9a-f]{40}$"))' <<<"$T3_SOURCE_JSON")"
-          t3_source_version="$(jq -er '.version | select(endswith("." + $sha[0:12]))' --arg sha "$t3_source_commit" <<<"$T3_SOURCE_JSON")"
-        fi
 
         echo "Resolved slot $SLOT_ID -> $package_ids"
         {

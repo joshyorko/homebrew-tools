@@ -537,6 +537,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
     "t3code-cli-main",
     [
       "Formula/t3code-cli-main.rb",
+      "config/t3-nightly.json",
       "scripts/package-t3code-cli-main.mjs",
       "scripts/lib/apply-pnpm-package-patch.mjs",
       "scripts/build-t3code-resource-monitor.sh",
@@ -583,7 +584,7 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["rcc", ["Casks/rcc.rb"]],
   ["action-server", ["Casks/action-server.rb"]],
   ["devpod-linux", ["Casks/devpod-linux.rb", "Formula/devpod-appindicator-runtime-tools.rb"]],
-  ["t3-code-linux", ["Casks/t3-code-linux.rb", "scripts/check-t3-connect-asar.mjs"]],
+  ["t3-code-linux", ["config/t3-nightly.json", "Casks/t3-code-linux.rb", "scripts/check-t3-connect-asar.mjs"]],
 ]
 
 const PLATFORM_PATH_PREFIXES = [

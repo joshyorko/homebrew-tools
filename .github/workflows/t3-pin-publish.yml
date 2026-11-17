@@ -1,0 +1,104 @@
+name: Publish pinned T3 pair
+
+on:
+  workflow_run:
+    workflows: ["Tap CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'joshyorko/homebrew-tools' &&
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository) ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    concurrency:
+      group: tap-publish
+      cancel-in-progress: false
+      queue: max
+    env:
+      DAGGER_VERSION: "0.21.11"
+      GH_TOKEN: ${{ github.token }}
+      T3_TAP_HEAD: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ env.T3_TAP_HEAD }}
+        fetch-depth: 2
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      with:
+        node-version: "26"
+    - name: Select pin merge or emergency recovery
+      id: select
+      run: |
+        set -euo pipefail
+        test "$(gh api repos/joshyorko/homebrew-tools/git/ref/heads/main --jq .object.sha)" = "$T3_TAP_HEAD"
+        if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || ! git diff --quiet HEAD^ HEAD -- config/t3-nightly.json; then
+          echo 'run=true' >> "$GITHUB_OUTPUT"
+        fi
+    - name: Resolve declared official nightly
+      if: steps.select.outputs.run == 'true'
+      id: source
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        call: resolve-t-3-source --github-token=env://GH_TOKEN
+    - name: Verify just-in-time patches
+      if: steps.select.outputs.run == 'true'
+      env:
+        T3_SOURCE_COMMIT: ${{ fromJSON(steps.source.outputs.output || '{}').commit }}
+      run: node scripts/check-t3-patches.mjs --source-ref "$T3_SOURCE_COMMIT" --package-ids '["t3code-cli-main","t3-code-linux"]'
+    - name: Build and verify t3code-cli-main bundle
+      if: steps.select.outputs.run == 'true'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        call: >-
+          -o "$RUNNER_TEMP/t3-bundles/t3code-cli-main"
+          release-bundle --package-id="t3code-cli-main" --github-token=env://GH_TOKEN
+          --t-3-source-ref="${{ fromJSON(steps.source.outputs.output || '{}').commit }}"
+          --t-3-source-version="${{ fromJSON(steps.source.outputs.output || '{}').version }}"
+    - name: Build and verify t3-code-linux bundle
+      if: steps.select.outputs.run == 'true'
+      uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77
+      with:
+        version: ${{ env.DAGGER_VERSION }}
+        module: ./dagger/tap-pipeline
+        cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        call: >-
+          -o "$RUNNER_TEMP/t3-bundles/t3-code-linux"
+          release-bundle --package-id="t3-code-linux" --github-token=env://GH_TOKEN
+          --t-3-source-ref="${{ fromJSON(steps.source.outputs.output || '{}').commit }}"
+          --t-3-source-version="${{ fromJSON(steps.source.outputs.output || '{}').version }}"
+    - name: Publish verified pair and receipt
+      if: steps.select.outputs.run == 'true'
+      env:
+        T3_BUNDLES: ${{ runner.temp }}/t3-bundles
+        T3_SOURCE_JSON: ${{ steps.source.outputs.output }}
+      run: |
+        set -euo pipefail
+        gh auth setup-git
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        node scripts/publish-t3-pin.mjs
+    - name: Retain build and publication evidence
+      if: always() && steps.select.outputs.run == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: t3-pair-${{ env.T3_TAP_HEAD }}
+        path: ${{ runner.temp }}/t3-bundles
+        retention-days: 7
