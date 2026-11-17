@@ -305,7 +305,7 @@ test("t3-code-linux builds the patched desktop AppImage from an official nightly
   assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
   assert.match(source, /! grep -Eq .*AppImage/)
 
-  assert.match(cask, /^\s*version "main\.\d{14}\.[0-9a-f]{12}"$/m)
+  assert.match(cask, /^\s*version "\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*\.[0-9a-f]{12}"$/m)
   assert.match(cask, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
   assert.match(cask, /app_run="squashfs-root\/AppRun"/)
   assert.match(cask, /echo "T3 Code AppRun is not executable"/)
@@ -644,6 +644,8 @@ test("eitype accepts upstream release tags without a v prefix", () => {
 
 test("T3 CLI formula orders sha256 before version_scheme for Homebrew audit", () => {
   const formula = readFileSync(new URL("../../../Formula/t3code-cli-main.rb", import.meta.url), "utf8")
+  assert.match(formula, /^  sha256 "[0-9a-f]{64}"$/m)
+  assert.match(formula, /^  version_scheme 1$/m)
   assert.ok(formula.indexOf("  sha256 ") < formula.indexOf("  version_scheme "))
 })
 
@@ -656,6 +658,8 @@ test("T3 CLI smoke and release renderers preserve Homebrew stanza order", () => 
   for (const [body] of renderers) {
     const render = new Function("formulaContents", "build", "sha256", "release", `${body}; return updatedFormula`)
     const output = render(formula, {version: "nightly.test", assetName: "test.tar.gz"}, "abc123", {download_url: "https://example.com/test.tar.gz"})
+    assert.match(output, /^  sha256 "abc123"$/m)
+    assert.match(output, /^  version_scheme 1$/m)
     assert.ok(output.indexOf('  sha256 "abc123"') < output.indexOf("  version_scheme 1"), output)
     assert.equal(output.match(/version_scheme/g)?.length, 1)
     assert.match(output, /version "nightly.test"/)
