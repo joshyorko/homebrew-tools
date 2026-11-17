@@ -4,8 +4,8 @@ class T3codeCliMain < Formula
   url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f/t3code-cli-main-0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f.tar.gz"
   version "0.1.10-nightly.20261116.4787.homebrew.1.b5554ac8114f"
   sha256 "571577cc6744bf97ad7962dfbd9d580f0c1772d5dc4fea2d1ca0e0f38314a276"
-  version_scheme 1
   license "MIT"
+  version_scheme 1
 
   livecheck do
     skip "Updated by the tap's GitHub Actions workflow."

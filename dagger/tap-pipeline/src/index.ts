@@ -3290,7 +3290,8 @@ end
           .replace(/^\s*revision \d+\n/m, "")
           .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"\n  version_scheme 1`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+          .replace(/(license ".*")/, "$1\n  version_scheme 1")
         const smokeTap = tap.withFile("Formula/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
 
         return dag
@@ -4148,7 +4149,8 @@ end
           .replace(/^\s*revision \d+\n/m, "")
           .replace(/url ".*"/, `url "${String(release.download_url)}"`)
           .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"\n  version_scheme 1`)
+          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
+          .replace(/(license ".*")/, "$1\n  version_scheme 1")
 
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))

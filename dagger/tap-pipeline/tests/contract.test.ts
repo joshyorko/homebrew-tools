@@ -642,9 +642,11 @@ test("eitype accepts upstream release tags without a v prefix", () => {
   }
 })
 
-test("T3 CLI formula orders sha256 before version_scheme for Homebrew audit", () => {
+test("T3 CLI formula orders sha256 and license before version_scheme for Homebrew audit", () => {
   const formula = readFileSync(new URL("../../../Formula/t3code-cli-main.rb", import.meta.url), "utf8")
   assert.match(formula, /^  sha256 "[0-9a-f]{64}"$/m)
+  assert.match(formula, /^  license "MIT"$/m)
+  assert.ok(formula.indexOf('  license "MIT"') < formula.indexOf("  version_scheme "))
   assert.match(formula, /^  version_scheme 1$/m)
   assert.ok(formula.indexOf("  sha256 ") < formula.indexOf("  version_scheme "))
 })
@@ -654,11 +656,13 @@ test("T3 CLI smoke and release renderers preserve Homebrew stanza order", () => 
   const renderers = [...source.matchAll(/const updatedFormula = formulaContents\n([\s\S]*?)(?=\n\s*(?:const|return))/g)]
     .filter(([body]) => body.includes("version_scheme 1"))
   assert.equal(renderers.length, 2, "cover both smoke and release rendering paths")
-  const formula = 'class Example < Formula\n  url "old"\n  version "old"\n  version_scheme 1\n  sha256 "old"\nend\n'
+  const formula = 'class Example < Formula\n  url "old"\n  version "old"\n  version_scheme 1\n  sha256 "old"\n  license "MIT"\nend\n'
   for (const [body] of renderers) {
     const render = new Function("formulaContents", "build", "sha256", "release", `${body}; return updatedFormula`)
     const output = render(formula, {version: "nightly.test", assetName: "test.tar.gz"}, "abc123", {download_url: "https://example.com/test.tar.gz"})
     assert.match(output, /^  sha256 "abc123"$/m)
+    assert.match(output, /^  license "MIT"$/m)
+    assert.ok(output.indexOf('  license "MIT"') < output.indexOf("  version_scheme 1"), output)
     assert.match(output, /^  version_scheme 1$/m)
     assert.ok(output.indexOf('  sha256 "abc123"') < output.indexOf("  version_scheme 1"), output)
     assert.equal(output.match(/version_scheme/g)?.length, 1)
