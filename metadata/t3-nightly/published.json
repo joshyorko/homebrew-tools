@@ -1,15 +1,15 @@
 {
-  "tag": "v0.1.11-nightly.20261118.4877",
-  "commit": "ce884e3a9d11ec46a31aa6ee7c5838dac76f3d02",
-  "version": "0.1.11-nightly.20261118.4877.homebrew.1.ce884e3a9d11",
+  "tag": "v0.1.11-nightly.20261118.4890",
+  "commit": "8cf97b5f06f30a872ce30ab8a888f2ff012365a2",
+  "version": "0.1.11-nightly.20261118.4890.homebrew.1.8cf97b5f06f3",
   "artifacts": [
     {
-      "name": "t3code-cli-main-0.1.11-nightly.20261118.4877.homebrew.1.ce884e3a9d11.tar.gz",
-      "sha256": "e706259d8e4c7419416efdfec2a3e5ca4ba5e2b22f938f0cc7334b6c43b953a4"
+      "name": "t3code-cli-main-0.1.11-nightly.20261118.4890.homebrew.1.8cf97b5f06f3.tar.gz",
+      "sha256": "14dbda6260e65372d2a7d1cf455712fc9c29ce4f6f1aedc27f1e709ee0e7f4de"
     },
     {
-      "name": "T3-Code-0.1.11-nightly.20261118.4877.homebrew.1.ce884e3a9d11-x86_64.AppImage",
-      "sha256": "3c9d07151d0a59fdb1eb0c241cd21457161e93909541d494a39643b8369227c4"
+      "name": "T3-Code-0.1.11-nightly.20261118.4890.homebrew.1.8cf97b5f06f3-x86_64.AppImage",
+      "sha256": "e745491a4b029b6bb4f156eaad91e430a9e115f379d02b06657ef669f6a0b249"
     }
   ]
 }
