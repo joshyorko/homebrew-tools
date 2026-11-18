@@ -1905,10 +1905,10 @@ index 00000000..484b57b5
 +  };
 +}
 diff --git a/apps/web/src/components/desktopUpdate.toast.tsx b/apps/web/src/components/desktopUpdate.toast.tsx
-index 18817978..4955eb21 100644
+index 77904b23..0bdae172 100644
 --- a/apps/web/src/components/desktopUpdate.toast.tsx
 +++ b/apps/web/src/components/desktopUpdate.toast.tsx
-@@ -48,7 +48,10 @@ export function showDesktopUpdateDownloadedToast(
+@@ -50,7 +50,10 @@ export function showDesktopUpdateDownloadedToast(
    shell: DesktopUpdateShell,
    state: DesktopUpdateState,
  ): void {
@@ -1919,7 +1919,7 @@ index 18817978..4955eb21 100644
 +  );
    toastManager.add({
      type: "success",
-     title: "Update downloaded",
+     title: m(msg("Update downloaded")),
 diff --git a/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts b/apps/web/src/components/homebrewDesktopUpdate.logic.test.ts
 new file mode 100644
 index 00000000..1452ce10
@@ -2044,7 +2044,7 @@ index 00000000..b882a11e
 +  return `${action}\n\nT3 Code and its local servers will close during the update. Make sure running tasks are ready to stop.`;
 +}
 diff --git a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
-index 5df8007e..5ee83ac5 100644
+index ce45fe8b..0649a13a 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdatePill.tsx
 @@ -14,6 +14,10 @@ import { ensureLocalApi } from "../../localApi";
@@ -2066,15 +2066,15 @@ index 5df8007e..5ee83ac5 100644
  import {
    clearSavedUpdateEverythingResult,
    saveUpdateEverythingResult,
-@@ -198,6 +203,7 @@ export function SidebarUpdatePill() {
+@@ -202,6 +207,7 @@ export function SidebarUpdatePill() {
 
  function SidebarUpdateControl() {
    const state = useDesktopUpdateState();
 +  useHomebrewUpdateResult(state?.homebrewUpdateResult);
+   const gt = useGT();
+   const messages = useMessages();
    // The desktop updates this machine, whose policy the primary environment reports.
-   const updatesDenial = managedUpdatesDenial(usePrimaryManagedPolicy());
-   const [isActionPending, setIsActionPending] = useState(false);
-@@ -234,7 +240,7 @@ function SidebarUpdateControl() {
+@@ -240,7 +246,7 @@ function SidebarUpdateControl() {
      state && action !== "none" ? getDesktopUpdateDownloadedVersion(state) : null;
    const everything = useUpdateEverything(localUpdateVersion);
    const checkProviderUpdates = useCheckProviderUpdates();
@@ -2083,16 +2083,16 @@ index 5df8007e..5ee83ac5 100644
    const run = useUpdateEverythingRun();
    const isRunningEverything = run !== null;
    const showCheckIcon = shouldShowDesktopUpdateCheckIcon({
-@@ -255,7 +261,7 @@ function SidebarUpdateControl() {
+@@ -263,7 +269,7 @@ function SidebarUpdateControl() {
      ? everything.summary
      : showUpdateDetails
        ? state
--        ? getDesktopUpdateButtonTooltip(state)
-+        ? homebrewDesktopUpdateButtonTooltip(state) ?? getDesktopUpdateButtonTooltip(state)
-         : "Update available"
+-        ? getDesktopUpdateButtonTooltip(state, messages)
++        ? homebrewDesktopUpdateButtonTooltip(state) ?? getDesktopUpdateButtonTooltip(state, messages)
+         : gt("Update available")
        : showCheckIcon
-         ? "Checking for updates…"
-@@ -307,7 +313,7 @@ function SidebarUpdateControl() {
+         ? gt("Checking for updates…")
+@@ -315,7 +321,7 @@ function SidebarUpdateControl() {
        let confirmed = false;
        try {
          confirmed = await ensureLocalApi().dialogs.confirm(
@@ -2101,7 +2101,7 @@ index 5df8007e..5ee83ac5 100644
            { initialFocus: "confirm" },
          );
        } catch (error) {
-@@ -363,6 +369,7 @@ function SidebarUpdateControl() {
+@@ -371,6 +377,7 @@ function SidebarUpdateControl() {
    };
 
    const runEverything = async () => {
@@ -2158,10 +2158,10 @@ index 00000000..006fac48
 +  });
 +});
 diff --git a/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx b/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx
-index 34c4403a..c0413050 100644
+index d1328feb..126328f0 100644
 --- a/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx
 +++ b/apps/web/src/components/sidebar/SidebarUpdateReleaseNotes.tsx
-@@ -67,23 +67,25 @@ export function SidebarUpdateReleaseNotes({
+@@ -71,23 +71,25 @@ export function SidebarUpdateReleaseNotes({
    if (state.releaseNotes.length === 0) {
      return <>{tooltip}</>;
    }
@@ -2179,21 +2179,21 @@ index 34c4403a..c0413050 100644
 +        {state.status === "available" || state.updateProvider === "homebrew" ? (
            <div>
              <div className="whitespace-nowrap text-sm leading-5 font-medium">
--              Update ready to download
-+              {state.status === "downloaded" ? "Update ready to install" : "Update ready to download"}
+-              <T>Update ready to download</T>
++              {state.status === "downloaded" ? <T>Update ready to install</T> : <T>Update ready to download</T>}
              </div>
 -            {state.availableVersion ? (
 +            {offeredVersion ? (
                <div className="mt-0.5 text-xs leading-4 text-muted-foreground">
                  {releasedAt
--                  ? `${state.availableVersion} · ${formatReleaseAge(releasedAt)}`
+-                  ? `${state.availableVersion} · ${formatReleaseAge(releasedAt, m)}`
 -                  : state.availableVersion}
-+                  ? `${offeredVersion} · ${formatReleaseAge(releasedAt)}`
++                  ? `${offeredVersion} · ${formatReleaseAge(releasedAt, m)}`
 +                  : offeredVersion}
                </div>
              ) : null}
            </div>
-@@ -91,9 +93,10 @@ export function SidebarUpdateReleaseNotes({
+@@ -95,9 +97,10 @@ export function SidebarUpdateReleaseNotes({
            <div className="text-sm leading-5 font-medium">{tooltip}</div>
          )}
        </div>
@@ -2205,7 +2205,7 @@ index 34c4403a..c0413050 100644
            const omittedItemCount = Math.max(0, releaseNote.totalItems - releaseNote.items.length);
            const linkLabel =
              releaseNote.stats ??
-@@ -105,7 +108,7 @@ export function SidebarUpdateReleaseNotes({
+@@ -112,7 +115,7 @@ export function SidebarUpdateReleaseNotes({
            return (
              <section className={index > 0 ? "mt-4" : undefined} key={releaseNote.version}>
                {generated ? (
@@ -2213,14 +2213,14 @@ index 34c4403a..c0413050 100644
 +                releaseNote.version !== offeredVersion && (
                    <h3 className="mb-1 text-xs leading-4 font-medium text-muted-foreground">
                      {releaseNote.releasedAt
-                       ? `${releaseNote.version} · ${formatReleaseAge(releaseNote.releasedAt)}`
-@@ -150,9 +153,15 @@ export function SidebarUpdateReleaseNotes({
+                       ? `${releaseNote.version} · ${formatReleaseAge(releaseNote.releasedAt, m)}`
+@@ -163,9 +166,15 @@ export function SidebarUpdateReleaseNotes({
              </section>
            );
          })}
 +        {state.updateProvider === "homebrew" ? (
 +          <details className="mt-3 text-xs text-muted-foreground">
-+            <summary>Homebrew build details</summary>
++            <summary><T>Homebrew build details</T></summary>
 +            <p className="pt-1 break-words">{tooltip}</p>
 +          </details>
 +        ) : null}
@@ -2228,9 +2228,9 @@ index 34c4403a..c0413050 100644
            <div className="mt-3">
 -            <ReleaseLink releaseUrl={getDesktopUpdateReleaseHistoryUrl()} shell={shell}>
 +            <ReleaseLink releaseUrl={getDesktopUpdateReleaseHistoryUrl(releaseRepository)} shell={shell}>
-               {`${state.omittedReleaseCount} older ${state.omittedReleaseCount === 1 ? "release" : "releases"} on GitHub`}
-             </ReleaseLink>
-           </div>
+               {gt(
+                 "{count, plural, one {{count} older release on GitHub} other {{count} older releases on GitHub}}",
+                 { count: state.omittedReleaseCount },
 diff --git a/apps/web/src/components/sidebar/useHomebrewUpdateResult.ts b/apps/web/src/components/sidebar/useHomebrewUpdateResult.ts
 new file mode 100644
 index 00000000..d1d8897e
