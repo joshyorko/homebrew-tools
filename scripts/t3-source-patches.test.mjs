@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import test from "node:test"
+import { applySourcePatches } from "./t3-source-patches.mjs"
 
 const script = fileURLToPath(new URL("./check-t3-patches.mjs", import.meta.url))
 const routine = fileURLToPath(new URL("./t3-source-patches.mjs", import.meta.url))
@@ -46,6 +47,19 @@ test("real Git applies both variants to independent pristine trees in production
   assert.ok(updater >= 0 && updater < attachment)
   assert.match(result.stdout, /t3-homebrew-service-protect\.patch/)
   assert.equal(readFileSync(join(f.source, "entry.txt"), "utf8"), "lead\nbefore\nbase\nafter\ntrail\n")
+}))
+
+test("Desktop fixture supplies the tunnel service only when upstream has it", () => fixture((f) => {
+  const app = join(f.source, "apps/desktop/src/app")
+  const preview = join(f.source, "apps/desktop/src/preview")
+  mkdirSync(app, { recursive: true })
+  mkdirSync(preview, { recursive: true })
+  const testFile = join(app, "DesktopApp.homebrew.test.ts")
+  const content = 'import * as PreviewManager from "../preview/Manager.ts";\n      Layer.mock(PreviewManager.PreviewManager, {\n'
+  writeFileSync(testFile, content)
+  writeFileSync(join(preview, "LoopbackTunnel.ts"), "")
+  applySourcePatches({ source: f.source, sourceRef: f.sha, variant: "desktop", patchRoot: f.patches })
+  assert.match(readFileSync(testFile, "utf8"), /Layer.mock\(LoopbackTunnel.LoopbackTunnel, \{\}\)/)
 }))
 
 test("incompatible context names the selected SHA, patch, file and failing hunk", () => fixture((f) => {
