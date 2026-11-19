@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -29,6 +29,13 @@ export function regressions(baseline, current, changedFiles) {
     remaining.set(item.signature, count - 1)
     return false
   })
+}
+
+export function baselineFixture(content) {
+  const importLine = 'import * as LoopbackTunnel from "../preview/LoopbackTunnel.ts";\n'
+  const layerLine = '      Layer.mock(LoopbackTunnel.LoopbackTunnel, {}),\n'
+  if (content.includes(importLine) !== content.includes(layerLine)) throw new Error("Incomplete Desktop tunnel fixture")
+  return content.replace(importLine, "").replace(layerLine, "")
 }
 
 function check(source, reports, patches) {
@@ -69,6 +76,9 @@ function check(source, reports, patches) {
     return errors
   })
 
+  const fixture = resolve(source, "apps/desktop/src/app/DesktopApp.homebrew.test.ts")
+  const originalFixture = readFileSync(fixture, "utf8")
+  writeFileSync(fixture, baselineFixture(originalFixture))
   for (const patch of [...patches].reverse()) {
     execFileSync("git", ["apply", "--reverse", "--check", patch], { cwd: source })
     execFileSync("git", ["apply", "--reverse", patch], { cwd: source })
@@ -77,6 +87,7 @@ function check(source, reports, patches) {
   try { baseline = run("upstream") }
   finally {
     for (const patch of patches) execFileSync("git", ["apply", patch], { cwd: source })
+    writeFileSync(fixture, originalFixture)
   }
   const current = run("homebrew")
   const report = packages.map(([label, , prefix], index) => {
