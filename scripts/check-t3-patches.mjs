@@ -30,6 +30,7 @@ export function checkT3Patches({ sourceRef, packageIds, repository = "https://gi
         const patch = readFileSync(join(patchRoot, name), "utf8")
         return [...patch.matchAll(/^(?:--- a\/|\+\+\+ b\/)(.+)$/gm)].map((match) => `/${match[1]}`)
       }))]
+      if (variant === "desktop") paths.push("/apps/desktop/src/preview/LoopbackTunnel.ts")
       git(["--git-dir", objects, "worktree", "add", "--detach", "--no-checkout", tree, sourceRef])
       git(["-C", tree, "sparse-checkout", "set", "--no-cone", "--stdin"], `${paths.join("\n")}\n`)
       git(["-C", tree, "checkout", "--detach", "--quiet", sourceRef])

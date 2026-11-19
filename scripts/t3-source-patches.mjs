@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseArgs } from "node:util"
@@ -30,6 +31,14 @@ export function applySourcePatches({ source, sourceRef, variant, patchRoot = def
         throw new Error(`T3 source ${sourceRef}: ${variant} patch ${name} failed\n${cause.stderr ?? cause.message}`, { cause })
       }
     }
+  }
+  if (variant === "desktop" && existsSync(resolve(source, "apps/desktop/src/preview/LoopbackTunnel.ts"))) {
+    const test = resolve(source, "apps/desktop/src/app/DesktopApp.homebrew.test.ts")
+    const content = readFileSync(test, "utf8")
+    const importAnchor = 'import * as PreviewManager from "../preview/Manager.ts";'
+    const layerAnchor = '      Layer.mock(PreviewManager.PreviewManager, {'
+    if (!content.includes(importAnchor) || !content.includes(layerAnchor)) throw new Error(`T3 source ${sourceRef}: Desktop tunnel fixture anchors missing`)
+    writeFileSync(test, content.replace(importAnchor, `import * as LoopbackTunnel from "../preview/LoopbackTunnel.ts";\n${importAnchor}`).replace(layerAnchor, `      Layer.mock(LoopbackTunnel.LoopbackTunnel, {}),\n${layerAnchor}`))
   }
 }
 
