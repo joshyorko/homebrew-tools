@@ -1,6 +1,11 @@
+import { execFileSync } from "node:child_process"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import assert from "node:assert/strict"
 import test from "node:test"
-import { diagnostics, regressions } from "./check-t3-source-types.mjs"
+import { diagnostics, regressions, baselineFixture } from "./check-t3-source-types.mjs"
 
 const diagnostic = (line = 2) => `src/example.ts:${line}:3 - error TS2322: Invalid assignment.`
 test("deduplicates repeated checker summaries without dropping separate locations", () => {
@@ -23,4 +28,25 @@ test("reads server diagnostics and refuses unfamiliar compiler failures", () => 
   assert.equal(regressions(diagnostics(plain), diagnostics(plain), new Set(["src/cli/pair.ts"])).length, 1)
   assert.throws(() => diagnostics("error TS18003: No inputs were found."), /Unrecognized compiler error/)
   assert.deepEqual(diagnostics("src/cli/pair.ts(1,1): suggestion TS377141: Add a brand."), [])
+})
+
+test("baseline reversal preserves the adjusted Homebrew fixture", () => {
+  const file = 'import * as LoopbackTunnel from "../preview/LoopbackTunnel.ts";\nimport * as PreviewManager from "../preview/Manager.ts";\n      Layer.mock(LoopbackTunnel.LoopbackTunnel, {}),\n      Layer.mock(PreviewManager.PreviewManager, {\n'
+  assert.equal(baselineFixture(file), 'import * as PreviewManager from "../preview/Manager.ts";\n      Layer.mock(PreviewManager.PreviewManager, {\n')
+})
+
+test("the actual attachment patch reverses after the tunnel fixture is normalized", () => {
+  const root = mkdtempSync(join(tmpdir(), "t3-baseline-"))
+  try {
+    const patch = fileURLToPath(new URL("../patches/t3-homebrew-service-attach.patch", import.meta.url))
+    const path = "apps/desktop/src/app/DesktopApp.homebrew.test.ts"
+    execFileSync("git", ["init", "-q", root])
+    execFileSync("git", ["-C", root, "apply", `--include=${path}`, patch])
+    const fixture = join(root, path)
+    const original = readFileSync(fixture, "utf8")
+    const adjusted = original.replace('import * as PreviewManager', 'import * as LoopbackTunnel from "../preview/LoopbackTunnel.ts";\nimport * as PreviewManager').replace('      Layer.mock(PreviewManager.PreviewManager, {', '      Layer.mock(LoopbackTunnel.LoopbackTunnel, {}),\n      Layer.mock(PreviewManager.PreviewManager, {')
+    writeFileSync(fixture, baselineFixture(adjusted))
+    execFileSync("git", ["-C", root, "apply", "--reverse", "--check", `--include=${path}`, patch])
+    assert.equal(readFileSync(fixture, "utf8"), original)
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })
