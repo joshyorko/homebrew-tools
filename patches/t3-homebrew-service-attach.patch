@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..92aeb8b9a9ac0eb4ac6542cedb828dc444c6b692
 --- /dev/null
 +++ b/apps/desktop/src/app/DesktopApp.homebrew.test.ts
-@@ -0,0 +1,329 @@
+@@ -0,0 +1,331 @@
 +import * as NodeSqlite from "node:sqlite";
 +import * as NodeServices from "@effect/platform-node/NodeServices";
 +import { assert, describe, it } from "@effect/vitest";
@@ -82,6 +82,7 @@ index 0000000000000000000000000000000000000000..92aeb8b9a9ac0eb4ac6542cedb828dc4
 +import * as ElectronTheme from "../electron/ElectronTheme.ts";
 +import * as ElectronWindow from "../electron/ElectronWindow.ts";
 +import * as MacPermissions from "../permissions/MacPermissions.ts";
++import * as LoopbackTunnel from "../preview/LoopbackTunnel.ts";
 +import * as PreviewManager from "../preview/Manager.ts";
 +
 +afterEach(() => {
@@ -186,6 +187,7 @@ index 0000000000000000000000000000000000000000..92aeb8b9a9ac0eb4ac6542cedb828dc4
 +      Layer.mock(ElectronTheme.ElectronTheme, {}),
 +      Layer.mock(ElectronWindow.ElectronWindow, {}),
 +      Layer.mock(MacPermissions.MacPermissions, {}),
++      Layer.mock(LoopbackTunnel.LoopbackTunnel, {}),
 +      Layer.mock(PreviewManager.PreviewManager, {
 +        isBrowserPartition: () => {
 +          throw new Error("unexpected browser partition lookup");
