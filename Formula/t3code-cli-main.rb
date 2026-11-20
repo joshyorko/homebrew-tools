@@ -1,9 +1,9 @@
 class T3codeCliMain < Formula
   desc "T3 Code CLI built from an upstream nightly with Homebrew patches"
   homepage "https://github.com/pingdotgg/t3code"
-  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-0.1.11-nightly.20261120.4969.homebrew.1.db51b6719f11/t3code-cli-main-0.1.11-nightly.20261120.4969.homebrew.1.db51b6719f11.tar.gz"
-  version "0.1.11-nightly.20261120.4969.homebrew.1.db51b6719f11"
-  sha256 "b5251b01b56f137ea1b7f53cb93742ae68e8dd84173f862f7d96f82252079001"
+  url "https://github.com/joshyorko/homebrew-tools/releases/download/t3code-cli-main-0.1.11-nightly.20261120.4979.homebrew.1.59651c1761f6/t3code-cli-main-0.1.11-nightly.20261120.4979.homebrew.1.59651c1761f6.tar.gz"
+  version "0.1.11-nightly.20261120.4979.homebrew.1.59651c1761f6"
+  sha256 "1de1f2770f0246b9a8baf9c5c5018bb1de9d4a0e97ba3f553e1d711903b6c78a"
   license "MIT"
   version_scheme 1
 
