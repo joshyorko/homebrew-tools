@@ -27,7 +27,7 @@ jobs:
       cancel-in-progress: false
       queue: max
     env:
-      DAGGER_VERSION: "0.21.11"
+      DAGGER_VERSION: "0.21.12"
       GH_TOKEN: ${{ github.token }}
       T3_TAP_HEAD: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
