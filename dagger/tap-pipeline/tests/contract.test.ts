@@ -305,7 +305,7 @@ test("t3-code-linux builds the patched desktop AppImage from an official nightly
   assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
   assert.match(source, /! grep -Eq .*AppImage/)
 
-  assert.match(cask, /^\s*version "main\.\d{14}\.[0-9a-f]{12}"$/m)
+  assert.match(cask, /^\s*version "\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*\.[0-9a-f]{12}"$/m)
   assert.match(cask, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
   assert.match(cask, /app_run="squashfs-root\/AppRun"/)
   assert.match(cask, /echo "T3 Code AppRun is not executable"/)
