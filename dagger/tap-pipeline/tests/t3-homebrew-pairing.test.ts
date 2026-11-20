@@ -17,8 +17,8 @@ function packageVersion(source: string): string {
 test("T3 CLI and Desktop packages encode the same upstream source commit", () => {
   const cliVersion = packageVersion(formula)
   const desktopVersion = packageVersion(cask)
-  const cliCommit = cliVersion.match(/^main\.\d{14}\.([0-9a-f]{12})$/)?.[1]
-  const desktopCommit = desktopVersion.match(/^main\.\d{14}\.([0-9a-f]{12})$/)?.[1]
+  const cliCommit = cliVersion.match(/^\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*\.([0-9a-f]{12})$/)?.[1]
+  const desktopCommit = desktopVersion.match(/^\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*\.([0-9a-f]{12})$/)?.[1]
 
   assert.equal(cliVersion, desktopVersion, "paired packages use the same release version")
   assert.ok(cliCommit, "CLI version includes the pinned upstream short commit")
