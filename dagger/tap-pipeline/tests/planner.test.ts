@@ -66,22 +66,7 @@ test("recovery Homebrew rendering points tap release assets at the local file se
 
 test("package revisions compare against the first cask version component", () => {
   assert.equal(packagedVersionForUpstreamComparison("devsy-desktop", "1.14.1,1"), "1.14.1")
-  assert.equal(
-    packagedVersionForUpstreamComparison("t3-code-linux", "main.20260805060356.3c5bdb84a936,1"),
-    "main.20260805060356.3c5bdb84a936",
-  )
   assert.equal(packagedVersionForUpstreamComparison("rcc", "18.18.0"), "18.18.0")
-})
-
-test("nightly polling ignores downstream revisions but retains upstream identity", () => {
-  for (const id of ["t3code-cli-main", "t3-code-linux"]) {
-    const version = "0.1.10-nightly.20261116.4774"
-    const identity = `${version}.16695c812fff`
-    assert.equal(packagedVersionForUpstreamComparison(id, `${version}.homebrew.1.16695c812fff`), identity)
-    assert.equal(packagedVersionForUpstreamComparison(id, `${version}.homebrew.7.16695c812fff_2`), identity)
-    assert.notEqual(packagedVersionForUpstreamComparison(id, `${version}.homebrew.1.aaaaaaaaaaaa`), identity)
-    assert.notEqual(packagedVersionForUpstreamComparison(id, "0.1.10-nightly.20261116.4761.homebrew.1.16695c812fff"), identity)
-  }
 })
 
 test("listAutoUpdateSlots returns the stable slot order", () => {
@@ -120,7 +105,6 @@ test("changedCiPackagesFromPaths only returns PR-enabled packages", () => {
 test("every PR-enabled package has a changed-path trigger", () => {
   const fixtures: Record<string, string> = {
     review: "Formula/review.rb",
-    "t3code-cli-main": "Formula/t3code-cli-main.rb",
     chatgpt: "Casks/chatgpt-linux.rb",
     devsy: "Formula/devsy.rb",
     "devsy-desktop": "Casks/devsy-desktop.rb",
@@ -132,7 +116,6 @@ test("every PR-enabled package has a changed-path trigger", () => {
     rcc: "Casks/rcc.rb",
     "action-server": "Casks/action-server.rb",
     "devpod-linux": "Casks/devpod-linux.rb",
-    "t3-code-linux": "Casks/t3-code-linux.rb",
     "codex-desktop-linux": "Casks/codex-desktop.rb",
     "headroom-self-hosted": "Formula/headroom-self-hosted.rb",
     "codex-memoryd": "Formula/codex-memoryd.rb",
@@ -165,28 +148,6 @@ test("shared pipeline changes schedule every PR-enabled package", () => {
     changedCiPackagesFromPaths(["dagger/tap-pipeline/src/index.ts"]),
     PACKAGE_REGISTRY.filter((entry) => entry.supportsPrCi).map((entry) => entry.id),
   )
-})
-
-test("resource monitor build helper schedules t3code CLI CI", () => {
-  assert.deepEqual(changedCiPackagesFromPaths(["scripts/build-t3code-resource-monitor.sh"]), ["t3code-cli-main"])
-})
-
-test("service protection patch and systemd fixture schedule only CLI package CI", () => {
-  for (const path of ["patches/t3-homebrew-service-protect.patch", "scripts/t3-service-protect-smoke/run.sh"]) {
-    assert.deepEqual(changedCiPackagesFromPaths([path]), ["t3code-cli-main"])
-    assert.equal(ciPlanFromPaths([path])[0]?.mode, "build")
-  }
-  const localControls = ["Makefile", "scripts/dagger-limited.sh"]
-  assert.deepEqual(ciPlanFromPaths(localControls), [])
-  assert.deepEqual(ciPlanFromPaths([...localControls, "patches/t3-homebrew-service-protect.patch"]).map((entry) => entry.package_id), ["t3code-cli-main"])
-})
-
-test("T3 ASAR verifier changes schedule Desktop CI", () => {
-  assert.deepEqual(changedCiPackagesFromPaths(["scripts/check-t3-connect-asar.mjs"]), ["t3-code-linux"])
-})
-
-test("T3 pnpm patch helper schedules t3code CLI CI", () => {
-  assert.deepEqual(changedCiPackagesFromPaths(["scripts/lib/apply-pnpm-package-patch.mjs"]), ["t3code-cli-main"])
 })
 
 test("package formula and cask edits use artifact checks", () => {
@@ -246,13 +207,13 @@ test("runtime test fixtures route to the package that consumes them", () => {
 
 test("package builders and source inputs use source builds", () => {
   assert.deepEqual(ciPlanFromPaths([
-    "scripts/package-t3code-cli-main.mjs",
+    "scripts/package-fizzy-cli-master.mjs",
     "config/codex-desktop-linux-features.json",
   ]), [
     {
-      package_id: "t3code-cli-main",
+      package_id: "fizzy-cli-master",
       mode: "build",
-      reason: "source/build changes: scripts/package-t3code-cli-main.mjs",
+      reason: "source/build changes: scripts/package-fizzy-cli-master.mjs",
     },
   ])
 })
@@ -294,7 +255,6 @@ test("unknown production changes fail safe to the full source-build matrix", () 
   const plan = ciPlanFromPaths(["dagger/tap-pipeline/src/install-checks.ts"])
   const expectedPackageIds = [
     "review",
-    "t3code-cli-main",
     "chatgpt",
     "headroom-self-hosted",
     "devsy",
@@ -307,7 +267,6 @@ test("unknown production changes fail safe to the full source-build matrix", () 
     "rcc",
     "action-server",
     "devpod-linux",
-    "t3-code-linux",
     "codex-memoryd",
   ]
 
@@ -485,7 +444,7 @@ test("transient upstream probe errors are explicitly marked", () => {
 test("real Git monolith and registry diffs retain scoped routing", () => {
   const fixture = mkdtempSync(join(tmpdir(), "tap-ci-impact-git-"))
   const repo = new URL("../../..", import.meta.url)
-  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", "dagger/tap-pipeline/src/t3-nightly.ts", ".github/workflows/tap-ci.yml"]
+  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", ".github/workflows/tap-ci.yml"]
   try {
     execFileSync("git", ["init", "-q"], { cwd: fixture })
     execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })
@@ -524,15 +483,4 @@ test("real Git monolith and registry diffs retain scoped routing", () => {
   } finally {
     rmSync(fixture, { recursive: true, force: true })
   }
-})
-
-
-test("pin-only routing checks exactly the T3 pair and mixed changes retain other checks", () => {
-  const pair = ciPlanFromPaths(["config/t3-nightly.json"])
-  assert.deepEqual(pair.map(({ package_id, mode }) => ({ package_id, mode })), [
-    { package_id: "t3code-cli-main", mode: "build" },
-    { package_id: "t3-code-linux", mode: "build" },
-  ])
-  const mixed = ciPlanFromPaths(["config/t3-nightly.json", "Formula/devsy.rb"])
-  for (const id of ["t3code-cli-main", "t3-code-linux", "devsy"]) assert.ok(mixed.some((item) => item.package_id === id))
 })

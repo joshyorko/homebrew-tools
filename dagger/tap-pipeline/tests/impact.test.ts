@@ -19,9 +19,6 @@ function affected(path: string, edit: (text: string) => string) {
 test("actual monolith package hook only affects codex-memoryd", () => {
   assert.deepEqual(affected(index, (text) => text.replace('return this.artifactCheck("codex-memoryd")', 'return this.artifactCheck("codex-memoryd").then((value) => value.trim())')), ["codex-memoryd"])
 })
-test("actual shared T3 base affects its consumers only", () => {
-  assert.deepEqual(affected(index, (text) => text.replace('"pkg-config --exists libsecret-1"', '"pkg-config --exists libsecret-1 && true"')), ["t3code-cli-main", "t3-code-linux"])
-})
 test("shared Homebrew runtime affects all consumers", () => {
   assert.deepEqual(
     affected(index, (text) => text.replace('ghcr.io/homebrew/brew:main', 'ghcr.io/homebrew/brew:changed')).sort(),

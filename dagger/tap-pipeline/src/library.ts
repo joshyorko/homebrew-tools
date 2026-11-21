@@ -186,13 +186,7 @@ export function formatGitHeadVersion(input: GitHeadVersionInput): string {
 }
 
 export function packagedVersionForUpstreamComparison(packageId: string, version: string): string {
-  const packageVersion = ["devsy-desktop", "t3-code-linux"].includes(packageId) ? version.split(",", 1)[0] : version
-  if (["t3code-cli-main", "t3-code-linux"].includes(packageId)) {
-    // Polling tracks the official nightly identity; an explicit downstream
-    // patch revision must not make every tick rebuild or downgrade that source.
-    return packageVersion.replace(/\.homebrew\.[1-9]\d*\.([a-f0-9]{12})(?:_\d+)?$/, ".$1")
-  }
-  return packageVersion
+  return packageId === "devsy-desktop" ? version.split(",", 1)[0] : version
 }
 
 export function codexDesktopBuildVersion(
@@ -220,19 +214,6 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     supportsReleaseBundle: false,
     autoUpdate: { kind: "manual", reason: "Dedicated hourly Dagger formula refresh uses source-owned Review releases." },
     upstream: { kind: "github_release", repo: "https://github.com/joshyorko/review" },
-  },
-  {
-    id: "t3code-cli-main",
-    kind: "source_build_node_formula",
-    homebrewPath: "Formula/t3code-cli-main.rb",
-    supportsPrCi: true,
-    supportsReleaseBundle: true,
-    autoUpdate: { kind: "t3_nightly" },
-    upstream: {
-      kind: "git",
-      repo: "https://github.com/pingdotgg/t3code",
-      ref: "refs/tags/v*-nightly.*",
-    },
   },
   {
     id: "chatgpt",
@@ -439,18 +420,6 @@ export const PACKAGE_REGISTRY: PackageRegistryEntry[] = [
     },
   },
   {
-    id: "t3-code-linux",
-    kind: "source_build_node_appimage_cask",
-    homebrewPath: "Casks/t3-code-linux.rb",
-    supportsPrCi: true,
-    autoUpdate: { kind: "t3_nightly" },
-    upstream: {
-      kind: "git",
-      repo: "https://github.com/pingdotgg/t3code",
-      ref: "refs/tags/v*-nightly.*",
-    },
-  },
-  {
     id: "codex-memoryd",
     kind: "http_binary_formula",
     homebrewPath: "Formula/codex-memoryd.rb",
@@ -533,19 +502,6 @@ function loadAutoUpdateSlots(): AutoUpdateSlot[] {
 export const AUTO_UPDATE_SLOTS: AutoUpdateSlot[] = loadAutoUpdateSlots()
 
 const CHANGED_PATHS: Array<[string, string[]]> = [
-  [
-    "t3code-cli-main",
-    [
-      "Formula/t3code-cli-main.rb",
-      "config/t3-nightly.json",
-      "scripts/package-t3code-cli-main.mjs",
-      "scripts/lib/apply-pnpm-package-patch.mjs",
-      "scripts/build-t3code-resource-monitor.sh",
-      "patches/t3-homebrew-service-protect.patch",
-      "scripts/t3-service-protect-smoke/",
-      "dagger/t3code-cli-main-smoke/",
-    ],
-  ],
   ["chatgpt", ["Casks/chatgpt-linux.rb", "scripts/install-chatgpt-local.sh", "scripts/migrate-chatgpt-linux-cask.sh", "scripts/uninstall-chatgpt.sh"]],
   [
     "codex-desktop-linux",
@@ -584,7 +540,6 @@ const CHANGED_PATHS: Array<[string, string[]]> = [
   ["rcc", ["Casks/rcc.rb"]],
   ["action-server", ["Casks/action-server.rb"]],
   ["devpod-linux", ["Casks/devpod-linux.rb", "Formula/devpod-appindicator-runtime-tools.rb"]],
-  ["t3-code-linux", ["config/t3-nightly.json", "Casks/t3-code-linux.rb", "scripts/check-t3-connect-asar.mjs"]],
 ]
 
 const PLATFORM_PATH_PREFIXES = [

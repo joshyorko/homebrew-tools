@@ -36,14 +36,9 @@ import {
 import { resolveReviewRelease, verifyReviewArtifact } from "./review-release.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
-import { pinnedNightlySelection, nightlyPackageVersion, resolveNightlyReleases, type T3NightlyRelease } from "./t3-nightly.js"
 import {
   artifactCheckPlan,
   rejectForbiddenShaCommand,
-  t3CliConnectGateChecks,
-  t3PublicConnectAsarChecks,
-  t3PublicConnectDriftGuardCommand,
-  t3PublicConnectEnv,
 } from "./install-checks.js"
 
 const TAP_DIR = "/tap"
@@ -210,11 +205,6 @@ function tapStagingCommands(packageId: string): string[] {
         'mkdir -p "$tap_dir/Formula"',
         'cp /tap/Formula/review.rb "$tap_dir/Formula/"',
       ]
-    case "t3code-cli-main":
-      return [
-        "mkdir -p \"$tap_dir/Formula\"",
-        "cp /tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
-      ]
     case "chatgpt":
       return [
         "mkdir -p \"$tap_dir/Casks\"",
@@ -240,11 +230,6 @@ function tapStagingCommands(packageId: string): string[] {
       return [
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/fizzy-popper-self-hosted.rb \"$tap_dir/Formula/\"",
-      ]
-    case "t3-code-linux":
-      return [
-        "mkdir -p \"$tap_dir/Casks\"",
-        "cp /tap/Casks/t3-code-linux.rb \"$tap_dir/Casks/\"",
       ]
     case "codex-desktop-linux":
       return [
@@ -308,23 +293,6 @@ async function gitChangedFiles(source: Directory, gitDir: Directory, baseRef: st
     .stdout()
 
   return parseTextLines(output)
-}
-
-type T3NightlyProvenance = {
-  schemaVersion: 1
-  packageVersion: string
-  sourceCommit: string
-  upstream: T3NightlyRelease
-  releases: T3NightlyRelease[]
-}
-
-type T3Build = {
-  provenance: T3NightlyProvenance
-  artifactPath: string
-  assetName: string
-  commit: string
-  container: Container
-  version: string
 }
 
 type FizzyBuild = {
@@ -437,16 +405,6 @@ type DevsyDesktopBuild = {
   asset: DownloadedAsset
 }
 
-type T3CodeBuild = {
-  provenance: T3NightlyProvenance
-  artifactPath: string
-  assetName: string
-  commit: string
-  version: string
-  container: Container
-  sha256: string
-}
-
 type HeadroomBuild = {
   artifactPath: string
   assetName: string
@@ -487,8 +445,6 @@ type AutoUpdatePackageStatus = {
   skipped?: boolean
   skip_reason?: string
 }
-
-const t3NightlyResolutions = new WeakMap<TapPipeline, Map<string, Promise<T3NightlyProvenance>>>()
 
 @object()
 export class TapPipeline {
@@ -580,7 +536,7 @@ export class TapPipeline {
         current_release_published: currentReleasePublished,
         needs_update:
           packagedVersionForUpstreamComparison(entry.id, currentVersion) !== packagedVersionForUpstreamComparison(entry.id, upstreamVersion)
-          || (!currentReleasePublished && entry.autoUpdate.kind !== "t3_nightly"),
+          || !currentReleasePublished,
       }
     }))
 
@@ -591,44 +547,6 @@ export class TapPipeline {
   async packagesNeedingAutoUpdate(slotId: string, githubToken?: Secret): Promise<string> {
     const entries = JSON.parse(await this.autoUpdateStatus(slotId, githubToken)) as AutoUpdatePackageStatus[]
     return json(entries.filter((entry) => entry.needs_update).map((entry) => entry.id))
-  }
-
-  @func()
-  async resolveT3Source(githubToken?: Secret, ref = ""): Promise<string> {
-    this.setGithubToken(githubToken)
-    if (ref && !/^[0-9a-f]{40}$/.test(ref)) {
-      throw new Error("T3 acceptance replay requires an immutable 40-character source SHA")
-    }
-    const provenance = await this.resolveT3Nightly(ref)
-    return json({ commit: provenance.sourceCommit, version: provenance.packageVersion, tag: provenance.upstream.tag })
-  }
-
-  private resolveT3Nightly(ref = "", version?: string): Promise<T3NightlyProvenance> {
-    if (ref && !/^[a-f0-9]{40}$/.test(ref)) throw new Error("T3 nightly replay requires an immutable source SHA")
-    const key = `${ref}:${version ?? ""}`
-    let resolutions = t3NightlyResolutions.get(this)
-    if (!resolutions) {
-      resolutions = new Map()
-      t3NightlyResolutions.set(this, resolutions)
-    }
-    const cached = resolutions.get(key)
-    if (cached) return cached
-    const resolution = (async (): Promise<T3NightlyProvenance> => {
-      const match = version?.match(/^(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)\.homebrew\.([1-9]\d*)\.([a-f0-9]{12})$/)
-      if (version && !match) throw new Error("T3 package version must identify an official nightly and downstream revision")
-      const pin: unknown = JSON.parse(await this.source.file("config/t3-nightly.json").contents())
-      const result = await resolveNightlyReleases({
-        fetchJson: (path) => this.fetchJson(`https://api.github.com/${path}`),
-        ...pinnedNightlySelection(pin, ref, version),
-      })
-      const upstream = result.available
-      const packageVersion = nightlyPackageVersion(upstream, match ? Number(match[2]) : 1)
-      if (version && packageVersion !== version) throw new Error("T3 nightly source and package identity disagree")
-      if (ref && upstream.commit !== ref) throw new Error("T3 source is not the selected official nightly commit")
-      return { schemaVersion: 1, packageVersion, sourceCommit: upstream.commit, upstream, releases: result.releases }
-    })()
-    resolutions.set(key, resolution)
-    return resolution
   }
 
   private setGithubToken(githubToken?: Secret): void {
@@ -673,14 +591,10 @@ export class TapPipeline {
         return `devsy-${version}`
       case "devsy-desktop":
         return `devsy-desktop-${version.split(",", 1)[0]}`
-      case "t3code-cli-main":
-        return `t3code-cli-main-${version}`
       case "fizzy-cli-master":
         return `fizzy-cli-master-${version}`
       case "fizzy-popper-self-hosted":
         return `fizzy-popper-self-hosted-${version}`
-      case "t3-code-linux":
-        return `t3-code-linux-${version.split(",", 1)[0]}`
       case "codex-desktop-linux":
         return `codex-desktop-linux-${version}`
       case "headroom-self-hosted":
@@ -725,58 +639,6 @@ export class TapPipeline {
       .stdout()
 
     return output.trim() === "true"
-  }
-
-  private t3BaseContainer(): Container {
-    const rustToolchain = dag.container().from(RUST_IMAGE)
-
-    return dag
-      .container()
-      .from(NODE_IMAGE)
-      .withDirectory("/usr/local/cargo", rustToolchain.directory("/usr/local/cargo"))
-      .withDirectory("/usr/local/rustup", rustToolchain.directory("/usr/local/rustup"))
-      .withMountedCache(
-        "/root/.bun/install/cache",
-        dag.cacheVolume("tap-pipeline-bun-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withMountedCache(
-        "/root/.npm",
-        dag.cacheVolume("tap-pipeline-npm-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withMountedCache(
-        "/root/.local/share/pnpm/store",
-        dag.cacheVolume("tap-pipeline-pnpm-store-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl fakeroot g++ git imagemagick jq libsecret-1-dev make pkg-config python3 rpm tar unzip xz-utils",
-          "pkg-config --exists libsecret-1",
-          "npm install -g node-gyp",
-          "corepack enable",
-          "corepack prepare pnpm@11.10.0 --activate",
-          "rm -rf /var/lib/apt/lists/*",
-        ].join("\n"),
-      ])
-      .withExec(["bash", "-lc", "curl -fsSL https://bun.sh/install | bash -s -- bun-v1.3.9"])
-      .withEnvVariable("CARGO_HOME", "/usr/local/cargo")
-      .withEnvVariable("RUSTUP_HOME", "/usr/local/rustup")
-      .withEnvVariable("PATH", "/root/.bun/bin:/root/.local/share/pnpm:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-  }
-
-  // One audited public Connect source for both T3 builds. Upstream loadRepoEnv
-  // prefers the process environment, so these must be set before compilation.
-  private withT3PublicConnectConfig(container: Container): Container {
-    return t3PublicConnectEnv().reduce(
-      (current, [name, value]) => current.withEnvVariable(name, value),
-      container,
-    )
   }
 
   private codexDesktopBaseContainer(): Container {
@@ -1070,34 +932,6 @@ export class TapPipeline {
     })
   }
 
-  private t3NightlyReleaseNotes(provenance: T3NightlyProvenance): string {
-    return `${provenance.upstream.body}
-
----
-Homebrew build: ${provenance.packageVersion}; upstream ${provenance.upstream.tag} (${provenance.sourceCommit}). Paired CLI/Desktop installation and this tap's patches remain Homebrew-managed.
-`
-  }
-
-  private t3codeCliReleaseMetadata(build: T3Build, sha256: string): Record<string, unknown> {
-    return { ...releaseMetadataForPackage("t3code-cli-main", {
-      version: build.version,
-      releaseTag: `t3code-cli-main-${build.version}`,
-      assetName: build.assetName,
-      artifactSha256: sha256,
-      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3code-cli-main-${build.version}/${build.assetName}`,
-      releaseTitle: `T3 Code CLI nightly ${build.version}`,
-      releaseNotes: this.t3NightlyReleaseNotes(build.provenance),
-      commitMessage: `Update t3code-cli-main formula to ${build.version}`,
-      upstream: {
-        kind: "git",
-        repo: "https://github.com/pingdotgg/t3code",
-        ref: build.provenance.upstream.tag,
-        version: build.provenance.upstream.version,
-        commit: build.commit,
-      },
-    }), upstream_notes_path: `metadata/t3-nightly/${build.version}.json`, upstream_notes: build.provenance }
-  }
-
   private fizzyReleaseMetadata(build: FizzyBuild, sha256: string): Record<string, unknown> {
     return releaseMetadataForPackage("fizzy-cli-master", {
       version: build.version,
@@ -1139,26 +973,6 @@ Homebrew build: ${provenance.packageVersion}; upstream ${provenance.upstream.tag
         commit: build.commit,
       },
     })
-  }
-
-  private t3CodeReleaseMetadata(build: T3CodeBuild): Record<string, unknown> {
-    return { ...releaseMetadataForPackage("t3-code-linux", {
-      version: build.version,
-      releaseTag: `t3-code-linux-${build.version}`,
-      assetName: build.assetName,
-      artifactSha256: build.sha256,
-      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/t3-code-linux-${build.version}/${build.assetName}`,
-      releaseTitle: `T3 Code Linux ${build.version}`,
-      releaseNotes: this.t3NightlyReleaseNotes(build.provenance),
-      commitMessage: `Update t3-code-linux cask to ${build.version}`,
-      upstream: {
-        kind: "git",
-        repo: "https://github.com/pingdotgg/t3code",
-        ref: build.provenance.upstream.tag,
-        version: build.provenance.upstream.version,
-        commit: build.commit,
-      },
-    }), upstream_notes_path: `metadata/t3-nightly/${build.version}.json`, upstream_notes: build.provenance }
   }
 
   private codexDesktopOfficialReleaseMetadata(
@@ -1362,86 +1176,6 @@ end
         commit: build.commit,
       },
     })
-  }
-
-  private async buildT3Artifact(
-    tap: Directory,
-    ref: string,
-    version?: string,
-  ): Promise<T3Build> {
-    const entry = this.packageEntry("t3code-cli-main")
-    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "t3_nightly") {
-      throw new Error("Expected t3code-cli-main to use the official nightly strategy")
-    }
-    const provenance = await this.resolveT3Nightly(ref, version)
-    const commit = provenance.sourceCommit
-    const resolvedVersion = provenance.packageVersion
-
-    const assetName = `t3code-cli-main-${resolvedVersion}.tar.gz`
-    const artifactPath = `/tmp/${assetName}`
-
-    const container = this.withT3PublicConnectConfig(this.t3BaseContainer())
-      .withEnvVariable("APP_VERSION", provenance.upstream.version)
-      .withMountedCache(
-        "/upstream/native/resource-monitor/target",
-        dag.cacheVolume("tap-pipeline-t3-resource-monitor-target-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "mkdir -p /upstream",
-          "git -C /upstream init",
-          `git -C /upstream remote add origin ${JSON.stringify(entry.upstream.repo)}`,
-          `git -C /upstream fetch --depth=1 --no-tags origin ${JSON.stringify(commit)}`,
-          "git -C /upstream checkout --detach FETCH_HEAD",
-          "rm -rf /upstream/.git",
-        ].join("\n"),
-      ])
-      .withNewFile("/upstream/t3-homebrew-upstream.json", json(provenance))
-      .withWorkdir("/upstream")
-      .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
-      .withExec(["pnpm", "install", "--frozen-lockfile"])
-      .withDirectory("/tap", tap)
-      .withExec([
-        "node", "/tap/scripts/t3-source-patches.mjs",
-        "--source", "/upstream", "--source-ref", commit, "--variant", "cli",
-      ])
-      .withExec(["bash", "-lc", "test -f apps/server/src/cli/service.homebrew.test.ts || { echo 'Required Homebrew CLI acceptance test missing.' >&2; exit 1; }"])
-      .withExec([
-        "pnpm", "--dir", "apps/server", "exec", "vp", "test", "run",
-        "--maxWorkers=1",
-        "src/cloud/serviceProtection.test.ts",
-        "src/cloud/serviceProtectionTarget.test.ts",
-        "src/cli/service.homebrew.test.ts",
-        "src/cli/service.test.ts",
-      ])
-      .withExec(["pnpm", "--filter", "@t3tools/web", "run", "build"])
-      .withExec(["pnpm", "--filter", "t3", "run", "build:bundle"])
-      .withExec(["bash", "-lc", "rm -rf apps/server/dist/client && cp -R apps/web/dist apps/server/dist/client"])
-      .withExec(["bash", "/tap/scripts/build-t3code-resource-monitor.sh", "/upstream"])
-      .withExec([
-        "node",
-        "--experimental-strip-types",
-        "/tap/scripts/package-t3code-cli-main.mjs",
-        "--upstream-dir",
-        "/upstream",
-        "--version",
-        resolvedVersion,
-        "--output",
-        artifactPath,
-      ])
-
-    return {
-      provenance,
-      artifactPath,
-      assetName,
-      commit,
-      container,
-      version: resolvedVersion,
-    }
   }
 
   private async buildFizzyArtifact(tap: Directory, ref: string, version?: string): Promise<FizzyBuild> {
@@ -2266,8 +2000,6 @@ end
         }
         return stripRequiredPrefix(release.tag_name, entry.autoUpdate.stripPrefix)
       }
-      case "t3_nightly":
-        return (await this.resolveT3Nightly()).packageVersion
       case "git_head_sha": {
         if (entry.upstream.kind !== "git") {
           throw new Error(`Expected git upstream for ${packageId}`)
@@ -2544,126 +2276,6 @@ end
     }
   }
 
-  private async buildT3CodeArtifact(
-    tap: Directory,
-    ref: string,
-    version?: string,
-  ): Promise<T3CodeBuild> {
-    const entry = this.packageEntry("t3-code-linux")
-    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "t3_nightly") {
-      throw new Error("Expected t3-code-linux to use the official nightly strategy")
-    }
-    const provenance = await this.resolveT3Nightly(ref, version)
-    const commit = provenance.sourceCommit
-    const resolvedVersion = provenance.packageVersion
-
-    const assetName = `T3-Code-${resolvedVersion}-x86_64.AppImage`
-    const artifactPath = `/tmp/${assetName}`
-
-    const container = this.withT3PublicConnectConfig(
-      this.t3BaseContainer()
-        .withEnvVariable("ENABLE_V8_FUNCTIONS", "false")
-        .withEnvVariable("T3CODE_DESKTOP_VERSION", provenance.upstream.version),
-    )
-      // Upstream's afterPack hook executes Electron to generate the server compile cache.
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "apt-get update",
-          "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libasound2 libgbm1 libgtk-3-0 libnspr4 libnss3",
-          "rm -rf /var/lib/apt/lists/*",
-        ].join("\n"),
-      ])
-      .withDirectory("/tap", tap)
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "mkdir -p /upstream",
-          "git -C /upstream init",
-          `git -C /upstream remote add origin ${JSON.stringify(entry.upstream.repo)}`,
-          `git -C /upstream fetch --depth=1 --no-tags origin ${JSON.stringify(commit)}`,
-          "git -C /upstream checkout --detach FETCH_HEAD",
-          "rm -rf /upstream/.git",
-        ].join("\n"),
-      ])
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "mkdir -p /upstream/apps/desktop/resources",
-          "install -m 0755 /tap/scripts/t3-homebrew-update.sh /upstream/apps/desktop/resources/t3-homebrew-update.sh",
-        ].join("\n"),
-      ])
-      .withExec([
-        "node", "/tap/scripts/t3-source-patches.mjs",
-        "--source", "/upstream", "--source-ref", commit, "--variant", "desktop",
-      ])
-      .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-build.json", JSON.stringify({ packageVersion: resolvedVersion, sourceCommit: commit }))
-      .withNewFile("/upstream/apps/desktop/resources/t3-homebrew-upstream.json", json(provenance))
-      .withWorkdir("/upstream")
-      .withExec(["bash", "-lc", t3PublicConnectDriftGuardCommand()])
-      .withExec(["pnpm", "install", "--frozen-lockfile"])
-      .withExec(["bash", "-lc", [
-        "set -euo pipefail",
-        "for file in apps/desktop/src/app/DesktopApp.homebrew.test.ts apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts apps/desktop/src/updates/HomebrewReleaseNotes.test.ts apps/desktop/src/backend/HomebrewServiceOwnership.test.ts apps/desktop/src/backend/HomebrewServiceRecovery.test.ts apps/desktop/src/backend/DesktopBackendPool.test.ts packages/shared/src/homebrewServerOwner.test.ts apps/server/src/cli/pair.test.ts apps/web/src/components/homebrewDesktopUpdate.logic.test.ts apps/web/src/components/desktopUpdate.logic.test.ts; do",
-        "  test -f \"$file\" || { echo \"Required Homebrew acceptance test missing: $file\" >&2; exit 1; }",
-        "done",
-      ].join("\n")])
-      .withExec([
-        "pnpm",
-        "exec",
-        "vp",
-        "test",
-        "run",
-        "--passWithNoTests",
-        "apps/desktop/src/app/DesktopApp.homebrew.test.ts",
-        "apps/desktop/src/updates/HomebrewDesktopUpdates.test.ts",
-        "apps/desktop/src/updates/HomebrewReleaseNotes.test.ts",
-        "apps/desktop/src/updates/DesktopUpdates.homebrew.test.ts",
-        "apps/desktop/src/backend/HomebrewServiceOwnership.test.ts",
-        "apps/desktop/src/backend/HomebrewServiceRecovery.test.ts",
-        "apps/desktop/src/backend/DesktopBackendPool.test.ts",
-        "packages/shared/src/homebrewServerOwner.test.ts",
-        "apps/server/src/cli/pair.test.ts",
-        "apps/web/src/components/homebrewDesktopUpdate.logic.test.ts",
-        "apps/web/src/components/desktopUpdate.logic.test.ts",
-      ])
-      .withExec(["node", "/tap/scripts/check-t3-source-types.mjs", "/upstream", "/tmp/t3-source-typechecks", "/tap/patches/t3-homebrew-desktop-update.patch", "/tap/patches/t3-homebrew-service-attach.patch"])
-      .withExec([
-        "pnpm",
-        "dist:desktop:linux",
-        "--output-dir",
-        "/tmp/t3-code-linux-dist",
-      ])
-      .withExec([
-        "bash",
-        "-lc",
-        [
-          "set -euo pipefail",
-          "appimage=$(find /tmp/t3-code-linux-dist -maxdepth 1 -type f -name 'T3-Code-*.AppImage' -print -quit)",
-          "test -n \"$appimage\"",
-          `cp "$appimage" ${JSON.stringify(artifactPath)}`,
-          `chmod +x ${JSON.stringify(artifactPath)}`,
-        ].join("\n"),
-      ])
-    const sha256 = await this.sha256For(container, artifactPath)
-
-    return {
-      provenance,
-      artifactPath,
-      assetName,
-      commit,
-      container,
-      sha256,
-      version: resolvedVersion,
-    }
-  }
-
   private async buildHeadroomArtifact(): Promise<HeadroomBuild> {
     const entry = this.packageEntry("headroom-self-hosted")
     if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
@@ -2930,20 +2542,6 @@ end
     return renderDevsyDesktopCask(baseContents, { version, sha256, downloadUrl }, rewriteCaskUrl)
   }
 
-  private renderT3CodeCask(baseContents: string, downloadUrl: string, version: string, sha256: string): string {
-    const updatedContents = rewriteCaskUrl(
-      baseContents
-        .replace(/version ".*"/, `version "${version}"`)
-        .replace(/sha256 x86_64_linux: (?::no_check|".*")/, `sha256 x86_64_linux: "${sha256}"`),
-      downloadUrl.replaceAll(version, "#{version}").replace("-x86_64.AppImage", "-#{arch}.AppImage"),
-    )
-
-    return updatedContents.replace(
-      /livecheck do\n(?:.*\n)*?\s+end\n/m,
-      "livecheck do\n    skip \"Updated by the tap's GitHub Actions workflow.\"\n  end\n",
-    )
-  }
-
   /** Install an unpublished candidate through the same Homebrew formula as the stable release. */
   @func()
   async reviewCandidateCheck(artifact: File, version: string): Promise<string> {
@@ -2991,10 +2589,6 @@ end
     if (packageId === "action-server") {
       const legacyFixture = "dagger/tap-pipeline/tests/fixtures/action-server-1.2.6.rb"
       tap = tap.withFile(legacyFixture, this.source.file(legacyFixture))
-    }
-    if (packageId === "t3-code-linux") {
-      const verifier = "scripts/check-t3-connect-asar.mjs"
-      tap = tap.withFile(verifier, this.source.file(verifier))
     }
 
     const metadataCommands = plan.homebrewPaths.flatMap((path, index) => {
@@ -3066,64 +2660,13 @@ end
       .stdout()
   }
 
-  @func()
-  async t3CodeLinuxCandidate(
-    t3SourceRef?: string,
-    t3SourceVersion?: string,
-    githubToken?: Secret,
-  ): Promise<File> {
-    this.setGithubToken(githubToken)
-    const build = await this.buildT3CodeArtifact(
-      this.source,
-      t3SourceRef || "",
-      t3SourceVersion,
-    )
-    return build.container.file(build.artifactPath)
-  }
-
   /** Export all GUI receipts, including failures; acceptance.json must say passed=true. */
-  @func()
-  async t3ServiceAttachmentEvidence(
-    bundle: Directory,
-    t3SourceRef: string,
-    candidateTapHead: string,
-    dockerSocket: Socket,
-  ): Promise<Directory> {
-    if (!/^[0-9a-f]{40}$/.test(t3SourceRef) || !/^[0-9a-f]{40}$/.test(candidateTapHead)) {
-      throw new Error("Attachment evidence requires exact upstream and candidate tap SHAs")
-    }
-    const release: unknown = JSON.parse(await bundle.file("release.json").contents())
-    if (typeof release !== "object" || release === null
-      || !("package" in release) || release.package !== "t3-code-linux"
-      || !("asset_name" in release) || typeof release.asset_name !== "string"
-      || !/^T3-Code-[a-zA-Z0-9._+-]+-x86_64\.AppImage$/.test(release.asset_name)
-      || !("artifact_sha256" in release) || typeof release.artifact_sha256 !== "string"
-      || !/^[0-9a-f]{64}$/.test(release.artifact_sha256)
-      || !("upstream" in release) || typeof release.upstream !== "object" || release.upstream === null
-      || !("commit" in release.upstream) || release.upstream.commit !== t3SourceRef) {
-      throw new Error("Attachment candidate metadata does not match the requested immutable source")
-    }
-    const executionTapHead = (await this.gitDir.file("HEAD").contents()).trim()
-    if (!/^[0-9a-f]{40}$/.test(executionTapHead)) throw new Error("Run attachment evidence from an immutable detached snapshot")
-    return this.source.directory(".devcontainer/dagger").dockerBuild()
-      .withUnixSocket("/var/run/docker.sock", dockerSocket)
-      .withDirectory("/runner", this.source.directory("scripts/t3-homebrew-desktop-e2e"))
-      .withFile("/candidate/candidate.AppImage", bundle.file(`artifacts/${release.asset_name}`))
-      .withNewFile("/evidence/source.json", json({ candidateTapHead, executionTapHead, upstream: t3SourceRef, artifactSha256: release.artifact_sha256 }))
-      .withEnvVariable("CANDIDATE_SHA256", release.artifact_sha256)
-      .withExec(["bash", "-lc", "printf '%s  /candidate/candidate.AppImage\\n' \"$CANDIDATE_SHA256\" | sha256sum -c -"])
-      .withExec(["bash", "/runner/run-all.sh", "/candidate/candidate.AppImage", "/evidence", t3SourceRef])
-      .directory("/evidence")
-  }
-
   @func()
   async ciCheck(
     packageId: string,
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
     codexDesktopPackageSource?: string,
-    t3SourceRef?: string,
-    t3SourceVersion?: string,
   ): Promise<string> {
     this.setGithubToken(githubToken)
 
@@ -3266,59 +2809,6 @@ end
               "grep -q 'x-scheme-handler/devpod' \"$HOME/.local/share/applications/sh.loft.devpod.desktop\"",
               "test -f \"$HOME/.local/share/icons/hicolor/256x256@2/apps/devpod-desktop.png\"",
               "devpod version",
-            ].join("\n"),
-          ])
-          .stdout()
-      }
-      case "t3code-cli-main": {
-        const build = await this.buildT3Artifact(tap, t3SourceRef || "", t3SourceVersion)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const formulaContents = await tap.file("Formula/t3code-cli-main.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/desc ".*"/, 'desc "T3 Code CLI built from an upstream nightly with Homebrew patches"')
-          .replace(/^\s*version_scheme \d+\n/m, "")
-          .replace(/^\s*revision \d+\n/m, "")
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-          .replace(/(license ".*")/, "$1\n  version_scheme 1")
-        const smokeTap = tap.withFile("Formula/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
-
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withUser("linuxbrew")
-          .withEnvVariable("HOMEBREW_DOWNLOAD_CONCURRENCY", "1")
-          .withEnvVariable("HOMEBREW_MAKE_JOBS", "2")
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", tap)
-          .withDirectory("/built-tap", smokeTap)
-          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("t3code-cli-main"),
-              "brew trust --formula test/tap/t3code-cli-main",
-              "brew audit --formula test/tap/t3code-cli-main",
-              "cp /built-tap/Formula/t3code-cli-main.rb \"$tap_dir/Formula/\"",
-              "brew install test/tap/t3code-cli-main",
-              "monitor=\"$(brew --prefix t3code-cli-main)/libexec/dist/resource-monitor/linux-x64/t3-resource-monitor\"",
-              "test -x \"$monitor\"",
-              "hello=\"$(\"$monitor\" </dev/null | head -n 1)\"",
-              "\"$(brew --prefix node@24)/bin/node\" -e 'const value = JSON.parse(process.argv[1]); if (value.type !== \"hello\" || value.platform !== \"linux\" || value.arch !== \"x86_64\") process.exit(1)' \"$hello\"",
-              "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3\"",
-              "brew test test/tap/t3code-cli-main",
-              `version_output="$(t3 --version)"; test "$version_output" = "t3 v${build.provenance.upstream.version}" || { printf 'Unexpected CLI version: %s\\n' "$version_output" >&2; exit 1; }`,
-              "t3 --help",
-              ...t3CliConnectGateChecks(),
             ].join("\n"),
           ])
           .stdout()
@@ -3566,66 +3056,6 @@ end
               "brew install test/tap/fizzy-popper-self-hosted",
               "brew test test/tap/fizzy-popper-self-hosted",
               "fizzy-popper --help",
-            ].join("\n"),
-          ])
-          .stdout()
-      }
-      case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact(tap, t3SourceRef || "", t3SourceVersion)
-        const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
-        const updatedCask = this.renderT3CodeCask(
-          caskContents,
-          `file:///artifacts/${build.assetName}`,
-          build.version,
-          build.sha256,
-        )
-        const smokeTap = tap.withFile("Casks/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
-
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withUser("root")
-          .withExec([
-            "bash",
-            "-lc",
-            "set -euo pipefail\nrm -f /etc/apt/sources.list.d/github-cli.list\napt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*",
-          ])
-          .withUser("linuxbrew")
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", tap)
-          .withDirectory("/built-tap", smokeTap)
-          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("t3-code-linux"),
-              "brew trust --cask test/tap/t3-code-linux",
-              "brew audit --cask test/tap/t3-code-linux",
-              "cp /built-tap/Casks/t3-code-linux.rb \"$tap_dir/Casks/\"",
-              "brew install --cask test/tap/t3-code-linux",
-              "grep -Eq '^[[:space:]]*export T3CODE_TELEMETRY_ENABLED=false$' \"$(brew --prefix)/bin/t3-code-linux\"",
-              "test -x \"$(brew --prefix)/bin/t3-code-linux\"",
-              "installed_dir=$(dirname \"$(readlink -f \"$(brew --prefix)/bin/t3-code-linux\")\")",
-              "test -n \"$installed_dir\"",
-              "test -x \"$installed_dir/squashfs-root/AppRun\"",
-              "grep -Fq 'squashfs-root/AppRun' \"$(brew --prefix)/bin/t3-code-linux\"",
-              "! grep -Eq '^exec .*AppImage' \"$(brew --prefix)/bin/t3-code-linux\"",
-              "test -f \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
-              "grep -qx 'Icon=t3-code-linux' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
-              "grep -q 'Exec=.*/bin/t3-code-linux %U' \"$HOME/.local/share/applications/t3-code-linux.desktop\"",
-              "test -f \"$HOME/.local/share/icons/hicolor/512x512/apps/t3-code-linux.png\"",
-              "app_dir=\"$installed_dir/squashfs-root\"",
-              "asar=\"$app_dir/resources/app.asar\"",
-              "test -x \"$app_dir/resources/t3-homebrew-update.sh\"",
-              `node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (value.packageVersion !== process.argv[2] || value.sourceCommit !== process.argv[3]) process.exit(1)' "$app_dir/resources/t3-homebrew-build.json" "${build.version}" "${build.commit}"`,
-              `node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (value.packageVersion !== process.argv[2] || value.sourceCommit !== process.argv[3] || value.upstream.version !== process.argv[4] || !Array.isArray(value.releases)) process.exit(1)' "$app_dir/resources/t3-homebrew-upstream.json" "${build.version}" "${build.commit}" "${build.provenance.upstream.version}"`,
-              ...t3PublicConnectAsarChecks(),
             ].join("\n"),
           ])
           .stdout()
@@ -3882,8 +3312,6 @@ end
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
     codexDesktopPackageSource?: string,
-    t3SourceRef?: string,
-    t3SourceVersion?: string,
   ): Promise<string> {
     this.setGithubToken(githubToken)
 
@@ -3911,13 +3339,6 @@ end
         const build = await this.buildDevsyDesktopArtifact()
         return json(this.devsyDesktopReleaseMetadata(build))
       }
-      case "t3code-cli-main": {
-        const build = await this.buildT3Artifact(tap, t3SourceRef || "", t3SourceVersion)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        return json(this.t3codeCliReleaseMetadata(build, sha256))
-      }
       case "fizzy-cli-master": {
         const build = await this.buildFizzyArtifact(tap, "master")
         const sha256 = (
@@ -3931,10 +3352,6 @@ end
           await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
         ).trim().split(/\s+/)[0]
         return json(this.fizzyPopperSelfHostedReleaseMetadata(build, sha256))
-      }
-      case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact(tap, t3SourceRef || "", t3SourceVersion)
-        return json(this.t3CodeReleaseMetadata(build))
       }
       case "headroom-self-hosted": {
         const build = await this.buildHeadroomArtifact()
@@ -3984,42 +3401,15 @@ end
     githubToken?: Secret,
     codexDesktopConversionCommit?: string,
     codexDesktopPackageSource?: string,
-    t3SourceRef?: string,
-    t3SourceVersion?: string,
   ): Promise<Directory> {
     this.setGithubToken(githubToken)
 
     const tap = this.source;
-    const isT3Package = packageId === "t3code-cli-main" || packageId === "t3-code-linux"
-    let selectedT3SourceRef = t3SourceRef
-    let selectedT3SourceVersion = t3SourceVersion
-
-    if (isT3Package && (!selectedT3SourceRef || !selectedT3SourceVersion)) {
-      if (selectedT3SourceRef || selectedT3SourceVersion) {
-        throw new Error("T3 release bundles require both source ref and source version")
-      }
-      const provenance = await this.resolveT3Nightly()
-      const resolved = { commit: provenance.sourceCommit, version: provenance.packageVersion }
-      selectedT3SourceRef = resolved.commit
-      selectedT3SourceVersion = resolved.version
-    }
-
-    if (isT3Package) {
-      if (!/^[0-9a-f]{40}$/.test(selectedT3SourceRef ?? "")) {
-        throw new Error(`Invalid immutable T3 source commit: ${selectedT3SourceRef}`)
-      }
-      if (!selectedT3SourceVersion?.endsWith(`.${selectedT3SourceRef.slice(0, 12)}`)) {
-        throw new Error("T3 source version does not identify the selected commit")
-      }
-    }
-
     const ciLog = await this.ciCheck(
       packageId,
       githubToken,
       codexDesktopConversionCommit,
       codexDesktopPackageSource,
-      selectedT3SourceRef,
-      selectedT3SourceVersion,
     )
 
     switch (packageId) {
@@ -4128,29 +3518,6 @@ end
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
-      case "t3code-cli-main": {
-        const build = await this.buildT3Artifact(tap, selectedT3SourceRef!, selectedT3SourceVersion)
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const release = this.t3codeCliReleaseMetadata(build, sha256)
-        const formulaContents = await tap.file("Formula/t3code-cli-main.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/desc ".*"/, 'desc "T3 Code CLI built from an upstream nightly with Homebrew patches"')
-          .replace(/^\s*version_scheme \d+\n/m, "")
-          .replace(/^\s*revision \d+\n/m, "")
-          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-          .replace(/(license ".*")/, "$1\n  version_scheme 1")
-
-        return dag.directory()
-          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile("homebrew/t3code-cli-main.rb", dag.file("t3code-cli-main.rb", updatedFormula))
-          .withFile("release.json", dag.file("release.json", json(release)))
-          .withNewFile(`metadata/t3-nightly/${build.version}.json`, json(build.provenance))
-          .withFile("ci.log", dag.file("ci.log", ciLog))
-      }
       case "fizzy-cli-master": {
         const build = await this.buildFizzyArtifact(tap, "master")
         const sha256 = (
@@ -4188,25 +3555,6 @@ end
             dag.file("fizzy-popper-self-hosted.rb", updatedFormula),
           )
           .withFile("release.json", dag.file("release.json", json(release)))
-          .withFile("ci.log", dag.file("ci.log", ciLog))
-      }
-      case "t3-code-linux": {
-        const build = await this.buildT3CodeArtifact(tap, selectedT3SourceRef!, selectedT3SourceVersion)
-        const releaseTag = `t3-code-linux-${build.version}`
-        const caskContents = await tap.file("Casks/t3-code-linux.rb").contents()
-        const updatedCask = this.renderT3CodeCask(
-          caskContents,
-          `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.assetName}`,
-          build.version,
-          build.sha256,
-        )
-        const release = this.t3CodeReleaseMetadata(build)
-
-        return dag.directory()
-          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile("homebrew/t3-code-linux.rb", dag.file("t3-code-linux.rb", updatedCask))
-          .withFile("release.json", dag.file("release.json", json(release)))
-          .withNewFile(`metadata/t3-nightly/${build.version}.json`, json(build.provenance))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }
       case "headroom-self-hosted": {

@@ -46,7 +46,6 @@ Examples verified against actual source diffs in `tests/impact.test.ts` and nati
 Git fixtures in `tests/planner.test.ts`:
 
 - An RCC registry URL edit selects RCC. Mixed recipe/build inputs keep build mode.
-- A `t3BaseContainer` edit selects the T3 CLI and Desktop consumers.
 - A shared Homebrew image edit selects all PR packages.
 - A comment-only monolith edit selects no package jobs; every workflow edit selects the full matrix.
 - An unknown added module or deleted dependency retains the fail-safe full matrix.

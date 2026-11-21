@@ -39,15 +39,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Require the paired T3 recovery workflow for releases
-      env:
-        PACKAGE_ID: ${{ inputs.package_id }}
-        ACTION: ${{ inputs.action }}
-      run: |
-        if [[ "$PACKAGE_ID" == t3code-cli-main || "$PACKAGE_ID" == t3-code-linux ]] && [[ "$ACTION" == release || "$ACTION" == force-release ]]; then
-          echo 'Use Publish pinned T3 pair on main for verified paired emergency recovery.' >&2
-          exit 1
-        fi
     - name: Verify committed package artifact through Dagger
       if: inputs.action == 'artifact'
       uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77  # v8.4.1

@@ -96,7 +96,6 @@ The remote `/builds` volume and engine cache persist across container recreation
 When GitHub releases are unavailable, build a local recovery export without installing any packages first:
 
 ```bash
-make recovery-t3code-cli-main  # one small, usable export
 make recovery-all              # every standard tap release selected by recovery/Brewfile
 ```
 
@@ -124,7 +123,6 @@ bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call list-packages
 bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call list-auto-update-slots
 bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call packages-for-auto-update-slot --slot-id=desktop-6h
 bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call detect-changed-packages --base-ref=origin/main --head-ref=HEAD
-bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
 bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=vscode-insiders-linux
 ```
 
@@ -195,12 +193,10 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 |---------|-------------|
 | `brew install --cask joshyorko/tools/rcc` | Install RCC |
 | `brew install --cask joshyorko/tools/devpod-linux` | Install DevPod (Linux) |
-| `brew install --cask joshyorko/tools/t3-code-linux` | Install T3 Code (Linux) |
 | `brew install --cask joshyorko/tools/vscode-insiders-linux` | Install VS Code Insiders (Linux) |
 | `brew install --cask joshyorko/tools/chatgpt-linux` | Install ChatGPT Desktop from OpenAI's official Linux package |
 | `brew install --cask joshyorko/tools/codex-desktop` | Install the PatchRaptor Codex Desktop Linux build |
 | `brew install joshyorko/tools/headroom-self-hosted` | Install the self-hosted Headroom CLI and proxy |
-| `brew install joshyorko/tools/t3code-cli-main` | Install patched T3 Code nightly CLI |
 | `brew install joshyorko/tools/camp` | Install the latest verified Camp Linux release |
 | `brew install joshyorko/tools/devsy` | Install the stable Devsy CLI for Linux x64 or arm64 |
 | `brew install --cask joshyorko/tools/devsy-desktop` | Install Devsy Desktop for Linux x64 |
@@ -259,138 +255,6 @@ devpod provider add loft-sh/devpod-provider-dockerless
 
 devpod provider list-available
 ```
-
-### Pinned T3 nightly automation
-
-`config/t3-nightly.json` owns the single official `pingdotgg/t3code` release tag
-used by both packages. Patchraptor's existing central Renovate schedule updates
-only this pin; the local regex version scheme orders the nightly day and build
-numerically and excludes stable and preview tags. Only this dependency receives
-local PR automerge permission, with tests required. Keep the Tap Pipeline Tests
-and T3 paired CLI and Desktop acceptance checks required in branch protection.
-
-A pin PR runs the paired CLI/Desktop checks against one dereferenced immutable
-SHA. Other changed packages retain their own CI selection. The Dagger resolver
-requires a published, non-draft upstream prerelease, never a moving main or
-latest ref. Both packages apply the existing audited patches just before building;
-incompatible patches stop CI. Notes, provenance, digests, telemetry configuration,
-and the Homebrew service integration remain part of the existing verified bundles.
-
-After successful Tap CI on a pin merge to main, `t3-pin-publish.yml` rebuilds and
-verifies both bundles at the merged pin. Publication shares the tap publisher lock,
-checks that main has not moved, verifies the pair and artifact digests, and refuses
-to overwrite conflicting release assets. Both Homebrew definitions, upstream notes,
-and `metadata/t3-nightly/published.json` are committed together. A repeat of the same
-published pair is a no-op. A crash after one release upload can be retried: matching
-assets are reused, while mismatches require investigation. External release uploads
-are not atomic; the tap definitions advance only after both assets are verified.
-
-For emergency recovery, dispatch **Publish pinned T3 pair** on **main**. It uses the
-committed pin and the same paired checks and publication guards. To replay another
-nightly, change the pin through a PR first. Tap Manual refuses individual T3 releases
-and force releases. No T3 fork or T3 polling cron is used.
-
-### T3 Code (Linux Cask)
-
-T3 Code desktop packaged for Linux Homebrew as a separate cask. The tap builds
-the Linux AppImage from a verified upstream `pingdotgg/t3code` nightly tag with Dagger, uploads
-that immutable artifact to this tap's releases, then renders the cask around it.
-The cask launches its extracted `AppRun` directly, so it does not require FUSE at runtime.
-The Linux-specific token avoids colliding with the official `homebrew/cask`
-`t3-code` package.
-
-Both package lanes resolve one published upstream nightly tag to its immutable source commit
-and apply this tap's maintained fixes. Scheduled checks discover upstream releases; they do
-not create new `main` snapshots. Rechecking the same nightly does not request another build.
-An explicit patch-only rebuild keeps the upstream version and increments the separate
-`homebrew` revision. CLI/Desktop channel availability disagreements stop resolution.
-
-Release bundles retain the official notes, publication dates, tag, source commit, and
-canonical upstream links in `metadata/t3-nightly/<package-version>.json`. Desktop updates
-reuse upstream's note parser and popover. Verified skipped-nightly ranges appear once;
-migration from old snapshots or incomplete history is labeled as limited, and a tap-only
-rebuild reports no new upstream changes. Notes are shipped with the tap, so install does not
-require a live upstream GitHub request. Artifact installation, checksums, paired updates,
-rollback, service ownership, and telemetry controls remain owned by this tap.
-
-> [!NOTE]
-> Use the full tap path to make the distinction explicit:
-> ```bash
-> brew install --cask joshyorko/tools/t3-code-linux
-> ```
-
-```bash
-brew install --cask joshyorko/tools/t3-code-linux
-t3-code-linux
-```
-
-Build and smoke-test the desktop cask path:
-
-```bash
-bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=t3-code-linux
-bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3-code-linux
-```
-
-Both Homebrew launchers (`t3` and `t3-code-linux`, including the desktop menu entry)
-export `T3CODE_TELEMETRY_ENABLED=false` before starting the application. This disables
-T3 product analytics (including token counts) and relay tracing for their local server,
-even if the parent environment sets the variable to `true`. This is a runtime setting;
-setting it only in the build workflow would not opt installed applications out.
-Upgrade the CLI and Desktop together, verify their pinned source commit matches, and
-restart only the Homebrew service with the [paired lifecycle procedure](docs/t3-homebrew-lifecycle.md#update-from-the-t3-desktop).
-
-This policy belongs to the Homebrew launchers, not the unmodified release tarball or
-AppImage: running the embedded server/AppRun directly bypasses it. Remote servers must
-set the variable separately. It does not change AI providers' own telemetry or explicitly
-configured diagnostic exporters. See [the source audit](docs/t3-telemetry.md).
-
-Both build paths supply the audited public production T3 Connect identifiers from
-upstream's `.env.example` before compilation. Built-artifact acceptance is pending;
-see [the public configuration policy](docs/t3-connect.md).
-
-The CLI formula owns the Homebrew-managed Linux user service. On the packaged
-Linux Desktop, the update control uses a Homebrew helper to check and prepare the
-CLI formula and Desktop cask as a pair. It shows both package versions and their
-shared source commit, then asks for confirmation before the helper applies either
-upgrade. Check and prepare are separate; install requires explicit confirmation.
-The detached helper runs as the Desktop user, preserves Homebrew's cask rollback
-and the prior formula keg, and restarts the service only when it was active
-before the update. On relaunch, the Desktop shows the update result and
-reconnects; if package recovery cannot be verified, the service stays stopped
-for diagnosis. Managed update policies remain authoritative: `mode: off`
-disables this updater, and an administrator-managed `feedUrl` is not replaced.
-See [the T3 Homebrew lifecycle guide](docs/t3-homebrew-lifecycle.md) for the
-confirmation flow, migration, recovery behavior, and policy limits.
-
-### T3 Code CLI (Nightly Formula)
-
-T3 Code CLI packaged from the same verified upstream nightly as the Desktop for Linux/devcontainer use.
-The historical `t3code-cli-main` formula name remains unchanged.
-The formula downloads an immutable prebuilt tarball emitted by the tap's generic Dagger release bundle,
-including runtime dependencies, and runs it with Homebrew's `node@24`.
-
-> [!NOTE]
-> Use the full tap path to make it explicit that this tracks `main`, not upstream npm releases:
-> ```bash
-> brew install joshyorko/tools/t3code-cli-main
-> ```
-
-```bash
-brew install joshyorko/tools/t3code-cli-main
-t3 --help
-```
-
-The tap also includes a reusable Dagger smoke test for this packaging path:
-
-```bash
-bash scripts/dagger-devsy.sh -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
-```
-
-That smoke test is the real end-to-end path:
-- build upstream `t3code` CLI from source
-- package the tarball the formula consumes
-- install the formula through Linuxbrew in-container
-- run `brew test` and `t3 --help`
 
 ### Devsy CLI and Desktop
 
@@ -465,7 +329,6 @@ bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id
 
 The install-hook migration in issue [#101](https://github.com/joshyorko/homebrew-tools/issues/101)
 could write temporary sandbox paths into desktop entries for `chatgpt-linux`,
-`devpod-linux`, `devsy-desktop`, `t3-code-linux`, and `vscode-insiders-linux`.
 The corrected casks use icon theme names. Existing release assets can be reused;
 the defect was in the tap's installation steps, not the downloaded application.
 
@@ -476,7 +339,6 @@ then reinstall only the affected casks you have installed:
 brew reinstall --cask joshyorko/tools/chatgpt-linux
 brew reinstall --cask joshyorko/tools/devpod-linux
 brew reinstall --cask joshyorko/tools/devsy-desktop
-brew reinstall --cask joshyorko/tools/t3-code-linux
 brew reinstall --cask joshyorko/tools/vscode-insiders-linux
 ```
 
@@ -843,8 +705,6 @@ published-artifact checks, and the supported cache inspection workflow.
 
 ```bash
 npm test --prefix dagger/tap-pipeline
-bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call ci-check --package-id=t3code-cli-main
-bash scripts/dagger-devsy.sh -m ./dagger/tap-pipeline call -o /tmp/release-bundle release-bundle --package-id=t3code-cli-main
 node scripts/apply-release-bundle.mjs --bundle /tmp/release-bundle --repo .
 ```
 
