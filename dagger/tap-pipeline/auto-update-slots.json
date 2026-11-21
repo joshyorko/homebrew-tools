@@ -51,10 +51,9 @@
   },
   {
     "id": "fizzy-daily",
-    "description": "Daily refresh for Fizzy CLI upstream master and fizzy-popper self-hosted.",
+    "description": "Daily refresh for Fizzy CLI upstream master.",
     "packageIds": [
-      "fizzy-cli-master",
-      "fizzy-popper-self-hosted"
+      "fizzy-cli-master"
     ]
   },
   {

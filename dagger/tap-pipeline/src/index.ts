@@ -226,11 +226,6 @@ function tapStagingCommands(packageId: string): string[] {
         "mkdir -p \"$tap_dir/Formula\"",
         "cp /tap/Formula/fizzy-cli-master.rb \"$tap_dir/Formula/\"",
       ]
-    case "fizzy-popper-self-hosted":
-      return [
-        "mkdir -p \"$tap_dir/Formula\"",
-        "cp /tap/Formula/fizzy-popper-self-hosted.rb \"$tap_dir/Formula/\"",
-      ]
     case "codex-desktop-linux":
       return [
         "mkdir -p \"$tap_dir/Casks\"",
@@ -296,14 +291,6 @@ async function gitChangedFiles(source: Directory, gitDir: Directory, baseRef: st
 }
 
 type FizzyBuild = {
-  artifactPath: string
-  assetName: string
-  commit: string
-  container: Container
-  version: string
-}
-
-type FizzyPopperSelfHostedBuild = {
   artifactPath: string
   assetName: string
   commit: string
@@ -593,8 +580,6 @@ export class TapPipeline {
         return `devsy-desktop-${version.split(",", 1)[0]}`
       case "fizzy-cli-master":
         return `fizzy-cli-master-${version}`
-      case "fizzy-popper-self-hosted":
-        return `fizzy-popper-self-hosted-${version}`
       case "codex-desktop-linux":
         return `codex-desktop-linux-${version}`
       case "headroom-self-hosted":
@@ -952,29 +937,6 @@ export class TapPipeline {
     })
   }
 
-  private fizzyPopperSelfHostedReleaseMetadata(
-    build: FizzyPopperSelfHostedBuild,
-    sha256: string,
-  ): Record<string, unknown> {
-    return releaseMetadataForPackage("fizzy-popper-self-hosted", {
-      version: build.version,
-      releaseTag: `fizzy-popper-self-hosted-${build.version}`,
-      assetName: build.assetName,
-      artifactSha256: sha256,
-      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/fizzy-popper-self-hosted-${build.version}/${build.assetName}`,
-      releaseTitle: `fizzy-popper self-hosted ${build.version}`,
-      releaseNotes: `CLI snapshot from joshyorko/fizzy-popper@${build.commit} (self-hosted)`,
-      commitMessage: `Update fizzy-popper-self-hosted formula to ${build.version}`,
-      upstream: {
-        kind: "git",
-        repo: "https://github.com/joshyorko/fizzy-popper",
-        ref: "self-hosted",
-        version: build.version,
-        commit: build.commit,
-      },
-    })
-  }
-
   private codexDesktopOfficialReleaseMetadata(
     build: CodexDesktopLinuxOfficialBuild,
   ): Record<string, unknown> {
@@ -1206,74 +1168,6 @@ end
         "/upstream",
         "--binary",
         "/tmp/fizzy",
-        "--version",
-        resolvedVersion,
-        "--output",
-        artifactPath,
-      ])
-
-    return {
-      artifactPath,
-      assetName,
-      commit,
-      container,
-      version: resolvedVersion,
-    }
-  }
-
-  private async buildFizzyPopperSelfHostedArtifact(
-    tap: Directory,
-    ref: string,
-    version?: string,
-  ): Promise<FizzyPopperSelfHostedBuild> {
-    const entry = this.packageEntry("fizzy-popper-self-hosted")
-
-    if (entry.upstream.kind !== "git" || entry.autoUpdate.kind !== "git_head_sha") {
-      throw new Error("Expected fizzy-popper-self-hosted to use a git-head auto-update strategy")
-    }
-
-    const resolvedGitHead = version && version.length > 0
-      ? undefined
-      : await this.resolveGitHeadVersion(entry.upstream.repo, ref, entry.autoUpdate)
-    const upstreamRef = dag.git(entry.upstream.repo).ref(resolvedGitHead?.commit ?? ref)
-    const commit = await upstreamRef.commit()
-    const resolvedVersion = version && version.length > 0 ? version : resolvedGitHead?.version
-
-    if (!resolvedVersion) {
-      throw new Error("Failed to resolve fizzy-popper-self-hosted version")
-    }
-
-    const assetName = `fizzy-popper-self-hosted-${resolvedVersion}.tar.gz`
-    const artifactPath = `/tmp/${assetName}`
-
-    const container = dag
-      .container()
-      .from(NODE_IMAGE)
-      .withMountedCache(
-        "/root/.npm",
-        dag.cacheVolume("tap-pipeline-fizzy-popper-npm-cache"),
-        { sharing: CacheSharingMode.Locked },
-      )
-      .withExec([
-        "bash",
-        "-lc",
-        "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates tar && rm -rf /var/lib/apt/lists/*",
-      ])
-      .withDirectory("/tap", tap)
-      .withDirectory("/upstream", upstreamRef.tree({ discardGitDir: true }))
-      .withWorkdir("/upstream")
-      .withExec(["npm", "ci"])
-      .withExec(["npm", "test"])
-      .withExec(["npm", "run", "typecheck"])
-      .withExec(["npm", "run", "build"])
-      .withExec(["npm", "pack", "--pack-destination", "/tmp"])
-      .withExec([
-        "node",
-        "/tap/scripts/package-fizzy-popper-self-hosted.mjs",
-        "--upstream-dir",
-        "/upstream",
-        "--npm-pack-dir",
-        "/tmp",
         "--version",
         resolvedVersion,
         "--output",
@@ -3022,44 +2916,6 @@ end
           ])
           .stdout()
       }
-      case "fizzy-popper-self-hosted": {
-        const build = await this.buildFizzyPopperSelfHostedArtifact(tap, "self-hosted")
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const formulaContents = await tap.file("Formula/fizzy-popper-self-hosted.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "file:///artifacts/${build.assetName}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-        const smokeTap = tap.withFile(
-          "Formula/fizzy-popper-self-hosted.rb",
-          dag.file("fizzy-popper-self-hosted.rb", updatedFormula),
-        )
-
-        return dag
-          .container()
-          .from(BREW_IMAGE)
-          .withEnvVariable("HOMEBREW_NO_AUTO_UPDATE", "1")
-          .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
-          .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
-          .withDirectory("/tap", smokeTap)
-          .withFile(`/artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withExec([
-            "bash",
-            "-lc",
-            [
-              "set -euo pipefail",
-              "repo=$(brew --repository)",
-              "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
-              ...tapStagingCommands("fizzy-popper-self-hosted"),
-              "brew install test/tap/fizzy-popper-self-hosted",
-              "brew test test/tap/fizzy-popper-self-hosted",
-              "fizzy-popper --help",
-            ].join("\n"),
-          ])
-          .stdout()
-      }
       case "headroom-self-hosted": {
         const build = await this.buildHeadroomArtifact()
         const formula = this.renderHeadroomFormula(
@@ -3346,13 +3202,6 @@ end
         ).trim().split(/\s+/)[0]
         return json(this.fizzyReleaseMetadata(build, sha256))
       }
-      case "fizzy-popper-self-hosted": {
-        const build = await this.buildFizzyPopperSelfHostedArtifact(tap, "self-hosted")
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        return json(this.fizzyPopperSelfHostedReleaseMetadata(build, sha256))
-      }
       case "headroom-self-hosted": {
         const build = await this.buildHeadroomArtifact()
         return json(this.headroomReleaseMetadata(build))
@@ -3533,27 +3382,6 @@ end
         return dag.directory()
           .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
           .withFile("homebrew/fizzy-cli-master.rb", dag.file("fizzy-cli-master.rb", updatedFormula))
-          .withFile("release.json", dag.file("release.json", json(release)))
-          .withFile("ci.log", dag.file("ci.log", ciLog))
-      }
-      case "fizzy-popper-self-hosted": {
-        const build = await this.buildFizzyPopperSelfHostedArtifact(tap, "self-hosted")
-        const sha256 = (
-          await build.container.withExec(["sha256sum", build.artifactPath]).stdout()
-        ).trim().split(/\s+/)[0]
-        const release = this.fizzyPopperSelfHostedReleaseMetadata(build, sha256)
-        const formulaContents = await tap.file("Formula/fizzy-popper-self-hosted.rb").contents()
-        const updatedFormula = formulaContents
-          .replace(/url ".*"/, `url "${String(release.download_url)}"`)
-          .replace(/version ".*"/, `version "${build.version}"`)
-          .replace(/sha256 ".*"/, `sha256 "${sha256}"`)
-
-        return dag.directory()
-          .withFile(`artifacts/${build.assetName}`, build.container.file(build.artifactPath))
-          .withFile(
-            "homebrew/fizzy-popper-self-hosted.rb",
-            dag.file("fizzy-popper-self-hosted.rb", updatedFormula),
-          )
           .withFile("release.json", dag.file("release.json", json(release)))
           .withFile("ci.log", dag.file("ci.log", ciLog))
       }

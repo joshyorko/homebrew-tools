@@ -98,7 +98,6 @@ test("package registry covers every planned adapter kind", () => {
       "rpm_repack_cask",
       "source_archive_repack_cask",
       "source_build_go_formula",
-      "source_build_node_formula",
       "source_build_rust_formula",
     ],
   )
@@ -176,7 +175,6 @@ test("auto-update slots cover the expected package set", () => {
       "devsy",
       "devsy-desktop",
       "fizzy-cli-master",
-      "fizzy-popper-self-hosted",
       "headroom-self-hosted",
       "rcc",
       "review",
@@ -254,17 +252,6 @@ test("timestamped git-head versions sort by commit time before sha", () => {
   assert.equal(older, "selfhosted.20260425200000.f641c5c86889")
   assert.equal(newer, "selfhosted.20260426200000.d08b71dff98d")
   assert.equal(newer > older, true)
-})
-
-test("fizzy-popper self-hosted opts into timestamped git-head versions", () => {
-  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "fizzy-popper-self-hosted")
-
-  assert.ok(entry)
-  assert.equal(entry.autoUpdate.kind, "git_head_sha")
-
-  if (entry.autoUpdate.kind === "git_head_sha") {
-    assert.equal(entry.autoUpdate.includeCommitDate, true)
-  }
 })
 
 test("Antigravity is not a supported or buildable tap package", () => {
@@ -519,12 +506,6 @@ test("Headroom self-hosted has a daily and explicitly dispatchable update slot",
   assert.match(workflow, /- cron: "31 10 \* \* \*"/)
   assert.match(workflow, /- headroom-daily/)
   assert.match(workflow, /"31 10 \* \* \*"\) slot_id="headroom-daily"/)
-})
-
-test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () => {
-  const formula = readFileSync(new URL("../../../Formula/fizzy-popper-self-hosted.rb", import.meta.url), "utf8")
-
-  assert.match(formula, /^\s*version_scheme 1$/m)
 })
 
 test("eitype accepts upstream release tags without a v prefix", () => {

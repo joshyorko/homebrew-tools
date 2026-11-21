@@ -1,5 +1,4 @@
 export type PackageKind =
-  | "source_build_node_formula"
   | "rpm_repack_cask"
   | "source_archive_repack_cask"
   | "source_build_rust_formula"

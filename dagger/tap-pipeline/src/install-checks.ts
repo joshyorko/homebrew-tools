@@ -109,10 +109,6 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "brew test test/tap/fizzy-cli-master",
     "fizzy --version",
   ]),
-  "fizzy-popper-self-hosted": formula("Formula/fizzy-popper-self-hosted.rb", "fizzy-popper-self-hosted", [
-    "brew test test/tap/fizzy-popper-self-hosted",
-    "fizzy-popper --help",
-  ]),
   "vscode-insiders-linux": cask("Casks/vscode-insiders-linux.rb", "vscode-insiders-linux", [
     "mkdir -p \"$HOME/.local/share/applications\" \"$HOME/.local/share/icons/hicolor/512x512/apps\"",
     "printf '[Desktop Entry]\\nName=Legacy VS Code Insiders\\n' > \"$HOME/.local/share/applications/vscode-insiders-linux.desktop\"",
