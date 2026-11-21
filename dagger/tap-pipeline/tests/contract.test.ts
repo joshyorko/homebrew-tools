@@ -11,7 +11,6 @@ import {
   formatGitHeadVersion,
   releaseMetadataForPackage,
 } from "../src/library.ts"
-import { applyPnpmPackagePatch } from "../../../scripts/lib/apply-pnpm-package-patch.mjs"
 
 const REQUIRED_RELEASE_FIELDS = [
   "package",
@@ -32,7 +31,6 @@ const DEPRECATED_HOOK_CASKS = {
   "Casks/chatgpt-linux.rb": ["preflight_steps"],
   "Casks/devpod-linux.rb": ["preflight_steps", "postflight_steps"],
   "Casks/devsy-desktop.rb": ["preflight_steps", "postflight_steps"],
-  "Casks/t3-code-linux.rb": ["preflight_steps"],
   "Casks/vscode-insiders-linux.rb": ["preflight_steps", "postflight_steps"],
 } as const
 
@@ -59,14 +57,11 @@ test("affected Josh-owned casks use structured flight steps", () => {
 
 test("issue 101 preserves exact AppImage selection and legacy side effects", () => {
   const devsy = readFileSync(new URL("../../../Casks/devsy-desktop.rb", import.meta.url), "utf8")
-  const t3 = readFileSync(new URL("../../../Casks/t3-code-linux.rb", import.meta.url), "utf8")
   const devpod = readFileSync(new URL("../../../Casks/devpod-linux.rb", import.meta.url), "utf8")
   const vscode = readFileSync(new URL("../../../Casks/vscode-insiders-linux.rb", import.meta.url), "utf8")
 
   assert.match(devsy, /Devsy_linux_\{\{arch\}\}\.AppImage/)
   assert.doesNotMatch(devsy, /for candidate in Devsy_linux_\*\.AppImage/)
-  assert.match(t3, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
-  assert.doesNotMatch(t3, /for candidate in T3-Code-\*\.AppImage/)
   for (const source of [devpod, devsy, vscode]) {
     assert.doesNotMatch(source, /^\s*mkdir_p "\.config", base: :home$/m)
   }
@@ -103,7 +98,6 @@ test("package registry covers every planned adapter kind", () => {
       "rpm_repack_cask",
       "source_archive_repack_cask",
       "source_build_go_formula",
-      "source_build_node_appimage_cask",
       "source_build_node_formula",
       "source_build_rust_formula",
     ],
@@ -186,8 +180,6 @@ test("auto-update slots cover the expected package set", () => {
       "headroom-self-hosted",
       "rcc",
       "review",
-      "t3-code-linux",
-      "t3code-cli-main",
       "vscode-insiders-linux",
     ],
   )
@@ -273,45 +265,6 @@ test("fizzy-popper self-hosted opts into timestamped git-head versions", () => {
   if (entry.autoUpdate.kind === "git_head_sha") {
     assert.equal(entry.autoUpdate.includeCommitDate, true)
   }
-})
-
-test("T3 CLI and Desktop resolve official nightly identities rather than main snapshots", () => {
-  for (const id of ["t3code-cli-main", "t3-code-linux"]) {
-    const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === id)
-    assert.ok(entry)
-    assert.equal(entry.autoUpdate.kind, "t3_nightly")
-    assert.equal(entry.upstream.kind, "git")
-    if (entry.upstream.kind === "git") assert.equal(entry.upstream.ref, "refs/tags/v*-nightly.*")
-  }
-})
-
-test("t3-code-linux builds the patched desktop AppImage from an official nightly", () => {
-  const entry = PACKAGE_REGISTRY.find((candidate) => candidate.id === "t3-code-linux")
-  assert.ok(entry)
-  assert.equal(entry.kind, "source_build_node_appimage_cask")
-  assert.equal(entry.homebrewPath, "Casks/t3-code-linux.rb")
-  assert.equal(entry.autoUpdate.kind, "t3_nightly")
-  assert.equal(entry.upstream.kind, "git")
-
-  const source = readFileSync(new URL("../../../dagger/tap-pipeline/src/index.ts", import.meta.url), "utf8")
-  const cask = readFileSync(new URL("../../../Casks/t3-code-linux.rb", import.meta.url), "utf8")
-  const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8")
-
-  assert.match(source, /pnpm",\s*"dist:desktop:linux"/)
-  assert.match(source, /T3-Code-\$\{resolvedVersion\}-x86_64\.AppImage/)
-  assert.doesNotMatch(source, /repos\/pingdotgg\/t3code\/releases\/latest/)
-  assert.match(source, /case "t3-code-linux":\n\s+return `t3-code-linux-\$\{version\.split\(",", 1\)\[0\]\}`/)
-  assert.match(source, /test -x .*squashfs-root\/AppRun/)
-  assert.match(source, /grep -Fq .*squashfs-root\/AppRun/)
-  assert.match(source, /! grep -Eq .*AppImage/)
-
-  assert.match(cask, /^\s*version "\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.homebrew\.[1-9]\d*\.[0-9a-f]{12}"$/m)
-  assert.match(cask, /T3-Code-\{\{version\}\}-\{\{arch\}\}\.AppImage/)
-  assert.match(cask, /app_run="squashfs-root\/AppRun"/)
-  assert.match(cask, /echo "T3 Code AppRun is not executable"/)
-  assert.match(cask, /exec "\{\{staged_path\}\}\/squashfs-root\/AppRun" --no-sandbox "\$@"/)
-  assert.doesNotMatch(cask, /exec .*AppImage.*--no-sandbox/)
-  assert.match(readme, /T3 Code[\s\S]*launches its extracted `AppRun`[\s\S]*does not require FUSE at runtime/)
 })
 
 test("Antigravity is not a supported or buildable tap package", () => {
@@ -568,63 +521,6 @@ test("Headroom self-hosted has a daily and explicitly dispatchable update slot",
   assert.match(workflow, /"31 10 \* \* \*"\) slot_id="headroom-daily"/)
 })
 
-test("t3code CLI builders do not rewrite the upstream runtime package version", () => {
-  const builders = [
-    "../../../dagger/tap-pipeline/src/index.ts",
-    "../../../dagger/t3code-cli-main-smoke/src/index.ts",
-  ]
-
-  for (const builder of builders) {
-    const contents = readFileSync(new URL(builder, import.meta.url), "utf8")
-
-    assert.doesNotMatch(contents, /pkg\.version\s*=\s*process\.argv\[1\]/)
-  }
-})
-
-test("T3 runtime packaging applies upstream pnpm patches to npm-installed dependencies", () => {
-  const packager = readFileSync(new URL("../../../scripts/package-t3code-cli-main.mjs", import.meta.url), "utf8")
-  const fixture = mkdtempSync(join(tmpdir(), "t3-pnpm-patch-test-"))
-  const upstreamDir = join(fixture, "upstream")
-  const packageDir = join(fixture, "node_modules", "@ff-labs", "fff-node")
-  const patchPath = join(upstreamDir, "patches", "fff-node.patch")
-
-  try {
-    assert.match(packager, /applyPnpmPackagePatch\(/)
-    mkdirSync(join(upstreamDir, "patches"), { recursive: true })
-    mkdirSync(packageDir, { recursive: true })
-    writeFileSync(
-      join(upstreamDir, "pnpm-workspace.yaml"),
-      'patchedDependencies:\n  "@ff-labs/fff-node@0.9.4": patches/fff-node.patch\n',
-    )
-    writeFileSync(join(packageDir, "package.json"), '{"exports":{".":{"import":"./index.js"}}}\n')
-    writeFileSync(
-      patchPath,
-      [
-        "diff --git a/package.json b/package.json",
-        "--- a/package.json",
-        "+++ b/package.json",
-        "@@ -1 +1 @@",
-        '-{"exports":{".":{"import":"./index.js"}}}',
-        '+{"exports":{".":{"import":"./index.js","require":"./index.js"}}}',
-        "",
-      ].join("\n"),
-    )
-
-    applyPnpmPackagePatch(upstreamDir, join(fixture, "node_modules"), "@ff-labs/fff-node", "0.9.4")
-
-    const installedPackage = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"))
-    assert.equal(installedPackage.exports["."].require, "./index.js")
-  } finally {
-    rmSync(fixture, { recursive: true, force: true })
-  }
-})
-
-test("t3code CLI main formula bumps the Homebrew version scheme", () => {
-  const formula = readFileSync(new URL("../../../Formula/t3code-cli-main.rb", import.meta.url), "utf8")
-
-  assert.match(formula, /^\s*version_scheme 1$/m)
-})
-
 test("fizzy-popper self-hosted formula bumps the Homebrew version scheme", () => {
   const formula = readFileSync(new URL("../../../Formula/fizzy-popper-self-hosted.rb", import.meta.url), "utf8")
 
@@ -639,33 +535,5 @@ test("eitype accepts upstream release tags without a v prefix", () => {
 
   if (entry.autoUpdate.kind === "github_release_latest_tag") {
     assert.equal(entry.autoUpdate.stripPrefix, undefined)
-  }
-})
-
-test("T3 CLI formula orders sha256 and license before version_scheme for Homebrew audit", () => {
-  const formula = readFileSync(new URL("../../../Formula/t3code-cli-main.rb", import.meta.url), "utf8")
-  assert.match(formula, /^  sha256 "[0-9a-f]{64}"$/m)
-  assert.match(formula, /^  license "MIT"$/m)
-  assert.ok(formula.indexOf('  license "MIT"') < formula.indexOf("  version_scheme "))
-  assert.match(formula, /^  version_scheme 1$/m)
-  assert.ok(formula.indexOf("  sha256 ") < formula.indexOf("  version_scheme "))
-})
-
-test("T3 CLI smoke and release renderers preserve Homebrew stanza order", () => {
-  const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
-  const renderers = [...source.matchAll(/const updatedFormula = formulaContents\n([\s\S]*?)(?=\n\s*(?:const|return))/g)]
-    .filter(([body]) => body.includes("version_scheme 1"))
-  assert.equal(renderers.length, 2, "cover both smoke and release rendering paths")
-  const formula = 'class Example < Formula\n  url "old"\n  version "old"\n  version_scheme 1\n  sha256 "old"\n  license "MIT"\nend\n'
-  for (const [body] of renderers) {
-    const render = new Function("formulaContents", "build", "sha256", "release", `${body}; return updatedFormula`)
-    const output = render(formula, {version: "nightly.test", assetName: "test.tar.gz"}, "abc123", {download_url: "https://example.com/test.tar.gz"})
-    assert.match(output, /^  sha256 "abc123"$/m)
-    assert.match(output, /^  license "MIT"$/m)
-    assert.ok(output.indexOf('  license "MIT"') < output.indexOf("  version_scheme 1"), output)
-    assert.match(output, /^  version_scheme 1$/m)
-    assert.ok(output.indexOf('  sha256 "abc123"') < output.indexOf("  version_scheme 1"), output)
-    assert.equal(output.match(/version_scheme/g)?.length, 1)
-    assert.match(output, /version "nightly.test"/)
   }
 })

@@ -2,66 +2,80 @@
   {
     "id": "review-hourly",
     "description": "Hourly stable Review native appliance mirror and Homebrew acceptance.",
-    "packageIds": ["review"]
+    "packageIds": [
+      "review"
+    ]
   },
   {
     "id": "rcc-daily",
     "description": "Daily RCC refresh.",
-    "packageIds": ["rcc"]
+    "packageIds": [
+      "rcc"
+    ]
   },
   {
     "id": "action-server-daily",
     "description": "Daily Action Server refresh.",
-    "packageIds": ["action-server"]
+    "packageIds": [
+      "action-server"
+    ]
   },
   {
     "id": "desktop-6h",
     "description": "Six-hour desktop package refresh for VS Code Insiders.",
-    "packageIds": ["vscode-insiders-linux"]
+    "packageIds": [
+      "vscode-insiders-linux"
+    ]
   },
   {
     "id": "devpod-6h",
     "description": "Six-hour DevPod Linux desktop refresh.",
-    "packageIds": ["devpod-linux"]
+    "packageIds": [
+      "devpod-linux"
+    ]
   },
   {
     "id": "vscode-insiders-2h",
     "description": "Two-hour VS Code Insiders refresh between the larger desktop slots.",
-    "packageIds": ["vscode-insiders-linux"]
-  },
-  {
-    "id": "t3-daily",
-    "description": "Discover official upstream T3 nightlies for the paired CLI and Linux desktop; unchanged identities do not rebuild.",
-    "packageIds": ["t3code-cli-main", "t3-code-linux"]
-  },
-  {
-    "id": "t3-code-6h",
-    "description": "Poll for a new official T3 nightly between the other checks; build the paired CLI and desktop only when its identity changes.",
-    "packageIds": ["t3code-cli-main", "t3-code-linux"]
+    "packageIds": [
+      "vscode-insiders-linux"
+    ]
   },
   {
     "id": "devsy-daily",
     "description": "Daily stable Devsy CLI and Linux desktop refresh.",
-    "packageIds": ["devsy", "devsy-desktop"]
+    "packageIds": [
+      "devsy",
+      "devsy-desktop"
+    ]
   },
   {
     "id": "fizzy-daily",
     "description": "Daily refresh for Fizzy CLI upstream master and fizzy-popper self-hosted.",
-    "packageIds": ["fizzy-cli-master", "fizzy-popper-self-hosted"]
+    "packageIds": [
+      "fizzy-cli-master",
+      "fizzy-popper-self-hosted"
+    ]
   },
   {
     "id": "chatgpt-daily",
     "description": "Daily ChatGPT Linux cask packaging smoke test.",
-    "packageIds": ["chatgpt"]
+    "packageIds": [
+      "chatgpt"
+    ]
   },
   {
     "id": "headroom-daily",
     "description": "Daily Headroom self-hosted source build and offline Homebrew acceptance.",
-    "packageIds": ["headroom-self-hosted"]
+    "packageIds": [
+      "headroom-self-hosted"
+    ]
   },
   {
     "id": "codex-memoryd-daily",
     "description": "Daily merged-master refresh through the native four-platform Homebrew workflow.",
-    "packageIds": ["codex-memoryd"]
+    "packageIds": [
+      "codex-memoryd"
+    ]
   }
 ]

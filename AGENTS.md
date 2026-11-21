@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is a Homebrew tap. Put casks in `Casks/*.rb` and formulae in `Formula/*.rb`. Packaging helpers live in `scripts/*.mjs`. End-to-end smoke tests live in `dagger/vscode-insiders-linux-smoke` and `dagger/t3code-cli-main-smoke`, each with its own `src/index.ts`, `package.json`, and Dagger module metadata. CI automation is defined in `.github/workflows/*.yml`. Start with [README.md](/var/home/kdlocpanda/second_brain/Areas/devcontainers/homebrew-tools/README.md) for package intent and install examples.
+This repository is a Homebrew tap. Put casks in `Casks/*.rb` and formulae in `Formula/*.rb`. Packaging helpers live in `scripts/*.mjs`. End-to-end smoke tests live in `dagger/vscode-insiders-linux-smoke`, with its own `src/index.ts`, `package.json`, and Dagger module metadata. CI automation is defined in `.github/workflows/*.yml`. Start with [README.md](/var/home/kdlocpanda/second_brain/Areas/devcontainers/homebrew-tools/README.md) for package intent and install examples.
 
 ## Build, Test, and Development Commands
 Use Homebrew locally for fast validation:
@@ -9,9 +9,7 @@ Use Homebrew locally for fast validation:
 ```bash
 brew install --cask ./Casks/rcc.rb
 brew install --cask ./Casks/vscode-insiders-linux.rb
-brew install ./Formula/t3code-cli-main.rb
 brew audit --cask ./Casks/vscode-insiders-linux.rb
-brew test ./Formula/t3code-cli-main.rb
 ```
 
 Use the Dagger smoke tests for real packaging verification:
@@ -43,7 +41,6 @@ through this remote launcher. CI keeps its own runner configuration.
 
 ```bash
 bash scripts/dagger-devsy.sh -m ./dagger/vscode-insiders-linux-smoke call smoke-test --tap=.
-bash scripts/dagger-devsy.sh -m ./dagger/t3code-cli-main-smoke call smoke-test --tap=.
 ```
 
 Use the relevant Dagger module to run Node packaging scripts remotely.
@@ -51,7 +48,6 @@ Direct artifact iteration requires a Node-equipped remote container:
 
 ```bash
 node scripts/package-vscode-insiders-linux.mjs --source-archive /tmp/source.tar.gz --source-sha256 <verified-sha256> --output /tmp/pkg.tar.gz
-node scripts/package-t3code-cli-main.mjs --upstream-dir /tmp/t3code --version main.test --output /tmp/pkg.tar.gz
 ```
 
 ## Coding Style & Naming Conventions

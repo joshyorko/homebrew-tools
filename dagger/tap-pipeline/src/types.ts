@@ -4,7 +4,6 @@ export type PackageKind =
   | "source_archive_repack_cask"
   | "source_build_rust_formula"
   | "source_build_go_formula"
-  | "source_build_node_appimage_cask"
   | "source_build_rust_appimage_cask"
   | "http_binary_formula"
   | "http_deb_cask"
@@ -21,8 +20,6 @@ export type AutoUpdateSlotId =
   | "desktop-6h"
   | "devpod-6h"
   | "vscode-insiders-2h"
-  | "t3-daily"
-  | "t3-code-6h"
   | "devsy-daily"
   | "fizzy-daily"
   | "chatgpt-daily"
@@ -52,9 +49,6 @@ export type UpstreamSource =
     }
 
 export type AutoUpdateStrategy =
-  | {
-      kind: "t3_nightly"
-    }
   | {
       kind: "github_release_latest_tag"
       stripPrefix?: string
