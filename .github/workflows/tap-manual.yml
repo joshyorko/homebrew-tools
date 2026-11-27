@@ -78,6 +78,7 @@ jobs:
       if: inputs.action == 'release' || inputs.action == 'force-release'
       env:
         PACKAGE_ID: ${{ inputs.package_id }}
+        RELEASE_ACTION: ${{ inputs.action }}
       run: |
         set -euo pipefail
         bundle_dir="$(node scripts/resolve-release-bundle.mjs --root "$RUNNER_TEMP/bundle")"
@@ -88,29 +89,34 @@ jobs:
         commit_message="$(jq -r '.commit_message' "$release_json")"
         notes_file="$RUNNER_TEMP/release-notes.txt"
         jq -r '.release_notes' "$release_json" > "$notes_file"
-        release_exists=false
+        if [ "$PACKAGE_ID" = rcc ]; then
+          bash scripts/publish-rcc-release.sh "$bundle_dir" "$release_tag" "$release_title" "$notes_file"
+        else
+          release_exists=false
 
-        if gh release view "$release_tag" >/dev/null 2>&1; then
-          release_exists=true
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            release_exists=true
+          fi
+
+          if [ "$RELEASE_ACTION" = release ] && [ "$release_exists" = true ]; then
+            echo "Release $release_tag already exists. Use force-release to overwrite assets and reapply bundle output."
+            exit 0
+          fi
+
+          if [ "$release_exists" = false ]; then
+            gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+          fi
+
+          shopt -s nullglob
+          artifacts=("$bundle_dir/artifacts/"*)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No release artifacts were exported by dagger/tap-pipeline." >&2
+            exit 1
+          fi
+
+          gh release upload "$release_tag" "${artifacts[@]}" --clobber
         fi
 
-        if [ "${{ inputs.action }}" = release ] && [ "$release_exists" = true ]; then
-          echo "Release $release_tag already exists. Use force-release to overwrite assets and reapply bundle output."
-          exit 0
-        fi
-
-        if [ "$release_exists" = false ]; then
-          gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
-        fi
-
-        shopt -s nullglob
-        artifacts=("$bundle_dir/artifacts/"*)
-        if [ "${#artifacts[@]}" -eq 0 ]; then
-          echo "No release artifacts were exported by dagger/tap-pipeline." >&2
-          exit 1
-        fi
-
-        gh release upload "$release_tag" "${artifacts[@]}" --clobber
         node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE"
         node scripts/prune-package-releases.mjs \
           --repo "$GITHUB_REPOSITORY" \

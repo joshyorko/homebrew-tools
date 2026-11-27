@@ -33,6 +33,7 @@ import {
   resolveStableDevsyRelease,
   verifyDevsyGithubDigest,
 } from "./devsy-render.js"
+import { resolveRccRelease } from "./rcc-release.js"
 import { resolveReviewRelease, verifyReviewArtifact } from "./review-release.js"
 import { renderGithubApiFetchScript } from "./github-api.js"
 import { renderAssetDownloadScript } from "./asset-download.js"
@@ -356,7 +357,8 @@ type ChatgptBuild = {
 type RccBuild = {
   version: string
   container: Container
-  linux: DownloadedAsset
+  linuxIntel: DownloadedAsset
+  linuxArm: DownloadedAsset
   macosArm: DownloadedAsset
   macosIntel: DownloadedAsset
 }
@@ -790,11 +792,16 @@ export class TapPipeline {
     return releaseMetadataForPackage("rcc", {
       version: build.version,
       releaseTag: `rcc-${build.version}`,
-      assetName: build.linux.assetName,
-      artifactSha256: build.linux.sha256,
-      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/rcc-${build.version}/${build.linux.assetName}`,
+      assetName: build.linuxIntel.assetName,
+      artifactSha256: build.linuxIntel.sha256,
+      downloadUrl: `https://github.com/${TAP_REPOSITORY}/releases/download/rcc-${build.version}/${build.linuxIntel.assetName}`,
       releaseTitle: `RCC ${build.version}`,
-      releaseNotes: `Release bundle mirrored from joshyorko/rcc v${build.version}`,
+      releaseNotes: [
+        `Mirrored from https://github.com/joshyorko/rcc/releases/tag/v${build.version}`,
+        "",
+        ...[build.linuxIntel, build.linuxArm, build.macosIntel, build.macosArm]
+          .map((asset) => `- [${asset.assetName}](${asset.sourceUrl}) — SHA256: \`${asset.sha256}\``),
+      ].join("\n"),
       commitMessage: `Update rcc cask to v${build.version}`,
       upstream: {
         kind: "github_release",
@@ -1981,52 +1988,29 @@ end
   }
 
   private async buildRccArtifacts(): Promise<RccBuild> {
-    const release = await this.fetchJson("https://api.github.com/repos/joshyorko/rcc/releases/latest") as {
-      tag_name: string
-      assets: Array<{ name: string; browser_download_url: string }>
-    }
-    const version = release.tag_name.replace(/^v/, "")
-
-    const resolveAsset = (name: string): { name: string; browser_download_url: string } => {
-      const asset = release.assets.find((candidate) => candidate.name === name)
-
-      if (!asset) {
-        throw new Error(`Missing RCC release asset: ${name}`)
-      }
-
-      return asset
-    }
-
-    const linuxAsset = resolveAsset("rcc-linux64")
-    const macosArmAsset = resolveAsset("rcc-macosarm64")
-    const macosIntelAsset = resolveAsset("rcc-macos64")
+    const { version, linuxIntel, linuxArm, macosIntel, macosArm } = resolveRccRelease(
+      await this.fetchJson("https://api.github.com/repos/joshyorko/rcc/releases/latest"),
+    )
 
     let container = this.githubApiContainer()
-    container = this.downloadAsset(container, linuxAsset.browser_download_url, "/tmp/rcc-linux64")
-    container = this.downloadAsset(container, macosArmAsset.browser_download_url, "/tmp/rcc-macosarm64")
-    container = this.downloadAsset(container, macosIntelAsset.browser_download_url, "/tmp/rcc-macos64")
+    for (const asset of [linuxIntel, linuxArm, macosIntel, macosArm]) {
+      container = this.downloadAsset(container, asset.url, `/tmp/${asset.name}`)
+    }
+
+    const verify = async (asset: typeof linuxIntel): Promise<DownloadedAsset> => {
+      const artifactPath = `/tmp/${asset.name}`
+      const sha256 = await this.sha256For(container, artifactPath)
+      if (sha256 !== asset.sha256) throw new Error(`RCC checksum mismatch for ${asset.name}`)
+      return { assetName: asset.name, artifactPath, sha256, sourceUrl: asset.url }
+    }
 
     return {
       version,
       container,
-      linux: {
-        assetName: linuxAsset.name,
-        artifactPath: "/tmp/rcc-linux64",
-        sha256: await this.sha256For(container, "/tmp/rcc-linux64"),
-        sourceUrl: linuxAsset.browser_download_url,
-      },
-      macosArm: {
-        assetName: macosArmAsset.name,
-        artifactPath: "/tmp/rcc-macosarm64",
-        sha256: await this.sha256For(container, "/tmp/rcc-macosarm64"),
-        sourceUrl: macosArmAsset.browser_download_url,
-      },
-      macosIntel: {
-        assetName: macosIntelAsset.name,
-        artifactPath: "/tmp/rcc-macos64",
-        sha256: await this.sha256For(container, "/tmp/rcc-macos64"),
-        sourceUrl: macosIntelAsset.browser_download_url,
-      },
+      linuxIntel: await verify(linuxIntel),
+      linuxArm: await verify(linuxArm),
+      macosIntel: await verify(macosIntel),
+      macosArm: await verify(macosArm),
     }
   }
 
@@ -2299,7 +2283,8 @@ end
 
   private renderRccCask(build: RccBuild, releaseTag: string): string {
     return this.renderRccCaskWithUrls(build, {
-      linux: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linux.assetName}`,
+      linuxIntel: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linuxIntel.assetName}`,
+      linuxArm: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.linuxArm.assetName}`,
       macosArm: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosArm.assetName}`,
       macosIntel: `https://github.com/${TAP_REPOSITORY}/releases/download/${releaseTag}/${build.macosIntel.assetName}`,
     })
@@ -2307,7 +2292,7 @@ end
 
   private renderRccCaskWithUrls(
     build: RccBuild,
-    urls: { linux: string; macosArm: string; macosIntel: string },
+    urls: { linuxIntel: string; linuxArm: string; macosArm: string; macosIntel: string },
   ): string {
     return [
       "cask \"rcc\" do",
@@ -2332,9 +2317,17 @@ end
       "  end",
       "",
       "  on_linux do",
-      `    sha256 \"${build.linux.sha256}\"`,
-      `    url \"${urls.linux}\"`,
-      `    binary \"${build.linux.assetName}\", target: \"rcc\"`,
+      "    on_arm do",
+      `      sha256 \"${build.linuxArm.sha256}\"`,
+      `      url \"${urls.linuxArm}\"`,
+      `      binary \"${build.linuxArm.assetName}\", target: \"rcc\"`,
+      "    end",
+      "",
+      "    on_intel do",
+      `      sha256 \"${build.linuxIntel.sha256}\"`,
+      `      url \"${urls.linuxIntel}\"`,
+      `      binary \"${build.linuxIntel.assetName}\", target: \"rcc\"`,
+      "    end",
       "  end",
       "",
       "  name \"RCC\"",
@@ -2579,7 +2572,8 @@ end
           dag.file(
             "rcc.rb",
             this.renderRccCaskWithUrls(build, {
-              linux: `file:///artifacts/${build.linux.assetName}`,
+              linuxIntel: `file:///artifacts/${build.linuxIntel.assetName}`,
+              linuxArm: `file:///artifacts/${build.linuxArm.assetName}`,
               macosArm: `file:///artifacts/${build.macosArm.assetName}`,
               macosIntel: `file:///artifacts/${build.macosIntel.assetName}`,
             }),
@@ -2593,9 +2587,7 @@ end
           .withEnvVariable("HOMEBREW_NO_ENV_HINTS", "1")
           .withEnvVariable("HOMEBREW_NO_INSTALL_FROM_API", "1")
           .withDirectory("/tap", smokeTap)
-          .withFile(`/artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
-          .withFile(`/artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
-          .withFile(`/artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
+          .withFile(`/artifacts/${build.linuxIntel.assetName}`, build.container.file(build.linuxIntel.artifactPath))
           .withExec([
             "bash",
             "-lc",
@@ -2604,9 +2596,13 @@ end
               "repo=$(brew --repository)",
               "tap_dir=\"$repo/Library/Taps/test/homebrew-tap\"",
               ...tapStagingCommands("rcc"),
+              'test "$(uname -m)" = x86_64',
+              "brew trust --cask test/tap/rcc",
               "brew install --cask test/tap/rcc",
-              "test -x \"$(brew --prefix)/bin/rcc\"",
-              "rcc --version",
+              'rcc_bin="$(brew --prefix)/bin/rcc"',
+              `test "$(basename "$(readlink -f "$rcc_bin")")" = "${build.linuxIntel.assetName}"`,
+              `echo "${build.linuxIntel.sha256}  $rcc_bin" | sha256sum --check`,
+              `test "$("$rcc_bin" version)" = "v${build.version}"`,
             ].join("\n"),
           ])
           .stdout()
@@ -3269,7 +3265,8 @@ end
         const release = this.rccReleaseMetadata(build)
 
         return dag.directory()
-          .withFile(`artifacts/${build.linux.assetName}`, build.container.file(build.linux.artifactPath))
+          .withFile(`artifacts/${build.linuxIntel.assetName}`, build.container.file(build.linuxIntel.artifactPath))
+          .withFile(`artifacts/${build.linuxArm.assetName}`, build.container.file(build.linuxArm.artifactPath))
           .withFile(`artifacts/${build.macosArm.assetName}`, build.container.file(build.macosArm.artifactPath))
           .withFile(`artifacts/${build.macosIntel.assetName}`, build.container.file(build.macosIntel.artifactPath))
           .withFile("homebrew/rcc.rb", dag.file("rcc.rb", renderedCask))

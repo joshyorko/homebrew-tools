@@ -442,7 +442,7 @@ test("transient upstream probe errors are explicitly marked", () => {
 test("real Git monolith and registry diffs retain scoped routing", () => {
   const fixture = mkdtempSync(join(tmpdir(), "tap-ci-impact-git-"))
   const repo = new URL("../../..", import.meta.url)
-  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", ".github/workflows/tap-ci.yml"]
+  const paths = ["dagger/tap-pipeline/src/index.ts", "dagger/tap-pipeline/src/library.ts", "dagger/tap-pipeline/src/types.ts", "dagger/tap-pipeline/src/actions-runtime.ts", "dagger/tap-pipeline/src/cask-render.ts", "dagger/tap-pipeline/src/devsy-render.ts", "dagger/tap-pipeline/src/github-api.ts", "dagger/tap-pipeline/src/asset-download.ts", "dagger/tap-pipeline/src/install-checks.ts", "dagger/tap-pipeline/src/rcc-release.ts", ".github/workflows/tap-ci.yml"]
   try {
     execFileSync("git", ["init", "-q"], { cwd: fixture })
     execFileSync("git", ["config", "user.email", "planner@example.invalid"], { cwd: fixture })

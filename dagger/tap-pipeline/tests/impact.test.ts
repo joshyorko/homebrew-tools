@@ -27,7 +27,7 @@ test("shared Homebrew runtime affects all consumers", () => {
 })
 test("AST preserves strings but ignores comments and formatting", () => {
   assert.deepEqual(affected(index, (text) => text.replace('private async buildRccArtifacts()', '// comment\n  private   async   buildRccArtifacts()')), [])
-  assert.deepEqual(affected(index, (text) => text.replace('rcc-linux64', 'rcc-linux-new')), ["rcc"])
+  assert.deepEqual(affected("dagger/tap-pipeline/src/rcc-release.ts", (text) => text.replace('rcc-linux64', 'rcc-linux-new')), ["rcc"])
 })
 test("one registry entry and one artifact plan remain scoped", () => {
   assert.deepEqual(affected("dagger/tap-pipeline/src/library.ts", (text) => text.replace('https://github.com/joshyorko/rcc', 'https://github.com/example/rcc')), ["rcc"])

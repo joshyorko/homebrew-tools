@@ -211,8 +211,14 @@ An automation runtime for creating isolated, reproducible environments. Fork of 
 | Platform | Status | Binary |
 |----------|--------|--------|
 | Linux x64 | ✅ Native | `rcc-linux64` |
-| macOS Intel | ✅ Native | `rcc-darwin64` |
-| macOS Apple Silicon | ✅ Rosetta 2 | `rcc-darwin64` |
+| Linux ARM64 (including 64-bit Raspberry Pi Linux) | ✅ Native | `rcc-linuxarm64` |
+| macOS Intel | ✅ Native | `rcc-macos64` |
+| macOS Apple Silicon | ✅ Native | `rcc-macosarm64` |
+
+For RCC v18.19.12, the ARM64 cask pin uses the
+[upstream release asset](https://github.com/joshyorko/rcc/releases/tag/v18.19.12)
+listed in the [upstream release index](https://github.com/joshyorko/rcc/releases/download/v18.19.12/index.json).
+Later tap releases mirror all four binaries and record their upstream URLs and SHA256 values.
 
 #### Why This Fork?
 
@@ -222,7 +228,7 @@ The upstream RCC Homebrew package is macOS-only. This cask provides cross-platfo
 |---------|--------------|-----------|
 | Linux Support | ❌ No | ✅ Yes |
 | macOS Intel | ✅ Yes | ✅ Yes |
-| macOS ARM | ✅ Yes | ✅ Yes (Rosetta) |
+| macOS ARM | ✅ Yes | ✅ Yes |
 
 ### DevPod (Linux Cask)
 
