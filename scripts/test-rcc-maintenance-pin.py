@@ -28,9 +28,16 @@ class RCCPinTests(unittest.TestCase):
         self.assertEqual("a" * 64, new["RCC_SHA256"])
         self.assertEqual("https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.20.0/rcc-linux64", new["RCC_URL"])
 
+    def test_current_and_legacy_layout_select_the_same_x64_pin(self):
+        linux = CASK.split("  on_linux do\n")[1]
+        intel_body = linux.split("    on_intel do\n")[1].split("    end")[0]
+        legacy = f'cask "rcc" do\n  version "{CURRENT["RCC_VERSION"]}"\n  on_linux do\n'
+        legacy += re.sub(r"^  ", "", intel_body, flags=re.M) + "  end\nend\n"
+        self.assertEqual(pin.resolve_pin(CASK), pin.resolve_pin(legacy))
+
     def test_rejects_missing_ambiguous_or_mismatched_pin(self):
         for bad in [
-            CASK.replace(f'version "{CURRENT["RCC_VERSION"]}"', 'version "99.0.0"'),
+            CASK.replace(f'version "{CURRENT["RCC_VERSION"]}"', 'version "0.0.0"'),
             CASK.replace('  on_linux do', '  on_other do'),
             CASK + '\n  version "99.0.0"\n',
             CASK + '\n  version :latest\n',
@@ -38,12 +45,17 @@ class RCCPinTests(unittest.TestCase):
             CASK.replace("  on_linux do", "  on_linux do\n    url ENV.fetch(\"RCC_URL\")"),
             CASK.replace('/rcc-linux64"', '/wrong"'),
             CASK.replace('https://github.com/', 'https://example.com/'),
-            CASK.replace(f'    sha256 "{CURRENT["RCC_SHA256"]}"', '    sha256 :no_check'),
+            CASK.replace(f'      sha256 "{CURRENT["RCC_SHA256"]}"', '      sha256 :no_check'),
+            CASK.replace('binary "rcc-linux64"', 'binary "rcc-linuxarm64"'),
+            CASK.replace("    on_intel do", "    on_arm do"),
+            CASK.replace("      binary \"rcc-linux64\", target: \"rcc\"",
+                         "      binary \"rcc-linux64\", target: \"rcc\"\n      url :dynamic"),
         ]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 pin.resolve_pin(bad)
 
     def test_workflow_uses_pin_and_no_version_only_updater(self):
+        self.assertIn('test "$(uname -m)" = x86_64', WORKFLOW)
         self.assertIn('python3 scripts/rcc-maintenance-pin.py Casks/rcc.rb >> "$GITHUB_ENV"', WORKFLOW)
         self.assertNotIn('RCC_VERSION=', WORKFLOW)
         for path in ['.github/renovate.json5', 'automation/maintenance-robot/allowlists/workflow_versions.json']:

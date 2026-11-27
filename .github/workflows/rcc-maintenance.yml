@@ -17,7 +17,7 @@ env:
 jobs:
   maintenance:
     name: Workflow Maintenance
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       committed: ${{ steps.commit.outputs.committed }}
@@ -42,6 +42,8 @@ jobs:
 
     - name: Set maintenance defaults
       run: |
+        set -euo pipefail
+        test "$(uname -m)" = x86_64
         python3 scripts/rcc-maintenance-pin.py Casks/rcc.rb >> "$GITHUB_ENV"
         echo "MAINTENANCE_PUSH=true" >> "$GITHUB_ENV"
         echo "MAINTENANCE_TARGET_BRANCH=main" >> "$GITHUB_ENV"

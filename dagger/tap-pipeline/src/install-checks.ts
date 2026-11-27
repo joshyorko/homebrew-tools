@@ -145,8 +145,16 @@ const plans: Record<string, ArtifactCheckPlan> = {
     "eitype --help",
   ], ["libxkbcommon0"]),
   rcc: cask("Casks/rcc.rb", "rcc", [
-    "test -x \"$(brew --prefix)/bin/rcc\"",
-    "rcc --version",
+    'case "$(uname -m)" in x86_64) asset=rcc-linux64; machine=3e00 ;; aarch64) asset=rcc-linuxarm64; machine=b700 ;; *) exit 1 ;; esac',
+    'rcc_bin="$(brew --prefix)/bin/rcc"',
+    'test "$(basename "$(readlink -f "$rcc_bin")")" = "$asset"',
+    'test "$(jq -r \'.casks[0].url | split("/") | last\' /tmp/artifact-0.json)" = "$asset"',
+    'echo "$(jq -r .casks[0].sha256 /tmp/artifact-0.json)  $rcc_bin" | sha256sum --check',
+    'test "$(od -An -tx1 -N6 "$rcc_bin" | tr -d "[:space:]")" = 7f454c460201',
+    'test "$(od -An -tx1 -j18 -N2 "$rcc_bin" | tr -d "[:space:]")" = "$machine"',
+    'version="$("$rcc_bin" version)"',
+    'printf "RCC %s (%s)\n" "$version" "$asset"',
+    'test "$version" = "v$(jq -r .casks[0].version /tmp/artifact-0.json)"',
   ]),
   "action-server": cask("Casks/action-server.rb", "action-server", [
     "test -x \"$(brew --prefix)/bin/action-server\"",

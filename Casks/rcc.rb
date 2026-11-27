@@ -20,9 +20,18 @@ cask "rcc" do
   end
 
   on_linux do
-    sha256 "0a13e78201a71c1bbc19a2ee8ccc86dd60a67ec4ffa8cd3a9a8f254d148849ee"
-    url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.12/rcc-linux64"
-    binary "rcc-linux64", target: "rcc"
+    on_arm do
+      # The tap's rcc-18.19.12 release predates the ARM64 mirror.
+      sha256 "e161f9d750776c376ef19ba15676b166447bc12096d208de2ecbbe51899cb1d2"
+      url "https://github.com/joshyorko/rcc/releases/download/v18.19.12/rcc-linuxarm64"
+      binary "rcc-linuxarm64", target: "rcc"
+    end
+
+    on_intel do
+      sha256 "0a13e78201a71c1bbc19a2ee8ccc86dd60a67ec4ffa8cd3a9a8f254d148849ee"
+      url "https://github.com/joshyorko/homebrew-tools/releases/download/rcc-18.19.12/rcc-linux64"
+      binary "rcc-linux64", target: "rcc"
+    end
   end
 
   name "RCC"

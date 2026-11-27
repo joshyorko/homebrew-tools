@@ -329,18 +329,23 @@ jobs:
           notes_file="$RUNNER_TEMP/${package_id}-release-notes.txt"
           jq -r '.release_notes' "$release_json" > "$notes_file"
 
-          if ! gh release view "$release_tag" >/dev/null 2>&1; then
-            gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+          if [ "$package_id" = rcc ]; then
+            bash scripts/publish-rcc-release.sh "$bundle_dir" "$release_tag" "$release_title" "$notes_file"
+          else
+            if ! gh release view "$release_tag" >/dev/null 2>&1; then
+              gh release create "$release_tag" --title "$release_title" --notes-file "$notes_file"
+            fi
+
+            shopt -s nullglob
+            artifacts=("$bundle_dir/artifacts/"*)
+            if [ "${#artifacts[@]}" -eq 0 ]; then
+              echo "No release artifacts were exported for $package_id." >&2
+              exit 1
+            fi
+
+            gh release upload "$release_tag" "${artifacts[@]}" --clobber
           fi
 
-          shopt -s nullglob
-          artifacts=("$bundle_dir/artifacts/"*)
-          if [ "${#artifacts[@]}" -eq 0 ]; then
-            echo "No release artifacts were exported for $package_id." >&2
-            exit 1
-          fi
-
-          gh release upload "$release_tag" "${artifacts[@]}" --clobber
           node scripts/apply-release-bundle.mjs --bundle "$bundle_dir" --repo "$GITHUB_WORKSPACE" >/dev/null
           node scripts/prune-package-releases.mjs \
             --repo "$GITHUB_REPOSITORY" \
